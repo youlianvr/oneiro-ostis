@@ -1,0 +1,106 @@
+/*
+ * Oneiro-OSTIS experience ontology.
+ *
+ * Experience = attempts linked to subjects, actions, outcomes and to each
+ * other chronologically. The dream cycle reads this graph and replays
+ * alternative strategies over it.
+ */
+
+/* ---------- classes ---------- */
+
+concept_experience_event
+<- sc_node_class;
+=> nrel_main_idtf:
+    [experience event]
+    (* <- lang_en;; *);;
+
+concept_attempt
+<= nrel_inclusion:
+    concept_experience_event;;
+=> nrel_main_idtf:
+    [attempt]
+    (* <- lang_en;; *);;
+
+concept_outcome
+<- sc_node_class;
+=> nrel_main_idtf:
+    [outcome]
+    (* <- lang_en;; *);;
+
+concept_subject
+<- sc_node_class;
+=> nrel_main_idtf:
+    [subject]
+    (* <- lang_en;; *);;
+
+concept_action_kind
+<- sc_node_class;
+=> nrel_main_idtf:
+    [action kind]
+    (* <- lang_en;; *);;
+
+/* ---------- outcome constants ---------- */
+
+concept_success
+<- concept_outcome;
+=> nrel_main_idtf:
+    [success]
+    (* <- lang_en;; *);;
+
+concept_failure
+<- concept_outcome;
+=> nrel_main_idtf:
+    [failure]
+    (* <- lang_en;; *);;
+
+/* ---------- non-role relations ---------- */
+
+nrel_subject
+<- sc_node_non_role_relation;
+=> nrel_main_idtf:
+    [subject of attempt*]
+    (* <- lang_en;; *);;
+
+nrel_action
+<- sc_node_non_role_relation;
+=> nrel_main_idtf:
+    [action of attempt*]
+    (* <- lang_en;; *);;
+
+nrel_object
+<- sc_node_non_role_relation;
+=> nrel_main_idtf:
+    [object of attempt*]
+    (* <- lang_en;; *);;
+
+nrel_outcome
+<- sc_node_non_role_relation;
+=> nrel_main_idtf:
+    [outcome of attempt*]
+    (* <- lang_en;; *);;
+
+nrel_prev_attempt
+<- sc_node_non_role_relation;
+=> nrel_main_idtf:
+    [previous attempt*]
+    (* <- lang_en;; *);;
+
+nrel_timestamp
+<- sc_node_non_role_relation;
+=> nrel_main_idtf:
+    [timestamp of attempt*]
+    (* <- lang_en;; *);;
+
+/* ---------- agent actions ---------- */
+
+action_record_attempt
+<- sc_node_class;
+=> nrel_main_idtf:
+    [action. record an attempt of a subject]
+    (* <- lang_en;; *);;
+
+action_retrieve_attempts
+<- sc_node_class;
+=> nrel_main_idtf:
+    [action. retrieve attempts of a subject]
+    (* <- lang_en;; *);;

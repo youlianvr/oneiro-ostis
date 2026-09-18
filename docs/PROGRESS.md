@@ -25,3 +25,27 @@
 - `docker compose up` with `image:` + `build:` pulls the named image first even when a local build is intended; use `docker compose build <service>` explicitly.
 - containerd image store (`io.containerd.snapshotter.v1`) does NOT honor daemon registry-mirrors for build-time pulls; left enabled anyway (switching the store would wipe existing images — maigret/dnstwist kept intact).
 - Windows + Git Bash: `MSYS_NO_PATHCONV=1` needed for `schtasks /Create /TN ...`; schtasks output is cp866 — pipe through `iconv -f cp866 -t utf-8`.
+
+### 2026-09-18 (evening): conan eliminated, base image split
+
+- Full `docker compose build` of example-app failed: `conan.ostis.net` unreachable
+  (Errno 111 at the artifactory ping) — server-side outage, not our network.
+- Discovery: GitHub releases ship **complete binary distributions** of sc-machine
+  (headers + CMake package configs + .so + sc-builder/sc-machine binaries).
+  The module can build against them directly, no conan needed.
+- oneiro-ostis therefore got its own build system:
+  - `scripts/install_cxx_problem_solver.sh` — downloads sc-machine 0.10.5 release
+    archive from GitHub, keeps `include/` (module compiles against it);
+  - `CMakePresets.json` — plain Ninja preset, `CMAKE_PREFIX_PATH` → `install/sc-machine`;
+  - `CMakeLists.txt` — `find_package(sc-machine REQUIRED)` from the prefix, no conan;
+  - `Dockerfile` — no pipx/conan, venv + prebuilt binaries + module build only;
+  - `docker/base/Dockerfile` — separate toolchain base image `oneiro-base:latest`
+    (apt layer with retries, cache-stable: apt was re-downloading 125MB of packages
+    on every source change because COPY preceded it).
+- Stage 2 artifacts landed meanwhile: ontology (`knowledge-base/ontology/experience.scs`,
+  canonical `sc_node_class`/`sc_node_non_role_relation` conventions verified against
+  example-app KB), C++ agents RecordAttempt/RetrieveAttempts (canonical binary-relation
+  pattern verified against sc-machine sources: main CommonArc + rrel/nrel attribute arc,
+  `SetResult` → `nrel_result` CommonArc), Python bridge (`python/bridge.py`,
+  construction/template APIs verified against py-sc-client sources), core-loop test
+  (`tests/test_core_loop.py`).
