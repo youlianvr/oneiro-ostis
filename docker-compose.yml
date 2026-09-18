@@ -17,7 +17,10 @@ services:
       context: ./
     restart: unless-stopped
     volumes:
-      - ./:/knowledge-base
+      # Mount KB sources (our ontology + IMS common KB) at the location the
+      # entrypoint expects: /knowledge-base. Paths in repo.path resolve
+      # relative to the repo.path file itself.
+      - ./knowledge-base:/knowledge-base
       - kb-binary:/kb.bin
     networks:
       - sc-machine
@@ -30,11 +33,16 @@ services:
       retries: 3
       start_period: 120s
     environment:
+      # Rebuild the KB from sources on every start (repo.path: ontology + IMS base).
+      - "REBUILD_KB=1"
       - "KB_PATH=/knowledge-base/repo.path"
       - "BINARY_PATH=/example-app/install/sc-machine/bin"
       - "CONFIG_PATH=/knowledge-base/oneiro-ostis.ini"
       - "EXTENSIONS_PATH=/example-app/build/Release/extensions;/example-app/install/sc-machine/lib/extensions"
       - "SC_SERVER_HOST=0.0.0.0"
+      # Deterministic chronological chaining: parallel action processing races
+      # on the prev-attempt search and corrupts the nrel_prev_attempt chain.
+      - "SC_SERVER_PARALLEL_ACTIONS=0"
     command:
       - "run"
 

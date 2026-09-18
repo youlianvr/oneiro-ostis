@@ -8,103 +8,144 @@
 
 /* ---------- classes ---------- */
 
+concept_experience_event <- sc_node_class;;
 concept_experience_event
-<- sc_node_class;
 => nrel_main_idtf:
     [experience event]
     (* <- lang_en;; *);;
 
+concept_attempt <- sc_node_class;;
 concept_attempt
-<= nrel_inclusion:
-    concept_experience_event;;
+<= nrel_inclusion: concept_experience_event;;
+concept_attempt
 => nrel_main_idtf:
     [attempt]
     (* <- lang_en;; *);;
 
+concept_outcome <- sc_node_class;;
 concept_outcome
-<- sc_node_class;
 => nrel_main_idtf:
     [outcome]
     (* <- lang_en;; *);;
 
+concept_subject <- sc_node_class;;
 concept_subject
-<- sc_node_class;
 => nrel_main_idtf:
     [subject]
     (* <- lang_en;; *);;
 
+concept_action_kind <- sc_node_class;;
 concept_action_kind
-<- sc_node_class;
 => nrel_main_idtf:
     [action kind]
     (* <- lang_en;; *);;
 
 /* ---------- outcome constants ---------- */
 
+concept_success <- concept_outcome;;
 concept_success
-<- concept_outcome;
 => nrel_main_idtf:
     [success]
     (* <- lang_en;; *);;
 
+concept_failure <- concept_outcome;;
 concept_failure
-<- concept_outcome;
 => nrel_main_idtf:
     [failure]
     (* <- lang_en;; *);;
 
 /* ---------- non-role relations ---------- */
 
+nrel_subject <- sc_node_non_role_relation;;
 nrel_subject
-<- sc_node_non_role_relation;
 => nrel_main_idtf:
     [subject of attempt*]
     (* <- lang_en;; *);;
 
+nrel_action <- sc_node_non_role_relation;;
 nrel_action
-<- sc_node_non_role_relation;
 => nrel_main_idtf:
     [action of attempt*]
     (* <- lang_en;; *);;
 
+nrel_object <- sc_node_non_role_relation;;
 nrel_object
-<- sc_node_non_role_relation;
 => nrel_main_idtf:
     [object of attempt*]
     (* <- lang_en;; *);;
 
+nrel_outcome <- sc_node_non_role_relation;;
 nrel_outcome
-<- sc_node_non_role_relation;
 => nrel_main_idtf:
     [outcome of attempt*]
     (* <- lang_en;; *);;
 
+nrel_prev_attempt <- sc_node_non_role_relation;;
 nrel_prev_attempt
-<- sc_node_non_role_relation;
 => nrel_main_idtf:
     [previous attempt*]
     (* <- lang_en;; *);;
 
+nrel_timestamp <- sc_node_non_role_relation;;
 nrel_timestamp
-<- sc_node_non_role_relation;
 => nrel_main_idtf:
     [timestamp of attempt*]
     (* <- lang_en;; *);;
 
-/* ---------- agent actions ---------- */
+nrel_source <- sc_node_non_role_relation;;
+nrel_source
+=> nrel_main_idtf:
+    [source of attempt*]
+    (* <- lang_en;; *);;
 
+nrel_kind <- sc_node_non_role_relation;;
+nrel_kind
+=> nrel_main_idtf:
+    [kind of attempt*]
+    (* <- lang_en;; *);;
+
+nrel_score <- sc_node_non_role_relation;;
+nrel_score
+=> nrel_main_idtf:
+    [numeric score of attempt*]
+    (* <- lang_en;; *);;
+
+/* ---------- provenance constants ---------- */
+
+source_direct <- concept;;
+source_direct
+=> nrel_main_idtf:
+    [direct experience*]
+    (* <- lang_en;; *);;
+
+/* ---------- ablation flags ---------- */
+
+concept_no_temporal <- concept;;
+concept_no_temporal
+=> nrel_main_idtf:
+    [no temporal chaining*]
+    (* <- lang_en;; *);;
+
+source_hearsay <- concept;;
+source_hearsay
+=> nrel_main_idtf:
+    [hearsay experience*]
+    (* <- lang_en;; *);;
+
+/* ---------- agent actions classified under information_action ---------- */
+
+action_record_attempt <- sc_node_class;;
 action_record_attempt
-<- sc_node_class;
-<= nrel_inclusion:
-    information_action;;
+<= nrel_inclusion: information_action;;
+action_record_attempt
 => nrel_main_idtf:
     [action. record an attempt of a subject]
     (* <- lang_en;; *);;
 
+action_retrieve_attempts <- sc_node_class;;
 action_retrieve_attempts
-<- sc_node_class;
-<= nrel_inclusion:
-    information_action;;
+<= nrel_inclusion: information_action;;
+action_retrieve_attempts
 => nrel_main_idtf:
     [action. retrieve attempts of a subject]
     (* <- lang_en;; *);;

@@ -70,3 +70,41 @@
 - Both containers healthy: machine (healthy, OneiroModule loaded) + web (:8000 → 200).
 
 Stage 1 ✅ Stage 2 ✅ — next: Stage 3 (scientific layer: world, baselines, metrics).
+
+## Stage 3 closed — scientific layer on the live stack (2026-09-19)
+
+- Deterministic expedition world (`python/world/`), fixed island graph, numeric
+  outcomes, seeded RNG only. Unit-tested for determinism.
+- Baseline agents (context-only, flat store, random floor) + OSTIS memory agent
+  with ablation flags; all share one interface (`agents.py`).
+- Metrics: recall, order accuracy (adjacent pairs, first-occurrence positions,
+  identical keys skipped), provenance, contradictions, retrieval latency
+  (`metrics/`). `build_table` runs the full experiment on the live stack and
+  writes `docs/results.md`.
+- Ablations are real, not cosmetic:
+  - `no_temporal` passes `concept_no_temporal` as rrel_5; the C++ agent skips
+    `nrel_prev_attempt` chaining -> order accuracy drops to 0.50.
+  - `no_provenance` drops `nrel_source` at write time -> provenance = 0.
+- Full KB build restored: the whole IMS common KB (201 sources) plus our
+  ontology now loads at container start (REBUILD_KB=1, repo.path, storage=/kb.bin).
+
+### Gnarly bugs found on the way (documented for future sessions)
+1. `repo.path` resolves paths relative to the file itself; the compose mount
+   must match that layout (`./knowledge-base:/knowledge-base`).
+2. `storage = kb.bin` resolves relative to the process CWD; use absolute
+   `/kb.bin` so binaries land in the named volume, not the sources mount.
+3. SCs canonical form: `=> nrel_main_idtf:` on the line after the node name;
+   `;;` terminates statements. Verified against the IMS corpus.
+4. Race in action initiation: build action node + class arc + rrel arguments in
+   one construction, then generate the `action_initiated` arc in a SECOND
+   request. Otherwise the agent can fire before arguments exist.
+5. `ScAction::GetArguments<N>` returns Empty for missing N; optional arguments
+   are safe.
+6. Result structures: the record action returns a wrapper node around the
+   attempt; retrieve returns a structure of attempts. Unwrap accordingly.
+7. py-sc-client 0.10: `sc_type.VAR_LINK` does not exist (use `VAR_NODE_LINK`);
+   `sc_client.client.disconnect()` must be called or the process hangs on exit
+   (non-daemon socket threads).
+8. `SC_SERVER_PARALLEL_ACTIONS=0`: parallel processing corrupts the
+   chronological chain (determinism requirement).
+9. Agent file loggers need their directory to exist (logs/ created pre-start).

@@ -1,0 +1,5 @@
+# sc-builder starting point (KB_PATH=/knowledge-base/repo.path).
+# Paths resolve relative to this file's directory (/knowledge-base in the container).
+ontology/
+ims.ostis.kb/
+!ims.ostis.kb/ui/menu/ui_main_menu.scs

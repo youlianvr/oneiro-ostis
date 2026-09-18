@@ -31,4 +31,8 @@ public:
   // Result codes
   static inline ScKeynode const concept_success{"concept_success", ScType::ConstNodeClass};
   static inline ScKeynode const concept_failure{"concept_failure", ScType::ConstNodeClass};
+
+  // Ablation flag: when passed as rrel_5 argument of action_record_attempt,
+  // the agent skips the nrel_prev_attempt chronological chaining.
+  static inline ScKeynode const concept_no_temporal{"concept_no_temporal", ScType::ConstNodeClass};
 };

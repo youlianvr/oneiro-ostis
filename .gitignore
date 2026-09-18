@@ -11,3 +11,7 @@ ConanPresets.json
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Vendored IMS common KB: copied (not cloned) into knowledge-base/ for the
+# container mount. Get it from https://github.com/ostis-apps/ims.ostis.kb
+knowledge-base/ims.ostis.kb/

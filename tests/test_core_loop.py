@@ -18,7 +18,8 @@ PORT = int(os.environ.get("ONEIRO_PORT", "8090"))
 def bridge():
     b = OneiroBridge(HOST, PORT)
     b.connect()
-    return b
+    yield b
+    b.close()  # otherwise the client's background threads can linger
 
 
 def test_record_then_retrieve_roundtrip(bridge):
