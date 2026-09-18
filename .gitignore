@@ -1,0 +1,13 @@
+# Runtime artifacts of the running stack (volume-mounted into containers)
+kb.bin/
+logs/
+
+# Build outputs
+build/
+install/
+ConanPresets.json
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
