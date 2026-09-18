@@ -17,10 +17,15 @@ RUN python3 -m venv /example-app/.venv && \
     pip3 install --retries 5 -r /example-app/requirements.txt
 
 # Install prebuilt sc-machine binaries (headers kept for our module build).
+# Normalize CRLF -> LF: Windows checkouts give shell scripts \r endings.
+RUN sed -i 's/\r$//' /example-app/scripts/*.sh && chmod +x /example-app/scripts/*.sh
 RUN ./scripts/install_cxx_problem_solver.sh
 
 FROM devdeps AS builder
 COPY . .
+# COPY . . restores CRLF endings from the Windows host — normalize again,
+# the final image takes its scripts from here.
+RUN sed -i 's/\r$//' scripts/*.sh && chmod +x scripts/*.sh
 RUN --mount=type=cache,target=/ccache/ cmake --preset release && cmake --build --preset release
 
 # Gathering all artifacts together

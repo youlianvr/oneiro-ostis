@@ -49,3 +49,24 @@
   `SetResult` → `nrel_result` CommonArc), Python bridge (`python/bridge.py`,
   construction/template APIs verified against py-sc-client sources), core-loop test
   (`tests/test_core_loop.py`).
+
+### 2026-09-18 (late evening): STAGE 1 + STAGE 2 GREEN
+
+- `oneiro-base:latest` toolchain image built (one-time ~40 min apt through the
+  flaky network; now cached forever).
+- Build fixes, each verified: missing python3-venv; CRLF in shell scripts
+  (normalized in BOTH devdeps and builder stages — `COPY . .` re-breaks it);
+  stale include in OneiroKeynodes.hpp.
+- **Ontology fix (root-caused in sc-machine sources):** an action class is valid
+  only if it is included (`nrel_inclusion`) in one of receptor/effector/
+  behavioral/information_action. Added `<= nrel_inclusion: information_action;;`
+  for both action classes; KB rebuilt from scratch (volume removed).
+- Bridge fixes: explicit `connect(ws://...)`, `ScTemplate` import,
+  `sc_types` (deprecated) → `sc_type` constants.
+- **Roundtrip verified against the live stack:**
+  record_attempt('test_subject_alpha','walk','room1','concept_success') →
+  retrieve_attempts returns the attempt with all four fields intact.
+  `pytest tests/test_core_loop.py` → **2 passed in 1.06s**.
+- Both containers healthy: machine (healthy, OneiroModule loaded) + web (:8000 → 200).
+
+Stage 1 ✅ Stage 2 ✅ — next: Stage 3 (scientific layer: world, baselines, metrics).

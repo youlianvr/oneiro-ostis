@@ -19,13 +19,14 @@ from dataclasses import dataclass
 from typing import Optional
 
 from sc_client.client import (
+    connect as _client_connect,
     generate_elements,
     get_link_content,
     resolve_keynodes,
     search_by_template,
 )
-from sc_client.constants import sc_types
-from sc_client.models import ScAddr, ScConstruction, ScIdtfResolveParams
+from sc_client.constants import sc_type
+from sc_client.models import ScAddr, ScConstruction, ScIdtfResolveParams, ScTemplate
 from sc_kpm.sc_keynodes import ScKeynodes
 
 ACTION_INITIATED = "action_initiated"
@@ -64,7 +65,8 @@ class OneiroBridge:
     # ---------- connection ----------
 
     def connect(self) -> None:
-        """Verify the server answers by resolving a common keynode."""
+        """Open the WebSocket connection and verify the server answers."""
+        _client_connect(f"ws://{self.host}:{self.port}")
         self.keynode(ACTION_INITIATED)
 
     # ---------- keynodes and idtf helpers ----------
@@ -74,7 +76,7 @@ class OneiroBridge:
 
     def resolve_entity(self, name: str) -> ScAddr:
         """Resolve a node by system identifier; create it (ConstNode) if missing."""
-        addrs = resolve_keynodes(ScIdtfResolveParams(idtf=name, type=sc_types.NODE_CONST))
+        addrs = resolve_keynodes(ScIdtfResolveParams(idtf=name, type=sc_type.CONST_NODE))
         addr = addrs[0]
         self._addr_to_idtf[addr.value] = name
         return addr
@@ -87,9 +89,9 @@ class OneiroBridge:
         template = ScTemplate()
         template.quintuple(
             addr,
-            sc_types.VAR_PERM_POS_ARC,
-            sc_types.VAR_LINK,
-            sc_types.VAR_PERM_POS_ARC,
+            sc_type.VAR_PERM_POS_ARC,
+            sc_type.VAR_LINK,
+            sc_type.VAR_PERM_POS_ARC,
             self.keynode(NREL_SYSTEM_IDENTIFIER),
         )
         found = search_by_template(template)
@@ -141,14 +143,14 @@ class OneiroBridge:
         initiated = self.keynode(ACTION_INITIATED)
 
         constr = ScConstruction()
-        constr.generate_node(sc_types.NODE_CONST, "action")
-        constr.generate_connector(sc_types.EDGE_ACCESS_CONST_POS_PERM, action_class, "action", "class_arc")
-        constr.generate_connector(sc_types.EDGE_ACCESS_CONST_POS_PERM, initiated, "action", "initiated_arc")
+        constr.generate_node(sc_type.CONST_NODE, "action")
+        constr.generate_connector(sc_type.CONST_PERM_POS_ARC, action_class, "action", "class_arc")
+        constr.generate_connector(sc_type.CONST_PERM_POS_ARC, initiated, "action", "initiated_arc")
         for i, arg in enumerate(args):
             alias = f"arg_arc_{i}"
-            constr.generate_connector(sc_types.EDGE_ACCESS_CONST_POS_PERM, "action", arg, alias)
+            constr.generate_connector(sc_type.CONST_PERM_POS_ARC, "action", arg, alias)
             constr.generate_connector(
-                sc_types.EDGE_ACCESS_CONST_POS_PERM,
+                sc_type.CONST_PERM_POS_ARC,
                 self.keynode(RRELS[i]),
                 alias,
             )
@@ -166,7 +168,7 @@ class OneiroBridge:
         while time.time() < deadline:
             for status in statuses:
                 template = ScTemplate()
-                template.triple(status, sc_types.VAR_PERM_POS_ARC, action_addr)
+                template.triple(status, sc_type.VAR_PERM_POS_ARC, action_addr)
                 if search_by_template(template):
                     return status
             time.sleep(POLL_INTERVAL)
@@ -177,9 +179,9 @@ class OneiroBridge:
         template = ScTemplate()
         template.quintuple(
             action_addr,
-            sc_types.VAR_COMMON_ARC,
-            sc_types.VAR_NODE,
-            sc_types.VAR_PERM_POS_ARC,
+            sc_type.VAR_COMMON_ARC,
+            sc_type.VAR_NODE,
+            sc_type.VAR_PERM_POS_ARC,
             self.keynode(NREL_RESULT),
         )
         found = search_by_template(template)
@@ -193,7 +195,7 @@ class OneiroBridge:
         """Decode attempts from the result structure membership arcs."""
         records: list[AttemptRecord] = []
         template = ScTemplate()
-        template.triple(structure, sc_types.VAR_PERM_POS_ARC, sc_types.VAR_NODE)
+        template.triple(structure, sc_type.VAR_PERM_POS_ARC, sc_type.VAR_NODE)
         found = search_by_template(template)
         for item in found:
             attempt_addr = item.get(2)
@@ -217,9 +219,9 @@ class OneiroBridge:
         template = ScTemplate()
         template.quintuple(
             source_addr,
-            sc_types.VAR_COMMON_ARC,
-            sc_types.VAR_NODE,
-            sc_types.VAR_PERM_POS_ARC,
+            sc_type.VAR_COMMON_ARC,
+            sc_type.VAR_NODE,
+            sc_type.VAR_PERM_POS_ARC,
             self.keynode(relation_idtf),
         )
         found = search_by_template(template)

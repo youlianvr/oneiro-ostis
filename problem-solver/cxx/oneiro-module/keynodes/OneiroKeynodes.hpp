@@ -7,8 +7,6 @@
 
 #include <sc-memory/sc_keynodes.hpp>
 
-#include <sc-agents-common/keynodes/coreKeynodes.hpp>
-
 class OneiroKeynodes : public ScKeynodes
 {
 public:

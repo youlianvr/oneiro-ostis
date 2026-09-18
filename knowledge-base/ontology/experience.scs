@@ -95,12 +95,16 @@ nrel_timestamp
 
 action_record_attempt
 <- sc_node_class;
+<= nrel_inclusion:
+    information_action;;
 => nrel_main_idtf:
     [action. record an attempt of a subject]
     (* <- lang_en;; *);;
 
 action_retrieve_attempts
 <- sc_node_class;
+<= nrel_inclusion:
+    information_action;;
 => nrel_main_idtf:
     [action. retrieve attempts of a subject]
     (* <- lang_en;; *);;
