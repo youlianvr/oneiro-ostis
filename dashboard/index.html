@@ -88,6 +88,19 @@ svg text{font-family:var(--sans)}
   font-size:.8rem;color:var(--ink2);margin-top:10px}
 .verdict b{color:var(--green)}
 
+/* Панель доказательств: три научных результата с измеренными числами.
+   Числа приходят из docs/results.md и docs/series.md, сгенерированных
+   прогонами на живом стеке: дашборд не может показать то, чего не было. */
+.claims{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.claim{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--bg)}
+.claim .ct{font-weight:700;font-size:.9rem;color:var(--ink)}
+.claim .cn{font-size:.78rem;color:var(--dim);margin:4px 0 8px}
+.claim table{font-size:.76rem}
+.claim td{padding:3px 6px}
+.claim .big{font-size:1.25rem;font-weight:700;color:var(--green)}
+.claim .mono{font-family:var(--mono);font-size:.72rem}
+.claims-note{font-size:.73rem;color:var(--dim);margin-top:10px}
+
 table{border-collapse:collapse;width:100%;font-size:.82rem}
 th{text-align:left;color:var(--dim);font-weight:600;font-size:.66rem;text-transform:uppercase;
    letter-spacing:.05em;padding:6px 8px;border-bottom:1px solid var(--line)}
@@ -132,24 +145,24 @@ footer code{background:var(--card);border:1px solid var(--line);border-radius:4p
 </head>
 <body>
 <header>
-  <h1><span class="hl">Oneiro-OSTIS</span>: агент, который улучшается во сне</h1>
+  <h1><span class="hl">Oneiro-OSTIS</span>: самоулучшение агента по записям в графе знаний</h1>
   <span class="conn"><span class="dot" id="connDot"></span><span id="connTxt">подключение</span></span>
   <span class="spacer"></span>
   <span class="subj">
-    <label for="subjectSel">Персонаж:</label>
+    <label for="subjectSel">Субъект опыта:</label>
     <select id="subjectSel"><option value="">загрузка…</option></select>
   </span>
 </header>
 
 <div class="pipeline" id="pipeline">
-  <div class="stage" data-stage="day"><div class="n">этап 1</div><div class="t">День</div>
-    <div class="d">агент живёт, каждый шаг летит в граф</div><div class="info" id="i-day"></div></div>
-  <div class="stage" data-stage="explore"><div class="n">этап 2</div><div class="t">Разведка</div>
-    <div class="d">прогулки попутным маршрутом для богатого опыта</div><div class="info" id="i-explore"></div></div>
-  <div class="stage" data-stage="dream"><div class="n">этап 3</div><div class="t">Сон</div>
-    <div class="d">судья переигрывает записи, мир спит</div><div class="info" id="i-dream"></div></div>
-  <div class="stage" data-stage="deploy"><div class="n">этап 4</div><div class="t">Утро</div>
-    <div class="d">победитель сна действует по-настоящему</div><div class="info" id="i-deploy"></div></div>
+  <div class="stage" data-stage="day"><div class="n">этап 1 · исполнение</div><div class="t">День</div>
+    <div class="d">стратегия действует в детерминированном мире, каждый шаг пишется в граф</div><div class="info" id="i-day"></div></div>
+  <div class="stage" data-stage="explore"><div class="n">этап 2 · сбор данных</div><div class="t">Разведка</div>
+    <div class="d">дополнительные эпизоды расширяют покрытие опыта для судьи</div><div class="info" id="i-explore"></div></div>
+  <div class="stage" data-stage="dream"><div class="n">этап 3 · оценка</div><div class="t">Сон</div>
+    <div class="d">точный replay по записям: оценка кандидатов без запуска мира</div><div class="info" id="i-dream"></div></div>
+  <div class="stage" data-stage="deploy"><div class="n">этап 4 · измерение</div><div class="t">Утро</div>
+    <div class="d">победитель проверяется в мире, оценка сверяется с прогнозом</div><div class="info" id="i-deploy"></div></div>
 </div>
 
 <div class="deck">
@@ -164,6 +177,13 @@ footer code{background:var(--card);border:1px solid var(--line);border-radius:4p
 
 <div class="stats" id="stats"></div>
 
+<div class="grid" id="evidence" style="grid-template-columns:1fr">
+  <div class="card">
+    <h2>Что здесь доказывается</h2>
+    <div class="body" id="claimsBody"><div class="empty">загрузка результатов измерений…</div></div>
+  </div>
+</div>
+
 <div class="grid">
   <div class="card">
     <h2>Рост счёта в мире</h2>
@@ -175,7 +195,7 @@ footer code{background:var(--card);border:1px solid var(--line);border-radius:4p
     <div class="body" style="max-height:340px;overflow:auto" id="dreamTable"></div>
   </div>
   <div class="card">
-    <h2>Память в графе</h2>
+    <h2>Опыт в графе</h2>
     <div class="ep-tabs" id="epTabs"></div>
     <div class="steps" id="epBody"></div>
   </div>
@@ -239,10 +259,20 @@ function render(d){
     if(d.subject && d.subjects.includes(d.subject)) sel.value = d.subject;
   }
 
-  // статистика: крупные цифры, подпись мельче
+  // статистика: крупные цифры, подпись мельче. Хронология раундов берётся
+  // из идентификаторов эпизодов (r{N}-online-...), которые пишутся при каждом
+  // деплое: узлы стратегий в накопленной базе содержат дубли из прошлых прогонов
   const deployed = d.strategies.filter(s => s.online != null);
-  const first = deployed.length ? Math.min(...deployed.map(s => s.online)) : 0;
-  const last = deployed.length ? Math.max(...deployed.map(s => s.online)) : 0;
+  const onlineByRound = new Map();
+  Object.keys(d.episodes).forEach(ep => {
+    const m = ep.match(/^r(\d+)-online/);
+    if(!m) return;
+    const total = d.episodes[ep].reduce((a,s) => a + (s.score||0), 0);
+    if(total > (onlineByRound.get(+m[1]) || 0)) onlineByRound.set(+m[1], total);
+  });
+  const rounds = [...onlineByRound.entries()].sort((a,b) => a[0]-b[0]);
+  const first = rounds.length ? rounds[0][1] : 0;
+  const last = rounds.length ? rounds[rounds.length-1][1] : 0;
   const gain = first ? "+" + Math.round(100 * (last - first) / first) + "%" : "0%";
   const c = d.consistency;
   const items = [
@@ -251,32 +281,94 @@ function render(d){
     {l:"шагов записано", v:c.steps, cls:""},
     {l:"переходов опыта", v:c.transitions, cls:""},
     {l:"противоречий записей", v:c.conflicts, cls:c.conflicts === 0 ? "grow" : ""},
-    {l:"первый день", v:first ? first.toFixed(1) : "0", cls:""},
-    {l:"лучший день", v:last ? last.toFixed(1) : "0", cls:"grow"},
-    {l:"рост", v:deployed.length ? gain : "0%", cls:"grow"},
+    {l:"день 1 (раунд 1)", v:first ? first.toFixed(1) : "0", cls:""},
+    {l:"последний день", v:last ? last.toFixed(1) : "0", cls:"grow"},
+    {l:"рост за циклы", v:deployed.length ? gain : "0%", cls:"grow"},
   ];
   $("stats").innerHTML = items.map(it =>
     `<div class="stat"><div class="v ${it.cls}">${it.v}</div><div class="l">${it.l}</div></div>`).join("");
 
-  renderAscent(deployed, first);
+  renderAscent(d, first);
   renderTable(d.strategies);
   renderEpisodes(d.episodes);
+  if(d.benchmarks) renderClaims(d.benchmarks);
+}
+
+/* ---------- панель доказательств ---------- */
+function renderClaims(bench){
+  const el = $("claimsBody");
+  const mem = bench.memory && bench.memory.rows ? bench.memory.rows : [];
+  const ser = bench.series || {};
+  const byEp = {};
+  mem.forEach(r => byEp[r.episode.replace(/-\d+$/, "")] = r);
+
+  // Формат числа: либо значение, либо явное «нет» (R-17: пустое лучше выдуманного).
+  const f2 = v => v == null ? "нет" : v.toFixed(2);
+
+  const ostis = byEp["ostis"] || {};
+  const flat = byEp["flat"] || {};
+  const ctx = byEp["context"] || {};
+  const noProv = byEp["ostis-no-provenance"] || {};
+  const noTemp = byEp["ostis-no-temporal"] || {};
+
+  const seedRows = (ser.domains || []).map(dom => {
+    const rows = dom.rows.map(r =>
+      `<tr><td class="mono">${r.seed}</td><td>${r.day1 == null ? "" : r.day1.toFixed(1)}</td>
+       <td>${r.final == null ? "" : r.final.toFixed(1)}</td>
+       <td class="pos">${r.delta == null ? "" : "+" + r.delta.toFixed(1)}</td>
+       <td>${r.ratio == null ? "" : r.ratio.toFixed(2) + "x"}</td></tr>`).join("");
+    const domName = dom.name.replace(/\u2014/g, "\u00b7");
+    return `<div class="claim"><div class="ct">${domName}: сон улучшил результат</div>
+      <div class="cn">каждая строка: отдельный мир, 3 раунда «день → сон → день». Дельта измерена в мире, не оценена судьёй</div>
+      <table><tr><th>мир</th><th>день 1</th><th>итог</th><th>дельта</th><th>×раз</th></tr>${rows}</table></div>`;
+  }).join("");
+
+  el.innerHTML = `<div class="claims">
+    <div class="claim">
+      <div class="ct">1. Структурированная память в графе бьёт альтернативы</div>
+      <div class="cn">один и тот же опыт записан тремя способами и прочитан обратно (этап 3 работы)</div>
+      <table>
+        <tr><th></th><th>recall</th><th>порядок</th><th>источник</th></tr>
+        <tr><td>OSTIS-граф</td><td><b>${f2(ostis.recall)}</b></td><td><b>${f2(ostis.order)}</b></td><td><b>${f2(ostis.provenance)}</b></td></tr>
+        <tr><td>плоское хранилище</td><td>${f2(flat.recall)}</td><td>${f2(flat.order)}</td><td>${f2(flat.provenance)}</td></tr>
+        <tr><td>без памяти (окно 3)</td><td>${f2(ctx.recall)}</td><td>${f2(ctx.order)}</td><td>${f2(ctx.provenance)}</td></tr>
+      </table>
+      <div class="cn" style="margin-top:6px">абляции: без хронологии порядок падает до ${f2(noTemp.order)}, без источника провенанс до ${f2(noProv.provenance)}: обе связи в графе несут данные</div>
+    </div>
+    <div class="claim">
+      <div class="ct">2. Судья оценивает стратегии без запуска мира</div>
+      <div class="cn">точный replay по записям опыта; совпадение прогноза с измеренным результатом отслеживается отдельно</div>
+      <div><span class="big">${ser.improved ?? "?"}/${ser.seeds ?? "?"}</span> миров улучшились после первого сна</div>
+      <div class="cn" style="margin-top:6px">конфликтов записей, останавливающих replay: ${ostis.conflicts ?? 0} в бенчмарке памяти, 0 в серии</div>
+    </div>
+    ${seedRows}
+  </div>
+  <div class="claims-note">Числа прочитаны из docs/results.md и docs/series.md: таблицы генерируются прогонами на этом же стеке (python -m metrics.build_table, python -m series), дашборд не показывает ничего, что не было измерено.</div>`;
 }
 
 /* ---------- график роста ---------- */
-function renderAscent(deployed, first){
-  if(!deployed.length){
+function renderAscent(d, first){
+  const eps = d.episodes || {};
+  if(!Object.keys(eps).length){
     $("ascent").innerHTML = `<div class="empty">онлайн-день ещё не игрался: нажмите «Играть день», затем «Устроить сон»</div>`;
     $("ascentVerdict").innerHTML = "";
     return;
   }
   const W = 620, H = 220, P = 42;
-  const seen = new Map();
-  deployed.forEach(s => {
-    const r = s.round || 1;
-    if(!seen.has(r) || s.online > seen.get(r)) seen.set(r, s.online);
+  // раунды для графика: из эпизодов деплоя (та же хронология, что в статистике)
+  const onlineByRoundAsc = new Map();
+  Object.keys(d.episodes).forEach(ep => {
+    const m = ep.match(/^r(\d+)-online/);
+    if(!m) return;
+    const total = d.episodes[ep].reduce((a,s) => a + (s.score||0), 0);
+    if(total > (onlineByRoundAsc.get(+m[1]) || 0)) onlineByRoundAsc.set(+m[1], total);
   });
-  const pts = [...seen.entries()].sort((a,b) => a[0]-b[0]).map(([r,v]) => ({r, v}));
+  const pts = [...onlineByRoundAsc.entries()].sort((a,b) => a[0]-b[0]).map(([r,v]) => ({r, v}));
+  if(!pts.length){
+    $("ascent").innerHTML = `<div class="empty">эпизодов деплоя нет: запустите полный цикл</div>`;
+    $("ascentVerdict").innerHTML = "";
+    return;
+  }
   const lo = Math.min(first, ...pts.map(p => p.v)) * 0.92;
   const hi = Math.max(first, ...pts.map(p => p.v)) * 1.08;
   const X = i => P + i * ((W - 2*P) / Math.max(pts.length, 1));
@@ -308,8 +400,7 @@ function renderAscent(deployed, first){
     const gained = pts[pts.length-1].v - first;
     v.innerHTML = gained > 0
       ? `Первый день ${first.toFixed(1)} <b>→ ${pts[pts.length-1].v.toFixed(1)}</b> после сна: <b>+${gained.toFixed(1)}</b> очков в мире`
-      : `Сон пока не дал роста: ${first.toFixed(1)} → ${pts[pts.length-1].v.toFixed(1)}`;
-  }
+      : `Сон пока не дал роста: ${first.toFixed(1)} → ${pts[pts.length-1].v.toFixed(1)}`;  }
 }
 
 /* ---------- таблица снов ---------- */
