@@ -1,0 +1,6 @@
+{
+  "id": "t05-retry-backoff",
+  "title": "retry needs exponential backoff and last-error re-raise",
+  "kind": "feature",
+  "prompt": "retry() in retry.py must wait with exponential backoff (base_delay doubling after each failed attempt), must not sleep after the final failure, and must re-raise the last exception when all attempts fail. Exceptions listed in `fatal` must propagate immediately without sleeping. Make test_retry.py pass and run python -m pytest -q."
+}

@@ -1,0 +1,9 @@
+# Scratch repositories are throwaway copies of the task; the record is what matters.
+lab/runs/*/repo/
+lab/runs/*/events*.jsonl
+lab/runs/*/stderr*.log
+lab/logs/
+lab/tiny-task/.git/
+lab/tiny-task/__pycache__/
+lab/runs/*/__pycache__/
+__pycache__/

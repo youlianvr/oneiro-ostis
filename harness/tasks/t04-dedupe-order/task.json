@@ -1,0 +1,6 @@
+{
+  "id": "t04-dedupe-order",
+  "title": "unique() loses order and crashes on dicts",
+  "kind": "bugfix",
+  "prompt": "unique() in dedupe.py should return the items with duplicates removed, keeping the first occurrence order, and must work for items that cannot be hashed (like dicts). Make test_dedupe.py pass and run python -m pytest -q."
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "freeinference": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "freeinference",
+      "options": {
+        "baseURL": "https://freeinference.org/v1",
+        "apiKey": "{env:FREEINFERENCE_ORG_KEY}"
+      },
+      "models": {
+        "qwen3.6-35b": { "name": "qwen3.6-35b" }
+      }
+    }
+  },
+  "mcp": {
+    "unityMCP": { "type": "remote", "url": "http://127.0.0.1:8080/mcp", "enabled": false },
+    "kogiQA-mcp-browser": { "type": "local", "command": ["npx", "-y", "kogiqa-mcp"], "enabled": false }
+  }
+}

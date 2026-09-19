@@ -1,0 +1,6 @@
+{
+  "id": "t02-clamp-bounds",
+  "title": "clamp must validate its bounds",
+  "kind": "feature",
+  "prompt": "ranges.py has clamp(value, lo, hi). It must raise ValueError when lo > hi instead of silently returning a wrong value, and must keep the given type for integer bounds. Make test_ranges.py pass and run python -m pytest -q."
+}

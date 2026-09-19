@@ -1,0 +1,6 @@
+{
+  "id": "t06-csv-column-total",
+  "title": "column_total breaks on quoted fields",
+  "kind": "bugfix",
+  "prompt": "column_total(text, index) in totals.py sums one column of CSV text, but it splits on commas so quoted fields containing commas break it and shift the column index. Fix it so quoted fields are handled correctly, keeping the current signature and return type. Make test_totals.py pass and run python -m pytest -q."
+}

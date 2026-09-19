@@ -1,0 +1,6 @@
+{
+  "id": "t01-start-total",
+  "title": "Running total ignores the starting balance",
+  "kind": "bugfix",
+  "prompt": "The tests in test_calc.py fail. Fix calc.py so running_total includes the starting balance. Run python -m pytest -q to check."
+}

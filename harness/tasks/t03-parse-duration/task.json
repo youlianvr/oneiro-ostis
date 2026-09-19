@@ -1,0 +1,6 @@
+{
+  "id": "t03-parse-duration",
+  "title": "parse_duration drops the minute component",
+  "kind": "bugfix",
+  "prompt": "parse_duration in duration.py should convert strings like '1h30m' into seconds, but it ignores minutes. Fix it and make test_duration.py pass. Run python -m pytest -q."
+}
