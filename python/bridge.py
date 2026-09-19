@@ -174,13 +174,15 @@ class OneiroBridge:
         cached = self._addr_to_idtf.get(addr.value)
         if cached:
             return cached
+        # idtf link hangs off addr via a common arc attributed by nrel_system_identifier:
+        #   addr -> common_arc -> idtf_link ;  nrel_system_identifier -> pos_arc -> common_arc
         template = ScTemplate()
-        template.quintuple(
+        template.triple_with_relation(
             addr,
-            sc_type.VAR_PERM_POS_ARC,
+            sc_type.VAR_COMMON_ARC,
             sc_type.VAR_NODE_LINK,
-            sc_type.VAR_PERM_POS_ARC,
             self.keynode(NREL_SYSTEM_IDENTIFIER),
+            sc_type.VAR_PERM_POS_ARC,
         )
         found = search_by_template(template)
         if not found:

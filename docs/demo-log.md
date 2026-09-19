@@ -1,11 +1,11 @@
 # Oneiro-OSTIS — demo transcript
 
 Stack: sc-machine at `localhost:8090` (C++ agents), sc-web at `http://localhost:8000`.
-Subject: `demo_1789777526` · world: deterministic island expedition, seed `oneiro-0`.
+Subject: `demo_1789780697` · world: deterministic island expedition, seed `oneiro-0`.
 
 ## 0. Before
 
-- strategy nodes in the graph: 164
+- strategy nodes in the graph: 0
 - attempts recorded for this subject: 0
 
 ## 1. Day 1 — the agent acts (current strategy)
@@ -20,10 +20,10 @@ Subject: `demo_1789777526` · world: deterministic island expedition, seed `onei
 
 | # | action | object | outcome | score | strategy | episode |
 |---|---|---|---|---|---|---|
-| 0 | travel | beach | concept_success | -0.10000000149011612 | weak_wander | demo_1789777526-d1 |
-| 1 | dig | beach | concept_success | 0.0 | weak_wander | demo_1789777526-d1 |
-| 2 | deliver | beach | concept_success | 15.239999771118164 | weak_wander | demo_1789777526-d1 |
-| 3 | travel | cove | concept_success | -0.10000000149011612 | weak_wander | demo_1789777526-d1 |
+| 0 | travel | beach | concept_success | -0.10000000149011612 | weak_wander | demo_1789780697-d1 |
+| 1 | dig | beach | concept_success | 0.0 | weak_wander | demo_1789780697-d1 |
+| 2 | deliver | beach | concept_success | 15.239999771118164 | weak_wander | demo_1789780697-d1 |
+| 3 | travel | cove | concept_success | -0.10000000149011612 | weak_wander | demo_1789780697-d1 |
 | … | (36 more) | | | | | |
 
 Open `http://localhost:8000` to browse the same graph in sc-web.
@@ -35,7 +35,7 @@ Open `http://localhost:8000` to browse the same graph in sc-web.
 
 ## 4. The dream — proposals judged by exact replay
 
-- the judge replayed **21 candidates** over 3 recorded episodes (120 steps, 76 transitions) in 9.1s — zero world executions
+- the judge replayed **21 candidates** over 3 recorded episodes (120 steps, 76 transitions) in 8.6s — zero world executions
 - recordings consistent: 0 conflicts
 
 | candidate | replay score | per episode | episodes | coverage | uncovered steps | truncated episodes |
@@ -65,4 +65,4 @@ Open `http://localhost:8000` to browse the same graph in sc-web.
 
 **The dream improved the measured online score by +114.9 (+84%)** — judged only from recordings, proven in the world.
 
-Graph after the demo: 185 strategy nodes, 160 attempts for the subject, online scores attached to the deployed strategies.
+Graph after the demo: 21 strategy nodes, 160 attempts for the subject, online scores attached to the deployed strategies.
