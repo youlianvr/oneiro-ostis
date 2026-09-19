@@ -1,0 +1,379 @@
+"""Oneiro-OSTIS dashboard server: a control panel over the live stack.
+
+    python dashboard/server.py          # http://localhost:8130
+
+Read-only endpoints read the OSTIS graph through the bridge; action
+endpoints run the real pipeline (episode, exploration, dream, full cycle,
+KB reset) in a background worker, streaming stage progress to the UI.
+
+One job at a time; every bridge operation is serialized by a global lock
+(py-sc-client is not audited for cross-thread use).
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import queue
+import subprocess
+import sys
+import threading
+import time
+
+from flask import Flask, Response, jsonify, request, send_from_directory
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "python"))
+
+from bridge import OneiroBridge  # noqa: E402
+from replay.engine import ExperienceTree, island_signature  # noqa: E402
+
+HOST = os.environ.get("ONEIRO_HOST", "localhost")
+PORT = int(os.environ.get("ONEIRO_PORT", "8090"))
+DASH_PORT = int(os.environ.get("ONEIRO_DASH_PORT", "8130"))
+WORLD_SEED = os.environ.get("ONEIRO_SEED", "oneiro-0")
+
+app = Flask(__name__, static_folder=None)
+
+_lock = threading.Lock()          # serializes every bridge use
+_job_lock = threading.Lock()      # one pipeline job at a time
+_state_lock = threading.Lock()    # guards the snapshot cache
+_state_cache: dict = {}           # subject -> (built_at, snapshot)
+_job: dict = {"running": False, "name": None, "started": None}
+
+
+_bridge_conn: OneiroBridge | None = None
+
+
+def _bridge() -> OneiroBridge:
+    """One persistent bridge connection for the whole server.
+
+    Every use is serialized by _lock, so the single WebSocket is never shared
+    across threads. A dead connection is reconnected once, transparently.
+    """
+    global _bridge_conn
+    if _bridge_conn is None:
+        b = OneiroBridge(HOST, PORT)
+        b.connect()
+        _bridge_conn = b
+    return _bridge_conn
+
+
+def _domain_for(records) -> str:
+    kinds = {r.kind for r in records if r.kind}
+    return "workshop" if kinds and kinds <= {"workshop"} else "island"
+
+
+def _snapshot(subject: str | None) -> dict:
+    """Everything the dashboard renders, read from the graph in one call."""
+    with _lock:
+        b = _bridge()
+        strategies = b.load_strategies()
+        all_subjects = b.all_subjects()
+        records = b.retrieve_attempts(subject) if subject else []
+
+    episodes: dict[str, list] = {}
+    for rec in records:
+        if rec.episode:
+            episodes.setdefault(rec.episode, []).append(rec)
+
+    tree = ExperienceTree.from_records(records, signature_fn=island_signature) if records else None
+    consistency = tree.verify_consistency() if tree else {"episodes": 0, "steps": 0, "transitions": 0, "conflicts": []}
+
+    subject_list = all_subjects if not subject else ([subject] + [s for s in all_subjects if s != subject])
+    return {
+        "subject": subject,
+        "strategies": [
+            {
+                "name": s["name"],
+                "replay": None if s["replay_score"] is None else round(s["replay_score"], 1),
+                "online": None if s["online_score"] is None else round(s["online_score"], 2),
+                "round": int(s["dream_round"]) if s["dream_round"] is not None else None,
+                "derived_from": s["derived_from"],
+                "descriptor": s["descriptor"],
+            }
+            for s in strategies
+        ],
+        "episodes": {
+            ep: [
+                {
+                    "i": r.step_index,
+                    "action": r.action,
+                    "object": r.object,
+                    "outcome": (r.outcome or "").replace("concept_", ""),
+                    "score": None if r.score is None else round(r.score, 2),
+                    "strategy": r.strategy,
+                    "note": r.note,
+                }
+                for r in steps
+            ]
+            for ep, steps in episodes.items()
+        },
+        "consistency": {
+            "episodes": consistency["episodes"],
+            "steps": consistency["steps"],
+            "transitions": consistency["transitions"],
+            "conflicts": len(consistency["conflicts"]),
+        },
+        "subjects": subject_list,
+        "job": {"running": _job["running"], "name": _job["name"]},
+    }
+
+
+@app.get("/")
+def index():
+    return send_from_directory(os.path.dirname(os.path.abspath(__file__)), "index.html")
+
+
+@app.get("/api/state")
+def state():
+    args = request.args
+    subject = args.get("subject") or None
+    # The bridge round-trip for a full snapshot takes seconds; dashboard polling
+    # must stay instant, so snapshots are cached briefly per subject.
+    key = subject or ""
+    with _state_lock:
+        cached = _state_cache.get(key)
+        if cached and time.time() - cached[0] < 5.0:
+            return jsonify(cached[1])
+    data = _snapshot(subject)
+    with _state_lock:
+        _state_cache[key] = (time.time(), data)  # stamp AFTER the slow build
+    return jsonify(data)
+
+
+def _invalidate_cache():
+    with _state_lock:
+        _state_cache.clear()
+
+
+@app.get("/api/subjects")
+def subjects():
+    with _lock:
+        b = _bridge()
+        subs = b.all_subjects()
+    return jsonify({"subjects": subs})
+
+
+def _run_job(name: str, fn, subject: str | None):
+    """Run a pipeline action in the background, streaming stage events."""
+    if not _job_lock.acquire(blocking=False):
+        return jsonify({"error": "another job is already running"}), 409
+
+    _job.update(running=True, name=name, started=time.time(), subject=subject)
+
+    def work():
+        try:
+            fn()
+        except Exception as e:  # surface any pipeline failure in the UI
+            _log_event(f"ERROR: {e}")
+        finally:
+            _invalidate_cache()  # the graph just changed; refresh honestly
+            _job.update(running=False, name=None, subject=None)
+            _job_lock.release()
+
+    threading.Thread(target=work, daemon=True).start()
+    return jsonify({"started": name})
+
+
+@app.post("/api/act/day")
+def act_day():
+    return _start("day")
+
+
+@app.post("/api/act/explore")
+def act_explore():
+    return _start("explore")
+
+
+@app.post("/api/act/dream")
+def act_dream():
+    return _start("dream")
+
+
+@app.post("/api/act/cycle")
+def act_cycle():
+    return _start("cycle")
+
+
+@app.post("/api/act/reset")
+def act_reset():
+    return _start("reset")
+
+
+@app.post("/api/stop")
+def act_stop():
+    """Ask the running job to stop after the current stage finishes."""
+    _stop_requested = _job.get("running")
+    if _stop_requested:
+        _job["stop"] = True
+    return jsonify({"stop_requested": bool(_stop_requested)})
+
+
+# ---------- job implementations ----------
+
+_event_q: queue.Queue = queue.Queue()
+_stop_event = threading.Event()
+
+
+def _log_event(line: str):
+    _event_q.put({"t": time.strftime("%H:%M:%S"), "line": line})
+
+
+def _stop_requested() -> bool:
+    return bool(_job.get("stop")) or _stop_event.is_set()
+
+
+def _start(kind: str):
+    # dream reads existing recordings, so it targets the subject the UI shows;
+    # day/explore/cycle create a fresh subject and record into it.
+    if kind == "dream":
+        subject = request.json.get("subject") if request.json else None
+        subject = subject or _find_any_subject()
+    else:
+        subject = f"dash_{int(time.time())}" if kind != "reset" else None
+    actions = {
+        "day": (_do_day, subject, "Online day"),
+        "explore": (_do_explore, subject, "Exploration day"),
+        "dream": (_do_dream, subject, "Dream"),
+        "cycle": (_do_cycle, subject, "Full cycle"),
+        "reset": (_do_reset, None, "KB reset"),
+    }
+    if kind not in actions:
+        return jsonify({"error": "unknown action"}), 400
+    fn, subj, label = actions[kind]
+    _stop_event.clear()
+    _event_q.queue.clear()
+    _log_event(f"job queued: {label}")
+    return _run_job(label, fn, subj)
+
+
+def _check_stop():
+    if _stop_requested():
+        raise RuntimeError("stopped by user")
+
+
+def _do_day():
+    from episode import episode_id_for, run_episode
+    from strategy import strategy_weak_incumbent
+
+    subject = _job["subject"]
+    with _lock:
+        b = _bridge()
+        _log_event(f"online day for {subject}: strategy weak_wander")
+        _check_stop()
+        result = run_episode(b, subject, strategy_weak_incumbent(), episode_id=episode_id_for("day", "weak_wander"))
+        b.mark_strategy_online_score("weak_wander", result.total_score)
+    _log_event(f"day done: score {result.total_score:.1f}, {result.recorded} attempts recorded")
+
+
+def _do_explore():
+    from episode import episode_id_for, run_episode
+    from strategy import strategy_survey, strategy_survey_reverse
+
+    subject = _job["subject"]
+    with _lock:
+        b = _bridge()
+        for strat in (strategy_survey(), strategy_survey_reverse()):
+            _check_stop()
+            _log_event(f"exploration: {strat.name}")
+            result = run_episode(b, subject, strat, episode_id=episode_id_for("explore", strat.name))
+            _log_event(f"{strat.name} done: score {result.total_score:.1f}")
+
+
+def _do_dream():
+    from dream import dream
+    from strategy import strategy_weak_incumbent
+
+    from adapter_llm import OfflineStrategyGenerator
+
+    subject = _job["subject"] or _find_any_subject()
+    if not subject:
+        raise RuntimeError("no recorded subject to dream over; run a day first")
+    _log_event(f"dream over recordings of {subject}")
+    with _lock:
+        b = _bridge()
+        _check_stop()
+        t0 = time.perf_counter()
+        result = dream(
+            b,
+            subject,
+            round_index=1,
+            incumbent=strategy_weak_incumbent(),
+            generator=OfflineStrategyGenerator(limit=24),
+            limit=24,
+        )
+        elapsed = time.perf_counter() - t0
+    ranked = sorted(result.results, key=lambda p: p[1].estimated_score, reverse=True)
+    _log_event(f"judge replayed {len(result.results)} candidates in {elapsed:.1f}s, zero world executions")
+    for cand, rr in ranked[:3]:
+        _log_event(f"  {cand.name}: replay {rr.estimated_score:.1f} (coverage {rr.coverage:.2f})")
+    _log_event(f"winner: {result.winner.name} -> deployed for the next day")
+    _log_event(f"conflicts: {len(result.consistency['conflicts'])}")
+
+
+def _do_cycle():
+    from loop import run_loop
+
+    subject = _job["subject"]
+    _log_event(f"full cycle: day -> explore -> dream -> deploy for {subject}")
+    with _lock:
+        b = _bridge()
+        report = run_loop(b, subject=subject, rounds=2, max_steps=40, limit=24,
+                          generator=None, exploration=True)
+    for r in report.rounds:
+        _log_event(f"round {r.round_index}: online {r.online.total_score:.1f}, "
+                   f"deployed next {r.deployed_next.name}")
+
+
+def _bash_exe() -> str:
+    r'''Git Bash explicitly: a bare 'bash' resolves to WSL on Windows, which
+    cannot see C:\ paths.'''
+    if os.name != "nt":
+        return "bash"
+    for candidate in (r"C:\Program Files\Git\bin\bash.exe",
+                      r"C:\Program Files\Git\usr\bin\bash.exe"):
+        if os.path.exists(candidate):
+            return candidate
+    raise RuntimeError("Git Bash not found; install Git for Windows")
+
+
+def _do_reset():
+    _log_event("resetting the runtime KB (docker volume rebuild)")
+    script = os.path.join(ROOT, "scripts", "reset_stack.sh")
+    proc = subprocess.run(
+        [_bash_exe(), script, "--yes"],
+        capture_output=True, text=True, timeout=900,
+        cwd=ROOT,
+    )
+    for line in (proc.stdout or "").strip().splitlines()[-8:]:
+        _log_event(line)
+    if proc.returncode != 0:
+        raise RuntimeError(f"reset failed: {(proc.stderr or '').strip()[-300:]}")
+    _log_event("stack healthy, KB rebuilt from sources")
+
+
+def _find_any_subject() -> str | None:
+    with _lock:
+        b = _bridge()
+        subs = b.all_subjects()
+    return subs[0] if subs else None
+
+
+@app.get("/api/events")
+def events():
+    """Server-Sent Events stream of job progress lines."""
+    def gen():
+        while True:
+            try:
+                evt = _event_q.get(timeout=15)
+                yield f"data: {json.dumps(evt)}\n\n"
+            except queue.Empty:
+                yield ": keepalive\n\n"
+
+    return Response(gen(), mimetype="text/event-stream")
+
+
+if __name__ == "__main__":
+    print(f"dashboard on http://localhost:{DASH_PORT} (stack at {HOST}:{PORT})")
+    app.run(host="127.0.0.1", port=DASH_PORT, threaded=True)

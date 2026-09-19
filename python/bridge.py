@@ -190,7 +190,9 @@ class OneiroBridge:
         link_addr = found[0].get(2)
         contents = get_link_content(link_addr)
         if contents and contents[0].data is not None:
-            return str(contents[0].data)
+            idtf = str(contents[0].data)
+            self._addr_to_idtf[addr.value] = idtf  # cache: the same value node
+            return idtf                           # is asked once per session
         return None
 
     # ---------- public API ----------
@@ -279,6 +281,30 @@ class OneiroBridge:
         if result_struct is None:
             return []
         return self._decode_attempts_ordered(result_struct)
+
+    def all_subjects(self) -> list[str]:
+        """Every subject that has at least one attempt recorded in the KB.
+
+        Walks all concept_attempt members and reads their nrel_subject.
+        """
+        template = ScTemplate()
+        template.triple(
+            self.keynode("concept_attempt"),
+            sc_type.VAR_PERM_POS_ARC,
+            sc_type.VAR_NODE,
+        )
+        found = search_by_template(template)
+        subjects: list[str] = []
+        seen: set[int] = set()
+        for item in found:
+            attempt_addr = item.get(2)
+            if attempt_addr.value in seen:
+                continue
+            seen.add(attempt_addr.value)
+            subject = self._relation_value_idtf(attempt_addr, NREL_SUBJECT)
+            if subject and subject not in subjects:
+                subjects.append(subject)
+        return sorted(subjects)
 
     def retrieve_scores(self, subject: str) -> list[Optional[float]]:
         """Scores aligned with retrieve_attempts order."""
@@ -564,6 +590,8 @@ class OneiroBridge:
             if rec is not None:
                 rec.addr = attempt_addr
                 records[attempt_addr.value] = rec
+                # prev_attempt comes with the batched decode; only fall back to
+                # the dedicated quintuple when the relation set is incomplete.
                 prev_addr = self._prev_attempt_addr(attempt_addr)
                 if prev_addr is not None:
                     prev_map[attempt_addr.value] = prev_addr.value
@@ -603,40 +631,105 @@ class OneiroBridge:
             return None
         return found[0].get(2)
 
+    # relation-name constants decoded by the batch decoder
+    _DECODED_RELATIONS = (
+        NREL_SUBJECT, NREL_ACTION, NREL_OBJECT, NREL_OUTCOME, NREL_SOURCE,
+        NREL_KIND, NREL_SCORE, NREL_TIMESTAMP, NREL_EPISODE, NREL_STEP_INDEX,
+        NREL_STATE, NREL_LEGAL, NREL_STRATEGY, NREL_NOTE, NREL_PREV_ATTEMPT,
+    )
+
+    def _relations_of(self, attempt_addr: ScAddr) -> dict[str, ScAddr]:
+        """All (relation-name -> value) of one attempt in ONE template search.
+
+        Ten-plus per-relation searches take ~150 ms per attempt server-side;
+        a single triple_with_relation over every common arc attributed by any
+        relation node returns the same data in ~5 ms. Relation nodes are
+        matched against the cached keynodes by address.
+        """
+        rel_names = self._rel_addr_to_name()
+        template = ScTemplate()
+        template.triple_with_relation(
+            attempt_addr,
+            sc_type.VAR_COMMON_ARC,
+            sc_type.VAR,
+            sc_type.VAR_PERM_POS_ARC,
+            sc_type.VAR_NODE,
+        )
+        found: dict[str, ScAddr] = {}
+        for result in search_by_template(template):
+            rel = result.get(3)
+            name = rel_names.get(rel.value)
+            if name and name not in found:
+                found[name] = result.get(2)
+        return found
+
+    def _rel_addr_to_name(self) -> dict[int, str]:
+        if not hasattr(self, "_rel_map"):
+            self._rel_map = {}
+            for name in self._DECODED_RELATIONS:
+                try:
+                    self._rel_map[self.keynode(name).value] = name
+                except Exception:
+                    pass
+        return self._rel_map
+
     def _decode_single_attempt(self, attempt_addr: ScAddr) -> Optional[AttemptRecord]:
-        subject = self._relation_value_idtf(attempt_addr, NREL_SUBJECT)
+        rel = self._relations_of(attempt_addr)
+
+        def idtf(name: str) -> Optional[str]:
+            addr = rel.get(name)
+            return self.idtf_of(addr) if addr is not None else None
+
+        def _read(name: str):
+            addr = rel.get(name)
+            if addr is None:
+                return None
+            try:
+                contents = get_link_content(addr)
+            except Exception:
+                return None  # not a link: node values go through idtf() instead
+            if contents and contents[0].data is not None:
+                return contents[0].data
+            return None
+
+        def number(name: str) -> Optional[float]:
+            raw = _read(name)
+            if raw is None:
+                return None
+            try:
+                return float(raw)
+            except (TypeError, ValueError):
+                return None
+
+        def text(name: str) -> Optional[str]:
+            raw = _read(name)
+            return None if raw is None else str(raw)
+
+        subject = idtf(NREL_SUBJECT)
         if subject is None:
             return None
-        action = self._relation_value_idtf(attempt_addr, NREL_ACTION)
-        object_ = self._relation_value_idtf(attempt_addr, NREL_OBJECT)
-        outcome = self._relation_value_idtf(attempt_addr, NREL_OUTCOME)
-        source = self._relation_value_idtf(attempt_addr, NREL_SOURCE)
-        kind = self._relation_value_idtf(attempt_addr, NREL_KIND)
-        score = self._relation_value_number(attempt_addr, NREL_SCORE)
-        timestamp = self._relation_value_number(attempt_addr, NREL_TIMESTAMP)
-
-        episode = self._relation_value_idtf(attempt_addr, NREL_EPISODE)
+        episode = idtf(NREL_EPISODE)
         if episode and episode.startswith(EPISODE_PREFIX):
             episode = episode[len(EPISODE_PREFIX):]
-        strategy = self._relation_value_idtf(attempt_addr, NREL_STRATEGY)
+        strategy = idtf(NREL_STRATEGY)
         if strategy and strategy.startswith(STRATEGY_PREFIX):
             strategy = strategy[len(STRATEGY_PREFIX):]
-        step_index_raw = self._relation_value_number(attempt_addr, NREL_STEP_INDEX)
+        step_index_raw = number(NREL_STEP_INDEX)
         return AttemptRecord(
             subject=subject,
-            action=action or "",
-            object=object_ or "",
-            outcome=outcome or "",
-            source=source,
-            kind=kind,
-            score=score,
-            timestamp=timestamp,
+            action=idtf(NREL_ACTION) or "",
+            object=idtf(NREL_OBJECT) or "",
+            outcome=idtf(NREL_OUTCOME) or "",
+            source=idtf(NREL_SOURCE),
+            kind=idtf(NREL_KIND),
+            score=number(NREL_SCORE),
+            timestamp=number(NREL_TIMESTAMP),
             episode=episode,
             step_index=int(step_index_raw) if step_index_raw is not None else None,
-            state=self._relation_value_text(attempt_addr, NREL_STATE),
-            legal=self._relation_value_text(attempt_addr, NREL_LEGAL),
+            state=text(NREL_STATE),
+            legal=text(NREL_LEGAL),
             strategy=strategy,
-            note=self._relation_value_text(attempt_addr, NREL_NOTE),
+            note=text(NREL_NOTE),
         )
 
     def _relation_value_idtf(self, source_addr: ScAddr, relation_idtf: str) -> Optional[str]:

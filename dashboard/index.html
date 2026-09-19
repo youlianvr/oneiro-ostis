@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oneiro-OSTIS control panel</title>
+<style>
+/* ============ design tokens ============
+   Palette (R-29): ink navy + growth green + amber accent.
+   Reason: the story of the system is "an agent grows by sleeping"; green
+   marks measured growth, amber marks the dream phase that produces it.
+   Light theme: jury rooms and projectors are bright; the dark "tech" look
+   would be a default, not a decision. */
+:root{
+  --ink:#182234; --ink2:#3d4a63; --dim:#5d6b85;
+  --bg:#f4f6fa; --card:#ffffff; --line:#dde3ee;
+  --green:#0e8a5f; --green-bg:#e4f5ee;
+  --amber:#b06a00; --amber-bg:#fdf1dc;
+  --blue:#2456b8; --blue-bg:#e8eefb;
+  --red:#b3261e;
+  --mono:"Cascadia Mono","Consolas",monospace;
+  --sans:"Segoe UI",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.45}
+
+header{padding:20px 28px 12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+h1{font-size:1.3rem;margin:0;font-weight:700}
+h1 .hl{color:var(--blue)}
+.conn{display:inline-flex;align-items:center;gap:6px;font-size:.78rem;color:var(--dim)}
+.conn .dot{width:9px;height:9px;border-radius:50%;background:var(--green)}
+.conn .dot.off{background:var(--red)}
+.spacer{flex:1}
+.subj{display:flex;align-items:center;gap:8px;font-size:.85rem}
+select{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink)}
+
+/* ============ pipeline banner: the identity motif ============ */
+.pipeline{display:flex;align-items:stretch;gap:0;margin:8px 28px 14px;border:1px solid var(--line);
+  border-radius:10px;overflow:hidden;background:var(--card)}
+.stage{flex:1;padding:10px 14px;border-right:1px solid var(--line);position:relative;transition:background .4s}
+.stage:last-child{border-right:none}
+.stage .n{font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--dim)}
+.stage .t{font-weight:600;font-size:.92rem}
+.stage .info{font-size:.74rem;color:var(--dim);min-height:1.1em}
+.stage.active{background:var(--amber-bg)}
+.stage.active .n{color:var(--amber)}
+.stage.active::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--amber);
+  animation:pulse 1.2s ease-in-out infinite}
+.stage.done{background:var(--green-bg)}
+.stage.done .n{color:var(--green)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+/* reason: the pulsing underline and the amber fill mark the one stage running
+   right now, so the eye follows the real execution instead of decoration. */
+
+/* ============ control deck ============ */
+.deck{display:flex;gap:10px;margin:0 28px 16px;flex-wrap:wrap;align-items:center}
+button{font:inherit;font-weight:600;padding:9px 18px;border-radius:8px;border:1px solid var(--line);
+  background:var(--card);color:var(--ink);cursor:pointer;transition:transform .08s, box-shadow .15s}
+button:hover:not(:disabled){box-shadow:0 2px 8px rgba(24,34,52,.12)}
+button:active:not(:disabled){transform:translateY(1px)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.btn-primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn-dream{background:var(--amber);border-color:var(--amber);color:#fff}
+.btn-danger{background:var(--card);border-color:var(--red);color:var(--red)}
+.job{font-size:.82rem;color:var(--dim)}
+.job b{color:var(--amber)}
+
+.grid{display:grid;grid-template-columns:1.4fr 1fr;gap:14px;margin:0 28px 16px}
+@media(max-width:1000px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.card h2{margin:0;padding:10px 16px;font-size:.85rem;font-weight:600;border-bottom:1px solid var(--line);color:var(--ink2)}
+.card .body{padding:12px 16px}
+
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:0 28px 16px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+.stat .v{font-size:1.35rem;font-weight:700;font-variant-numeric:tabular-nums}
+.stat .v.grow{color:var(--green)}
+.stat .l{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--dim)}
+
+/* ascent chart */
+svg text{font-family:var(--sans)}
+.axis{stroke:var(--line)}
+.axislabel{fill:var(--dim);font-size:10px}
+
+/* strategy table */
+table{border-collapse:collapse;width:100%;font-size:.82rem}
+th{text-align:left;color:var(--dim);font-weight:600;font-size:.68rem;text-transform:uppercase;
+   letter-spacing:.05em;padding:6px 8px;border-bottom:1px solid var(--line)}
+td{padding:6px 8px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+tr.winrow{background:var(--green-bg)}
+tr:hover:not(.winrow){background:var(--blue-bg)}
+.bar-wrap{display:flex;align-items:center;gap:8px}
+.bar{height:10px;border-radius:3px;background:var(--blue);min-width:2px;transition:width .8s cubic-bezier(.2,.7,.3,1)}
+.bar.green{background:var(--green)}
+/* reason: bars grow animated so the eye compares verdicts by length, and the
+   transition marks the change when a new dream writes new verdicts. */
+.tag{display:inline-block;padding:1px 8px;border-radius:9px;font-size:.68rem;font-weight:600}
+.tag.win{background:var(--green-bg);color:var(--green)}
+.tag.dep{background:var(--blue-bg);color:var(--blue)}
+
+/* episode explorer */
+.ep-tabs{display:flex;gap:6px;flex-wrap:wrap;padding:10px 16px 0}
+.ep-tab{font-size:.76rem;padding:4px 10px;border-radius:7px;border:1px solid var(--line);
+  background:var(--bg);color:var(--dim);cursor:pointer}
+.ep-tab.active{background:var(--blue-bg);border-color:var(--blue);color:var(--blue);font-weight:600}
+.steps{max-height:300px;overflow:auto;padding:10px 16px}
+.step{display:flex;gap:10px;padding:4px 6px;border-radius:6px;font-size:.8rem;font-variant-numeric:tabular-nums}
+.step:nth-child(odd){background:var(--bg)}
+.step .idx{color:var(--dim);width:26px;text-align:right}
+.step .act{font-family:var(--mono);font-size:.74rem;width:150px}
+.step .sc{width:60px;text-align:right;font-weight:600}
+.step .sc.pos{color:var(--green)}
+.step .sc.neg{color:var(--red)}
+.step .note{color:var(--dim);flex:1}
+.outcome-success{color:var(--green)}
+.outcome-failure,.outcome-illegal{color:var(--red)}
+
+/* event log */
+.log{font-family:var(--mono);font-size:.74rem;max-height:260px;overflow:auto;padding:10px 16px}
+.log .t{color:var(--dim);margin-right:8px}
+.log .err{color:var(--red);font-weight:600}
+.log .line{padding:2px 0;animation:logIn .25s ease-out}
+@keyframes logIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
+
+.empty{color:var(--dim);font-size:.85rem;padding:14px 0;text-align:center}
+footer{padding:10px 28px 26px;color:var(--dim);font-size:.72rem}
+code{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0 5px;font-size:.85em}
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="hl">Oneiro-OSTIS</span> control panel</h1>
+  <span class="conn"><span class="dot" id="connDot"></span><span id="connTxt">connecting</span></span>
+  <span class="spacer"></span>
+  <span class="subj">
+    <label for="subjectSel">subject</label>
+    <select id="subjectSel"><option value="">loading…</option></select>
+  </span>
+</header>
+
+<!-- the pipeline the jury will watch run for real -->
+<div class="pipeline" id="pipeline">
+  <div class="stage" data-stage="day"><div class="n">stage 1</div><div class="t">Online day</div><div class="info" id="i-day"></div></div>
+  <div class="stage" data-stage="explore"><div class="n">stage 2</div><div class="t">Exploration</div><div class="info" id="i-explore"></div></div>
+  <div class="stage" data-stage="dream"><div class="n">stage 3</div><div class="t">Dream (exact replay)</div><div class="info" id="i-dream"></div></div>
+  <div class="stage" data-stage="deploy"><div class="n">stage 4</div><div class="t">Deploy + measure</div><div class="info" id="i-deploy"></div></div>
+</div>
+
+<div class="deck">
+  <button class="btn-primary" id="btnDay">Run online day</button>
+  <button id="btnExplore">Run exploration</button>
+  <button class="btn-dream" id="btnDream">Run dream</button>
+  <button class="btn-primary" id="btnCycle">Full cycle (day + explore + dream)</button>
+  <button class="btn-danger" id="btnReset">Reset KB</button>
+  <button id="btnStop" disabled>Stop</button>
+  <span class="job" id="jobTxt">idle</span>
+</div>
+
+<div class="stats" id="stats"></div>
+
+<div class="grid">
+  <div class="card">
+    <h2>Score ascent: measured online after each dream</h2>
+    <div class="body" id="ascent"></div>
+  </div>
+  <div class="card">
+    <h2>Dream history: every strategy the judge has scored</h2>
+    <div class="body" style="max-height:320px;overflow:auto" id="dreamTable"></div>
+  </div>
+  <div class="card">
+    <h2>Recorded experience: what the judge replays</h2>
+    <div class="ep-tabs" id="epTabs"></div>
+    <div class="steps" id="epBody"></div>
+  </div>
+  <div class="card">
+    <h2>Live log from the pipeline</h2>
+    <div class="log" id="log"><div class="empty">no job run yet: press a button above, every action is real</div></div>
+  </div>
+</div>
+
+<footer>
+  Every button executes the real pipeline against the live OSTIS stack (sc-machine, C++ agents):
+  episodes are recorded into the knowledge graph, the dream replays recordings exactly (no world
+  execution), the winner is deployed and measured online. Data source: <code>/api/state</code>,
+  read back from the graph.
+</footer>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+let SUBJECT = "";
+let POLL = null;
+
+/* ---------- helpers ---------- */
+async function api(path, opts){ const r = await fetch(path, opts); return r.json(); }
+
+function setConn(ok, txt){
+  $("connDot").className = "dot" + (ok ? "" : " off");
+  $("connTxt").textContent = txt;
+}
+
+function setStage(name, state, info){
+  const el = document.querySelector(`.stage[data-stage="${name}"]`);
+  if(!el) return;
+  el.classList.remove("active","done");
+  if(state) el.classList.add(state);
+  if(info !== undefined) $("i-" + name).textContent = info;
+}
+
+function resetStages(){
+  ["day","explore","dream","deploy"].forEach(s => setStage(s, null, ""));
+}
+
+/* ---------- state ---------- */
+async function refresh(){
+  try{
+    const d = await api("/api/state" + (SUBJECT ? "?subject=" + encodeURIComponent(SUBJECT) : ""));
+    setConn(true, "connected to sc-machine");
+    render(d);
+  }catch(e){
+    setConn(false, "cannot reach the stack");
+  }
+}
+
+function render(d){
+  // job status comes from the server, so a finished job clears the UI
+  setUI(d.job.running, d.job.name || "");
+
+  // subject selector
+  const sel = $("subjectSel");
+  if(sel.dataset.loaded !== d.subjects.join(",")){
+    sel.dataset.loaded = d.subjects.join(",");
+    sel.innerHTML = d.subjects.length
+      ? d.subjects.map(s => `<option value="${s}">${s}</option>`).join("")
+      : "<option value=\"\">no subjects yet</option>";
+    if(d.subject && d.subjects.includes(d.subject)) sel.value = d.subject;
+  }
+
+  // stats
+  const deployed = d.strategies.filter(s => s.online != null);
+  const first = deployed.length ? Math.min(...deployed.map(s => s.online)) : 0;
+  const last = deployed.length ? Math.max(...deployed.map(s => s.online)) : 0;
+  const gain = first ? "+" + Math.round(100 * (last - first) / first) + "%" : "0%";
+  const c = d.consistency;
+  $("stats").innerHTML = [
+    ["strategies in graph", d.strategies.length, ""],
+    ["episodes recorded", c.episodes, ""],
+    ["steps recorded", c.steps, ""],
+    ["replay transitions", c.transitions, ""],
+    ["recording conflicts", c.conflicts, c.conflicts === 0 ? "grow" : ""],
+    ["day 1 online", first ? first.toFixed(1) : "0", ""],
+    ["best online", last ? last.toFixed(1) : "0", "grow"],
+    ["ascent", deployed.length ? gain : "0%", "grow"],
+  ].map(([l,v,cls]) =>
+    `<div class="stat"><div class="v ${cls}">${v}</div><div class="l">${l}</div></div>`).join("");
+
+  renderAscent(deployed, first);
+  renderTable(d.strategies);
+  renderEpisodes(d.episodes);
+}
+
+/* ---------- ascent chart (SVG, animated) ---------- */
+function renderAscent(deployed, first){
+  if(!deployed.length){
+    $("ascent").innerHTML = `<div class="empty">no online day has run for this subject yet: press "Run online day"</div>`;
+    return;
+  }
+  const W = 620, H = 220, P = 42;
+  const seen = new Map(); // round -> best online so far
+  deployed.forEach(s => {
+    const r = s.round || 1;
+    if(!seen.has(r) || s.online > seen.get(r)) seen.set(r, s.online);
+  });
+  const pts = [...seen.entries()].sort((a,b) => a[0]-b[0]).map(([r,v]) => ({r, v}));
+  const lo = Math.min(first, ...pts.map(p => p.v)) * 0.92;
+  const hi = Math.max(first, ...pts.map(p => p.v)) * 1.08;
+  const X = i => P + i * ((W - 2*P) / Math.max(pts.length, 1));
+  const Y = v => H - P - (v - lo) / (hi - lo) * (H - 2*P);
+
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="online score by round">`;
+  for(let g = 0; g <= 4; g++){
+    const y = P + g * (H - 2*P) / 4, v = hi - g * (hi - lo) / 4;
+    s += `<line class="axis" x1="${P}" y1="${y}" x2="${W-P}" y2="${y}"/>`;
+    s += `<text class="axislabel" x="${W-P+6}" y="${y+4}">${Math.round(v)}</text>`;
+  }
+  // incumbent baseline
+  s += `<line x1="${P}" y1="${Y(first)}" x2="${W-P}" y2="${Y(first)}" stroke="#5d6b85" stroke-dasharray="4 4" opacity=".5"/>`;
+  s += `<text class="axislabel" x="${P}" y="${Y(first)-6}">day 1: ${first.toFixed(1)}</text>`;
+  // growth line
+  let path = `M ${X(0)} ${Y(first)}`;
+  pts.forEach((p,i) => path += ` L ${X(i)} ${Y(p.v)}`);
+  if(pts.length) path += ` L ${W-P} ${Y(pts[pts.length-1].v)}`;
+  s += `<path d="${path}" fill="none" stroke="var(--green)" stroke-width="2.6" stroke-linejoin="round"/>`;
+  pts.forEach((p,i) => {
+    s += `<circle cx="${X(i)}" cy="${Y(p.v)}" r="5" fill="var(--green)"><title>round ${p.r}: ${p.v}</title></circle>`;
+    s += `<text x="${X(i)}" y="${Y(p.v)-10}" text-anchor="middle" font-size="11" font-weight="600" fill="var(--green)">${p.v.toFixed(1)}</text>`;
+    s += `<text class="axislabel" x="${X(i)}" y="${H-12}" text-anchor="middle">round ${p.r}</text>`;
+  });
+  s += `</svg>`;
+  $("ascent").innerHTML = s;
+}
+
+/* ---------- dream table ---------- */
+function renderTable(strategies){
+  const maxR = Math.max(...strategies.map(s => s.replay || 0), 1);
+  const rows = [...strategies].sort((a,b) => (b.replay||0) - (a.replay||0));
+  if(!rows.length){
+    $("dreamTable").innerHTML = `<div class="empty">graph has no strategies yet: run a dream</div>`;
+    return;
+  }
+  const bestOnline = Math.max(...strategies.map(s => s.online ?? -Infinity));
+  $("dreamTable").innerHTML = `<table>
+    <tr><th>strategy</th><th>replay verdict</th><th>online</th><th>dream</th></tr>` +
+    rows.map(st => {
+      const isWin = st.online != null && st.online >= bestOnline - 0.01;
+      const barW = Math.max(3, Math.round(140 * (st.replay || 0) / maxR));
+      return `<tr class="${isWin ? "winrow" : ""}">
+        <td>${st.name || "(unnamed)"}
+          ${st.online != null ? `<span class="tag dep">deployed</span>` : ""}
+          ${isWin ? `<span class="tag win">winner</span>` : ""}</td>
+        <td><span class="bar-wrap"><span class="bar" style="width:0" data-w="${barW}"></span>${st.replay ?? "—"}</span></td>
+        <td>${st.online != null ? st.online.toFixed(2) : "—"}</td>
+        <td>${st.round ?? "—"}</td></tr>`;
+    }).join("") + `</table>`;
+  // animate bars in on the next frame (reason: length comparison reads better animated once)
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    document.querySelectorAll(".bar[data-w]").forEach(b => b.style.width = b.dataset.w + "px");
+  }));
+}
+
+/* ---------- episode explorer ---------- */
+let currentEp = null;
+function renderEpisodes(eps){
+  const names = Object.keys(eps);
+  if(!names.length){
+    $("epTabs").innerHTML = "";
+    $("epBody").innerHTML = `<div class="empty">no episodes recorded for this subject yet</div>`;
+    currentEp = null;
+    return;
+  }
+  if(!currentEp || !names.includes(currentEp)) currentEp = names[names.length-1];
+  $("epTabs").innerHTML = names.map(n =>
+    `<button class="ep-tab ${n === currentEp ? "active" : ""}" data-ep="${n}">${n}</button>`).join("");
+  document.querySelectorAll(".ep-tab").forEach(t =>
+    t.addEventListener("click", () => { currentEp = t.dataset.ep; renderEpisodes(eps); }));
+  const steps = eps[currentEp];
+  const total = steps.reduce((a,s) => a + (s.score||0), 0);
+  $("epBody").innerHTML = steps.map(st =>
+    `<div class="step"><span class="idx">${st.i}</span>
+     <span class="act">${st.action}:${st.object}</span>
+     <span class="outcome-${st.outcome}">${st.outcome}</span>
+     <span class="sc ${st.score >= 0 ? "pos" : "neg"}">${st.score != null ? st.score.toFixed(2) : ""}</span>
+     <span class="note">${st.note || ""}</span></div>`).join("") +
+    `<div class="step" style="border-top:1px solid var(--line);margin-top:6px;padding-top:8px">
+     <span class="idx"></span><span class="act"><b>total</b></span>
+     <span></span><span class="sc pos"><b>${total.toFixed(1)}</b></span>
+     <span class="note">${steps.length} steps recorded</span></div>`;
+}
+
+/* ---------- job control ---------- */
+function setUI(running, name){
+  ["btnDay","btnExplore","btnDream","btnCycle","btnReset"].forEach(id => $(id).disabled = running);
+  $("btnStop").disabled = !running;
+  $("jobTxt").innerHTML = running ? `running: <b>${name}</b>` : "idle";
+}
+
+async function act(kind){
+  try{
+    const body = SUBJECT ? {subject: SUBJECT} : {};
+    const r = await fetch("/api/act/" + kind, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body)
+    });
+    const j = await r.json();
+    if(j.error){ alert("cannot start: " + j.error); return; }
+    setUI(true, j.started);
+  }catch(e){ alert("server unreachable: " + e); }
+}
+
+$("btnDay").addEventListener("click", () => act("day"));
+$("btnExplore").addEventListener("click", () => act("explore"));
+$("btnDream").addEventListener("click", () => act("dream"));
+$("btnCycle").addEventListener("click", () => act("cycle"));
+$("btnReset").addEventListener("click", () => {
+  if(confirm("Reset the runtime KB? All recorded episodes and strategies are dropped (rebuilt from ontology sources).")) act("reset");
+});
+$("btnStop").addEventListener("click", () => api("/api/stop", {method: "POST"}));
+$("subjectSel").addEventListener("change", e => {
+  SUBJECT = e.target.value;
+  currentEp = null;
+  refresh();
+});
+
+/* ---------- SSE log ---------- */
+const es = new EventSource("/api/events");
+es.onmessage = e => {
+  const {t, line} = JSON.parse(e.data);
+  const log = $("log");
+  if(log.querySelector(".empty")) log.innerHTML = "";
+  const div = document.createElement("div");
+  div.className = "line" + (line.startsWith("ERROR") ? " err" : "");
+  div.innerHTML = `<span class="t">${t}</span>${line}`;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+  // map log lines to pipeline stages so the banner follows the real execution
+  const l = line.toLowerCase();
+  if(l.includes("online day") && l.includes("for")) { resetStages(); setStage("day","active"); }
+  if(l.includes("exploration:")) { setStage("day","done","recorded"); setStage("explore","active"); }
+  if(l.includes("dream over")) { setStage("explore","done","2 walks"); setStage("dream","active"); }
+  if(l.includes("judge replayed")) $("i-dream").textContent = line.slice(0,60);
+  if(l.includes("winner:")) { setStage("dream","done"); setStage("deploy","active"); }
+  if(l.includes("day done:")) { setStage("day","done",$("i-day").textContent || "measured"); setStage("deploy","done","measured online"); resetStagesAfter(); }
+  if(l.includes("full cycle")) { resetStages(); }
+  if(l.includes("resetting")) resetStages();
+};
+let resetTimer = null;
+function resetStagesAfter(){
+  clearTimeout(resetTimer);
+  resetTimer = setTimeout(() => { resetStages(); refresh(); }, 2500);
+}
+
+/* ---------- boot ---------- */
+(async () => {
+  const d = await api("/api/state");
+  SUBJECT = d.subjects[0] || "";
+  if(SUBJECT) $("subjectSel").value = SUBJECT;
+  render(d);
+  setConn(true, "connected to sc-machine");
+})();
+POLL = setInterval(refresh, 4000);
+</script>
+</body>
+</html>
