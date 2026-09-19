@@ -17,7 +17,10 @@ the next online round.
 
 The claim under test is behavioural, not philosophical: *an agent that
 replays its own recordings can measurably improve its next day without
-touching the environment during the dream.*
+touching the environment during the dream.* It is tested on **two
+structurally different deterministic worlds** (an island expedition and a
+crafting economy) and over **eight independent runs**; every run improved
+(§6.3).
 
 ## 2. The world (the judge's ground truth)
 
@@ -159,7 +162,23 @@ tie), and the replay judge was exact here (per-episode estimate equals the
 measured online score) whereas on the island it over-estimates (see the
 calibration section).
 
-### 6.3 One-command demo — `python demo/run_demo.py` → `docs/demo-log.md`
+### 6.3 Multi-seed series — `docs/series.md`
+
+Eight independent runs (5 island seeds, 3 workshop seeds, 3 rounds each,
+online scores measured):
+
+| domain | seeds improved | delta mean / median / min / max | ratio mean | judge bias (replay − measured) | conflicts |
+|---|---|---|---|---|---|
+| island | **5/5** | +77.8 / +88.0 / +14.7 / +114.9 | 1.58x | +56.9 (≈29.7% rel.) | 0 |
+| workshop | **3/3** | +49.3 / +42.8 / +42.6 / +62.6 | 6.97x | +11.3 (≈22.9% rel.) | 0 |
+
+Every seed improved after a single dream; the judge's replay estimate is
+*positively biased* (it can follow recorded transitions that score better
+than the episode they started from), yet its ranking survived the bias in all
+eight runs — each deployed winner beat its incumbent. The honest lower bound
+of the method on these worlds is the island seed `oneiro-1`: +14.7 (1.12x).
+
+### 6.4 One-command demo — `python demo/run_demo.py` → `docs/demo-log.md`
 
 - day 1 (`weak_wander`, 8 digs, 8 deliveries): **137.5**
 - dream: 21 candidates replayed over 3 episodes / 120 steps / 76
@@ -184,9 +203,12 @@ calibration section).
   *exact* replay judge possible. Scaling to stochastic environments would
   require the judge to handle conflicting recordings (the tree's consistency
   check reports them; currently: 0 conflicts).
+- The judge's replay estimate is biased upwards (~20–30% relative here) even
+  though its *ranking* was correct in all eight series runs; the estimate must
+  not be quoted as a performance prediction (see `docs/series.md`).
 - "Improvement" means the measured online score with the same world seed and
-  budget; it is a controlled, single-world comparison, not a statistical
-  claim across worlds.
+  budget: the series covers eight world instances over two domains — a
+  controlled comparison, not a claim about arbitrary task families.
 
 ## 8. Related work and novelty (bounded search)
 
