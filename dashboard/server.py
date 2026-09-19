@@ -39,6 +39,7 @@ _lock = threading.Lock()          # serializes every bridge use
 _job_lock = threading.Lock()      # one pipeline job at a time
 _state_lock = threading.Lock()    # guards the snapshot cache
 _state_cache: dict = {}           # subject -> (built_at, snapshot)
+_harness_cache: dict = {}         # the harness report, rebuilt rarely
 _building: dict = {}              # subject -> True while a snapshot builds
 
 
@@ -120,6 +121,34 @@ _job: dict = {"running": False, "name": None, "started": None}
 _bridge_conn: OneiroBridge | None = None
 
 
+def _harness_state() -> dict:
+    """The RSI harness' own report, asked for rather than reimplemented.
+
+    `harness/rsi.py --state` runs in a subprocess on purpose. The harness has
+    modules named like the world simulator's packages (`replay`, `agent`), and
+    importing them here would silently change what those names mean for the
+    rest of this process. One source of truth, one process boundary; the result
+    is cached so a dashboard poll stays cheap.
+    """
+    with _state_lock:
+        cached = _harness_cache.get("data")
+        if cached and time.time() - cached[0] < 120.0:
+            return cached[1]
+    payload: dict
+    try:
+        result = subprocess.run(
+            [sys.executable, os.path.join(ROOT, "harness", "rsi.py"), "--state"],
+            cwd=ROOT, capture_output=True, text=True, timeout=180,
+        )
+        payload = (json.loads(result.stdout) if result.returncode == 0
+                   else {"error": (result.stderr or "").strip()[-300:]})
+    except (subprocess.SubprocessError, json.JSONDecodeError, OSError) as exc:
+        payload = {"error": str(exc)[:300]}
+    with _state_lock:
+        _harness_cache["data"] = (time.time(), payload)
+    return payload
+
+
 def _bridge() -> OneiroBridge:
     """One persistent bridge connection for the whole server.
 
@@ -192,7 +221,8 @@ def _snapshot(subject: str | None) -> dict:
         },
         "subjects": subject_list,
         "job": {"running": _job["running"], "name": _job["name"]},
-        "benchmarks": {"memory": _parse_results_md(), "series": _parse_series_md()},
+        "benchmarks": {"memory": _parse_results_md(), "series": _parse_series_md(),
+                       "harness": _harness_state()},
     }
 
 

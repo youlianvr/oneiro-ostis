@@ -182,6 +182,11 @@ footer code{background:var(--card);border:1px solid var(--line);border-radius:4p
     <h2>Что здесь доказывается</h2>
     <div class="body" id="claimsBody"><div class="empty">загрузка результатов измерений…</div></div>
   </div>
+  <div class="card">
+    <h2>Харнесс агента: что ищет цикл и что он доказал</h2>
+    <div class="sub">цикл предлагает политики харнесса, судья решает по записям прогонов, онлайн измеряется только то, что прошло ворота</div>
+    <div class="body" id="harnessBody"><div class="empty">загрузка отчёта цикла…</div></div>
+  </div>
 </div>
 
 <div class="grid">
@@ -292,6 +297,95 @@ function render(d){
   renderTable(d.strategies);
   renderEpisodes(d.episodes);
   if(d.benchmarks) renderClaims(d.benchmarks);
+  if(d.benchmarks) renderHarness(d.benchmarks.harness);
+}
+
+/* Тексты исходов раунда пишет цикл (harness/rsi.py). Известные формулировки
+   переводим, незнакомую строку показываем как есть: лучше английская правда,
+   чем придуманный русский пересказ. */
+function ruOutcome(s){
+  if(!s) return "";
+  const rules = [
+    [/^no candidate passed the efficiency gate; nothing deployed$/, "ни один кандидат не прошёл ворота по эффективности: ничего не выкачено"],
+    [/^no model answered or none returned a valid candidate$/, "ни одна модель не ответила или не выдала годного кандидата"],
+    [/^deployed and within capability tolerance/, "выкачено, потеря задач в пределах допуска"],
+    [/^deployed but lost (\d+) tasks \(tolerance (\d+)\)/, "выкачено, но потеряно задач: $1 (допуск $2)"],
+    [/^online path: measured and refused\. The predicted saving of ([+-]?[\d.]+%) came with ([+-]?[\d.]+%) prompt tokens and (\d+) of (\d+) tasks lost \(tolerance (\d+)\); held-out tasks were never touched/, "онлайн-путь: измерено и отклонено. Прогноз экономии $1 обернулся $2 токенов промпта, потеряно задач $3 из $4 (допуск $5), held-out задачи не трогались"],
+    [/^online path: measurement incomplete\. The provider refused (\d+) of (\d+) runs, so capability was not settled and nothing was deployed/, "онлайн-путь: измерение неполное, провайдер отказал в $1 из $2 прогонов: способность не установлена, ничего не выкачено"],
+    [/; the saving did not transfer to the held-out tasks/, "; экономия не перенеслась на held-out задачи"],
+    [/; deployed on its online measurement, not on a judged estimate/, "; выкачено по онлайн-измерению, а не по прогнозу судьи"],
+    [/; round incomplete: the provider refused (\d+) online runs \(recorded as unmeasured, not as failures\)/, "; раунд неполный: провайдер отказал в $1 онлайн-прогонах (они записаны как неизмеренные, а не как провалы)"],
+  ];
+  let out = s;
+  rules.forEach(([re, ru]) => { out = out.replace(re, ru); });
+  return out;
+}
+
+/* ---------- харнесс агента: дерево поиска и его счёт ---------- */
+function renderHarness(h){
+  const el = $("harnessBody");
+  if(!h || !h.rounds){
+    el.innerHTML = `<div class="empty">${h && h.error ? "цикл не отчитался: " + h.error : "цикл ещё не запускался"}</div>`;
+    return;
+  }
+  const cr = h.criteria || {}, eff = cr.efficiency || {}, cap = cr.capability || {};
+  const path = (cr.evidence && cr.evidence.unjudgeable_path) || {};
+  const led = h.ledger || {}, rep = h.replayability || {};
+  const recheck = h.recheck || [];
+  const pct = v => v == null ? "нет" : (100 * v).toFixed(0) + "%";
+  const factor = led.online_runs_spent ? (led.online_sweep_counterfactual / led.online_runs_spent).toFixed(1) : "0";
+  const refused = recheck.filter(r => r.passed_then && !r.passed_now).length;
+  const deployedRefused = recheck.filter(r => r.passed_then && !r.passed_now && r.deployed_then).length;
+
+  const roundsHtml = h.rounds.map(r => {
+    const rows = (r.verdicts || []).map(v => {
+      const tag = v.path === "replay" ? `<span class="tag win">судья</span>`
+        : v.path === "online" ? `<span class="tag dep">онлайн-AB</span>`
+        : v.path === "gate-v1" ? `<span class="tag dep">ворота v1</span>`
+        : `<span class="tag">отказ</span>`;
+      const dep = r.deployed === v.policy ? `<span class="tag dep">выкачено</span>` : "";
+      return `<tr><td class="mono">${v.policy} ${tag}${dep}</td>
+        <td><span class="bar-wrap"><span class="bar green" style="width:0" data-hw="${Math.max(3, Math.round(120 * Math.abs(v.predicted_saving)))}"></span>${pct(v.predicted_saving)}</span></td>
+        <td><span class="bar-wrap"><span class="bar" style="width:0" data-hw="${Math.max(3, Math.round(120 * (v.decision_replayable || 0)))}"></span>${pct(v.decision_replayable)}</span></td></tr>`;
+    }).join("");
+    const held = r.online_held_out;
+    const online = r.online_search;
+    const measured = held && online
+      ? `<div class="cn">измерено онлайн: поиск ${online.solved}/${online.tasks} задач, ${online.prompt_tokens} токенов промпта · held-out ${held.solved}/${held.tasks} задач, ${held.prompt_tokens} токенов</div>`
+      : "";
+    const v1note = r.criteria_version === 1
+      ? `<div class="cn">правила v1: решение принималось по прогнозу, требования воспроизводимости ещё не было</div>` : "";
+    return `<div class="claim">
+      <div class="ct">Раунд ${r.round}: кандидатов ${r.candidates}, ${r.deployed ? "выкачено «" + r.deployed + "»" : "ничего не выкачено"}</div>
+      ${v1note}
+      ${measured}
+      <table><tr><th>кандидат</th><th>прогноз экономии</th><th>воспроизводимость решения</th></tr>${rows}</table>
+      ${r.outcome ? `<div class="cn" style="margin-top:6px">${ruOutcome(r.outcome)}</div>` : ""}</div>`;
+  }).join("");
+
+  el.innerHTML = `<div class="claims">
+    <div class="claim">
+      <div class="ct">Экономия онлайн-прогонов</div>
+      <div><span class="big">${led.online_runs_spent} прогонов</span> против ${led.online_sweep_counterfactual} при переборе (${factor}x)</div>
+      <div class="cn">${led.refused_from_recordings_alone} из ${led.candidates_proposed} кандидатов отклонены по записям прогонов, без единого онлайн-запуска</div>
+    </div>
+    <div class="claim">
+      <div class="ct">Правила приёмки, версия ${cr.version}</div>
+      <div class="cn">порог прогнозируемой экономии ${pct(eff.min_predicted_saving)} · порог воспроизводимости решения ${pct(cap.min_decision_replayable)} · онлайн-потеря задач не больше ${cap.max_tasks_lost} · онлайн-путь для непроигрываемых кандидатов: ${path.enabled ? "включён" : "выключен"}</div>
+      <div class="cn">базовый уровень: поиск ${h.incumbent.search.solved}/${h.incumbent.search.tasks} задач, ${h.incumbent.search.prompt_tokens} токенов промпта · held-out ${h.incumbent.held_out.solved}/${h.incumbent.held_out.tasks} задач, ${h.incumbent.held_out.prompt_tokens} токенов</div>
+    </div>
+    <div class="claim">
+      <div class="ct">Судья: точность на собственных записях</div>
+      <div><span class="big">${rep.rebuilt_exactly}/${rep.episodes}</span> эпизодов восстановлены посимвольно (${rep.steps} шагов)</div>
+      <div class="cn">модель токенов проверена на чужой задаче: средняя ошибка ${(100 * (rep.token_model_mean_error || 0)).toFixed(1)}%, худшая ${(100 * (rep.token_model_max_error || 0)).toFixed(1)}%</div>
+    </div>
+    ${roundsHtml}
+  </div>
+  <div class="claims-note">Числа прочитаны из harness/lab/rsi: цикл отчитывается сам, дашборд ничего не добавляет. Правила приёмки пересчитаны по замороженным критериям: ${refused} из ${recheck.length} вердиктов, записанных по прежним правилам, были бы отклонены сейчас, выкачки среди них: ${deployedRefused}.</div>`;
+
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    el.querySelectorAll(".bar[data-hw]").forEach(b => b.style.width = b.dataset.hw + "px");
+  }));
 }
 
 /* ---------- панель доказательств ---------- */

@@ -65,6 +65,37 @@ def test_the_threshold_is_the_frozen_one():
     assert not below["passed_evidence"]
 
 
+def test_an_unjudgeable_candidate_takes_the_online_path_instead_of_a_silent_ban():
+    """Abstaining is a verdict, not a ban: the candidate gets measured online."""
+    estimates = {"u": [estimate("u", predicted=60.0, recorded=100.0, covered=0, total=10)]}
+    verdict = rsi.gate([get_policy("baseline")], estimates, rsi.CRITERIA_V3)[0]
+
+    assert not verdict["passed_evidence"]
+    assert verdict["path"] == "online"
+    assert rsi.CRITERIA_V3["evidence"]["unjudgeable_path"]["enabled"]
+
+
+def test_without_the_online_path_the_same_candidate_is_refused():
+    estimates = {"u": [estimate("u", predicted=60.0, recorded=100.0, covered=0, total=10)]}
+    verdict = rsi.gate([get_policy("baseline")], estimates, rsi.CRITERIA_V2)[0]
+
+    assert verdict["path"] == "refused"
+    assert "evidence" not in rsi.CRITERIA_V2
+
+
+def test_the_proposer_is_told_what_the_judge_could_not_judge():
+    """The loop must not walk back into the family it cannot judge, unwarned."""
+    history = [
+        {"policy": "no_initial_tests", "decision_replayable": 0.0, "predicted_saving": 0.225},
+        {"policy": "window6_obs1500", "decision_replayable": 0.885, "predicted_saving": 0.036},
+        {"policy": "incumbent (baseline)"},
+    ]
+    briefing = rsi.judge_briefing(history, rsi.CRITERIA_V3)
+
+    assert briefing["past_unjudgeable"] == ["no_initial_tests"]
+    assert briefing["replay_floor"] == 0.5
+
+
 def test_version_1_criteria_are_kept_for_the_rounds_written_under_them():
     """A later revision must not relabel an earlier result."""
     version_1 = rsi.criteria_for(1)
@@ -72,6 +103,8 @@ def test_version_1_criteria_are_kept_for_the_rounds_written_under_them():
     assert version_1["version"] == 1
     assert version_1["efficiency"]["min_predicted_saving"] == 0.15
     assert "min_decision_replayable" not in version_1["capability"]
+    assert "evidence" not in rsi.criteria_for(2)
+    assert rsi.criteria_for(3)["evidence"]["unjudgeable_path"]["max_online_runs"] == 4
     assert rsi.criteria_for(99) == {}
 
 
@@ -81,8 +114,13 @@ def test_recheck_refuses_what_the_recorded_rounds_deployed():
     if not rows:
         pytest.skip("no rounds recorded yet")
 
+    floor = rsi.load_criteria()["capability"]["min_decision_replayable"]
     refused = [r for r in rows if r["passed_then"] and not r["passed_now"]]
-    assert all(r["decision_replayable"] < 0.5 for r in refused)
-    assert all(r["deployed_then"] for r in refused), (
-        "the only verdicts the revision flips are ones the loop acted on"
+    acted_on = [r for r in rows if r["deployed_then"] and r["decision_replayable"] < floor]
+
+    assert refused, "the revision exists because something passed the old gate"
+    assert all(r["decision_replayable"] < floor for r in refused)
+    assert acted_on, "the deployments that exposed the hole are part of that history"
+    assert all(r in refused for r in acted_on), (
+        "nothing the loop acted on without replayed evidence escapes the revision"
     )

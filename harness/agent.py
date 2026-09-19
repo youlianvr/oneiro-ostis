@@ -125,6 +125,15 @@ TOOLS = [
 # ---------- provider ----------
 
 
+def _retry_after(exc: urllib.error.HTTPError) -> float:
+    """The wait the provider asks for, in seconds, or 0 when it asks for none."""
+    try:
+        value = exc.headers.get("Retry-After") if exc.headers else None
+        return min(120.0, float(value)) if value else 0.0
+    except (TypeError, ValueError, AttributeError):
+        return 0.0
+
+
 class Provider:
     """Minimal OpenAI-compatible chat client with tool calling."""
 
@@ -161,7 +170,14 @@ class Provider:
                 choice = body["choices"][0]
                 message = choice["message"]
             except urllib.error.HTTPError as exc:
-                if exc.code >= 500 or exc.code == 429:
+                if exc.code == 429:
+                    # the provider's own wait, when it sends one: a rate limit
+                    # outlives a one-second ladder, and a round that dies here
+                    # would waste the runs it already paid for
+                    last_error = exc
+                    time.sleep(_retry_after(exc) or min(60.0, 5 * 2 ** attempt))
+                    continue
+                if exc.code >= 500:
                     last_error = exc
                     time.sleep(2 ** attempt)
                     continue

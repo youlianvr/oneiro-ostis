@@ -66,6 +66,7 @@ def round_record(payload: dict, criteria: dict) -> dict:
             "capability": frozen.get("capability"),
         },
         "proposed": [p.get("name") for p in payload.get("proposed") or []],
+        "evidence": payload.get("evidence"),
         "verdicts": [
             {
                 "policy": v["policy"],
@@ -73,9 +74,11 @@ def round_record(payload: dict, criteria: dict) -> dict:
                 "decision_replayable": v["decision_replayable"],
                 "passed_efficiency": v["passed_efficiency"],
                 "passed_gate": v.get("passed_gate", v["passed_efficiency"]),
+                "path": v.get("path", "replay" if v.get("passed_gate") else "refused"),
             }
             for v in payload.get("verdicts") or []
         ],
+        "online_ab": (payload.get("online_ab") or {}).get("comparison"),
         "deployed": deployed.get("policy", {}).get("name") if deployed else None,
         "online_search": deployed.get("online_search"),
         "online_held_out": deployed.get("online_held_out"),
@@ -152,15 +155,16 @@ def show(bridge: OneiroBridge) -> None:
         online = (f"{held['solved_after']}/{held['tasks']} · {held['token_delta']:+.1%} tok"
                   if held else "-")
         passed = gate.get("passed_gate", gate.get("passed_efficiency"))
+        route = gate.get("path", "replay" if passed else "refused") if gate else "-"
         print(f"| {policy['name']} | {int(round_index) if round_index is not None else '-'} | "
               f"{f'{saving:+.1%}' if saving is not None else '-'} | "
-              f"{'pass' if passed else 'reject' if gate else '-'} | "
+              f"{'pass' if passed else 'reject' if gate else '-'} via {route} | "
               f"{online} |")
     for row in rounds:
         record = row.get("record") or {}
         replay = record.get("replayability") or {}
         print(f"round {row['round']}: proposed {record.get('proposed')} · "
-              f"deployed {record.get('deployed')} · "
+              f"deployed {record.get('deployed')} · evidence {record.get('evidence') or '-'} · "
               f"rebuilt exactly {replay.get('episodes_rebuilt_exactly')}/{replay.get('episodes')} · "
               f"{record.get('outcome')}")
 
