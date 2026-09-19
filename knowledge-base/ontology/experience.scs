@@ -110,6 +110,90 @@ nrel_score
     [numeric score of attempt*]
     (* <- lang_en;; *);;
 
+/* ---------- trajectory relations: what the dream cycle replays ---------- */
+
+nrel_episode <- sc_node_non_role_relation;;
+nrel_episode
+=> nrel_main_idtf:
+    [episode of attempt*]
+    (* <- lang_en;; *);;
+
+nrel_step_index <- sc_node_non_role_relation;;
+nrel_step_index
+=> nrel_main_idtf:
+    [step index of attempt*]
+    (* <- lang_en;; *);;
+
+nrel_state <- sc_node_non_role_relation;;
+nrel_state
+=> nrel_main_idtf:
+    [world state before attempt*]
+    (* <- lang_en;; *);;
+
+nrel_legal <- sc_node_non_role_relation;;
+nrel_legal
+=> nrel_main_idtf:
+    [legal actions before attempt*]
+    (* <- lang_en;; *);;
+
+nrel_strategy <- sc_node_non_role_relation;;
+nrel_strategy
+=> nrel_main_idtf:
+    [strategy that produced attempt*]
+    (* <- lang_en;; *);;
+
+nrel_note <- sc_node_non_role_relation;;
+nrel_note
+=> nrel_main_idtf:
+    [note of attempt*]
+    (* <- lang_en;; *);;
+
+/* ---------- strategy and dream-cycle relations ---------- */
+
+nrel_strategy_descriptor <- sc_node_non_role_relation;;
+nrel_strategy_descriptor
+=> nrel_main_idtf:
+    [descriptor of strategy*]
+    (* <- lang_en;; *);;
+
+nrel_strategy_replay_score <- sc_node_non_role_relation;;
+nrel_strategy_replay_score
+=> nrel_main_idtf:
+    [replay-estimated score of strategy*]
+    (* <- lang_en;; *);;
+
+nrel_strategy_online_score <- sc_node_non_role_relation;;
+nrel_strategy_online_score
+=> nrel_main_idtf:
+    [online measured score of strategy*]
+    (* <- lang_en;; *);;
+
+nrel_derived_from <- sc_node_non_role_relation;;
+nrel_derived_from
+=> nrel_main_idtf:
+    [strategy derived from*]
+    (* <- lang_en;; *);;
+
+nrel_dream_round <- sc_node_non_role_relation;;
+nrel_dream_round
+=> nrel_main_idtf:
+    [dream round of strategy*]
+    (* <- lang_en;; *);;
+
+/* ---------- strategy class ---------- */
+
+concept_strategy <- sc_node_class;;
+concept_strategy
+=> nrel_main_idtf:
+    [strategy]
+    (* <- lang_en;; *);;
+
+concept_dream_cycle <- sc_node_class;;
+concept_dream_cycle
+=> nrel_main_idtf:
+    [dream cycle]
+    (* <- lang_en;; *);;
+
 /* ---------- provenance constants ---------- */
 
 source_direct <- concept;;

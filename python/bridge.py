@@ -7,8 +7,13 @@ back through the C++ agents of the oneiro-module.
 The C++ RecordAttemptAgent creates the attempt node with the four core
 relations (subject, action, object, outcome) and the chronological
 nrel_prev_attempt chain. This bridge enriches each recorded attempt with
-extra relations the scientific layer needs (source, kind, score, timestamp)
-and reads attempts back in chronological order.
+extra relations the scientific layer needs (source, kind, score, timestamp,
+and the trajectory fields the dream cycle replays: episode, step index,
+world state before the attempt, legal actions before the attempt, producing
+strategy, note) and reads attempts back in chronological order.
+
+The bridge also stores strategies (descriptor JSON + replay/online scores)
+as first-class graph entities of class concept_strategy.
 
 Usage:
     from bridge import OneiroBridge
@@ -16,11 +21,13 @@ Usage:
     bridge.connect()
     record = bridge.record_attempt("agent1", "walk", "room3", "concept_success")
     attempts = bridge.retrieve_attempts("agent1")       # chronological order
-    scores   = bridge.retrieve_scores("agent1")         # aligned with attempts
+    bridge.save_strategy("greedy_cove", descriptor, replay_score=42.0)
+    strategies = bridge.load_strategies()
 """
 
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass
 from typing import Optional
@@ -62,6 +69,25 @@ NREL_KIND = "nrel_kind"
 NREL_SCORE = "nrel_score"
 NREL_TIMESTAMP = "nrel_timestamp"
 
+# trajectory / dream-cycle relations (see knowledge-base/ontology/experience.scs)
+NREL_EPISODE = "nrel_episode"
+NREL_STEP_INDEX = "nrel_step_index"
+NREL_STATE = "nrel_state"
+NREL_LEGAL = "nrel_legal"
+NREL_STRATEGY = "nrel_strategy"
+NREL_NOTE = "nrel_note"
+NREL_STRATEGY_DESCRIPTOR = "nrel_strategy_descriptor"
+NREL_STRATEGY_REPLAY_SCORE = "nrel_strategy_replay_score"
+NREL_STRATEGY_ONLINE_SCORE = "nrel_strategy_online_score"
+NREL_DERIVED_FROM = "nrel_derived_from"
+NREL_DREAM_ROUND = "nrel_dream_round"
+
+CONCEPT_STRATEGY = "concept_strategy"
+CONCEPT_EXPERIENCE_EVENT = "concept_experience_event"
+
+EPISODE_PREFIX = "episode_"
+STRATEGY_PREFIX = "strategy_"
+
 RRELS = ["rrel_1", "rrel_2", "rrel_3", "rrel_4", "rrel_5"]
 
 POLL_INTERVAL = 0.05
@@ -80,6 +106,14 @@ class AttemptRecord:
     kind: Optional[str] = None
     score: Optional[float] = None
     timestamp: Optional[int] = None
+    # trajectory fields (dream cycle): what the world looked like before the
+    # attempt, which actions were legal, which strategy produced it.
+    episode: Optional[str] = None
+    step_index: Optional[int] = None
+    state: Optional[str] = None    # JSON snapshot {location, carrying, dug, score, steps}
+    legal: Optional[str] = None    # "|" separated action strings
+    strategy: Optional[str] = None # strategy name (without prefix)
+    note: Optional[str] = None
     addr: Optional[ScAddr] = None
 
     def core(self) -> tuple:
@@ -106,6 +140,7 @@ class OneiroBridge:
         self.host = host
         self.port = port
         self._addr_to_idtf: dict[int, str] = {}
+        self._episodes_classified: set[str] = set()
 
     # ---------- connection ----------
 
@@ -170,9 +205,16 @@ class OneiroBridge:
         score: Optional[float] = None,
         timestamp: Optional[int] = None,
         no_temporal: bool = False,
+        episode: Optional[str] = None,
+        step_index: Optional[int] = None,
+        state: Optional[dict] = None,
+        legal: Optional[list[str]] = None,
+        strategy: Optional[str] = None,
+        note: Optional[str] = None,
     ) -> AttemptRecord:
         """Initiate action_record_attempt; then enrich the attempt node with
-        source/kind/score/timestamp relations (provenance and metrics support).
+        source/kind/score/timestamp relations (provenance and metrics support)
+        and — when given — the trajectory fields the dream cycle replays.
 
         no_temporal=True passes concept_no_temporal as rrel_5: the C++ agent
         skips nrel_prev_attempt chaining (chronology ablation).
@@ -206,6 +248,12 @@ class OneiroBridge:
             kind=kind,
             score=score,
             timestamp=timestamp,
+            episode=episode,
+            step_index=step_index,
+            state=json.dumps(state, sort_keys=True) if state is not None else None,
+            legal="|".join(legal) if legal is not None else None,
+            strategy=strategy,
+            note=note,
             addr=attempt_addr,
         )
         if attempt_addr is not None:
@@ -234,10 +282,109 @@ class OneiroBridge:
         """Scores aligned with retrieve_attempts order."""
         return [r.score for r in self.retrieve_attempts(subject)]
 
+    # ---------- strategy store ----------
+
+    def save_strategy(
+        self,
+        name: str,
+        descriptor: dict,
+        *,
+        replay_score: Optional[float] = None,
+        online_score: Optional[float] = None,
+        derived_from: Optional[str] = None,
+        dream_round: Optional[int] = None,
+    ) -> str:
+        """Store a strategy as a graph entity of class concept_strategy.
+
+        descriptor → string link (JSON); scores → numeric links; derived_from
+        → node of the parent strategy; dream_round → numeric link.
+        """
+        node = self.resolve_entity(STRATEGY_PREFIX + name)
+        constr = ScConstruction()
+
+        # class membership: concept_strategy -> strategy node
+        constr.generate_connector(sc_type.CONST_PERM_POS_ARC, self.keynode(CONCEPT_STRATEGY), node, "class_arc")
+
+        # descriptor JSON as a string link
+        constr.generate_link(
+            sc_type.CONST_NODE_LINK,
+            ScLinkContent(json.dumps(descriptor, sort_keys=True), ScLinkContentType.STRING),
+            "descriptor_link",
+        )
+        constr.generate_connector(sc_type.CONST_COMMON_ARC, node, "descriptor_link", "descriptor_arc")
+        constr.generate_connector(
+            sc_type.CONST_PERM_POS_ARC, self.keynode(NREL_STRATEGY_DESCRIPTOR), "descriptor_arc"
+        )
+
+        if replay_score is not None:
+            self._add_numeric_relation(constr, node, NREL_STRATEGY_REPLAY_SCORE, float(replay_score))
+        if online_score is not None:
+            self._add_numeric_relation(constr, node, NREL_STRATEGY_ONLINE_SCORE, float(online_score))
+        if dream_round is not None:
+            self._add_numeric_relation(constr, node, NREL_DREAM_ROUND, int(dream_round))
+        if derived_from is not None:
+            parent = self.resolve_entity(STRATEGY_PREFIX + derived_from)
+            arc_alias = "derived_arc"
+            constr.generate_connector(sc_type.CONST_COMMON_ARC, node, parent, arc_alias)
+            constr.generate_connector(sc_type.CONST_PERM_POS_ARC, self.keynode(NREL_DERIVED_FROM), arc_alias)
+
+        generate_elements(constr)
+        return name
+
+    def mark_strategy_online_score(self, name: str, online_score: float) -> None:
+        """Attach the online measured score to an existing strategy node."""
+        node = self.resolve_entity(STRATEGY_PREFIX + name)
+        constr = ScConstruction()
+        self._add_numeric_relation(constr, node, NREL_STRATEGY_ONLINE_SCORE, float(online_score))
+        generate_elements(constr)
+
+    def load_strategies(self) -> list[dict]:
+        """All strategy nodes of class concept_strategy with their stored fields."""
+        template = ScTemplate()
+        template.triple(self.keynode(CONCEPT_STRATEGY), sc_type.VAR_PERM_POS_ARC, sc_type.VAR_NODE)
+        found = search_by_template(template)
+
+        strategies: list[dict] = []
+        for item in found:
+            node = item.get(2)
+            idtf = self.idtf_of(node) or ""
+            name = idtf[len(STRATEGY_PREFIX):] if idtf.startswith(STRATEGY_PREFIX) else idtf
+            descriptor_text = self._relation_value_text(node, NREL_STRATEGY_DESCRIPTOR)
+            descriptor = None
+            if descriptor_text:
+                try:
+                    descriptor = json.loads(descriptor_text)
+                except ValueError:
+                    descriptor = None
+            derived = self._relation_value_idtf(node, NREL_DERIVED_FROM)
+            if derived and derived.startswith(STRATEGY_PREFIX):
+                derived = derived[len(STRATEGY_PREFIX):]
+            strategies.append(
+                {
+                    "name": name,
+                    "descriptor": descriptor,
+                    "replay_score": self._relation_value_number(node, NREL_STRATEGY_REPLAY_SCORE),
+                    "online_score": self._relation_value_number(node, NREL_STRATEGY_ONLINE_SCORE),
+                    "dream_round": self._relation_value_number(node, NREL_DREAM_ROUND),
+                    "derived_from": derived,
+                }
+            )
+        return strategies
+
+    def _add_numeric_relation(self, constr: ScConstruction, node: ScAddr, relation_idtf: str, value) -> None:
+        """Numeric relation (link inside the same construction)."""
+        link_alias = f"num_link_{relation_idtf}_{int(value * 1000) if isinstance(value, float) else value}"
+        content_type = ScLinkContentType.INT if isinstance(value, int) else ScLinkContentType.FLOAT
+        constr.generate_link(sc_type.CONST_NODE_LINK, ScLinkContent(value, content_type), link_alias)
+        arc_alias = f"num_arc_{link_alias}"
+        constr.generate_connector(sc_type.CONST_COMMON_ARC, node, link_alias, arc_alias)
+        constr.generate_connector(sc_type.CONST_PERM_POS_ARC, self.keynode(relation_idtf), arc_alias)
+
     # ---------- enrichment ----------
 
     def _enrich(self, attempt_addr: ScAddr, record: AttemptRecord) -> None:
-        """Attach source/kind/score/timestamp relations to the attempt node."""
+        """Attach source/kind/score/timestamp and trajectory relations to the
+        attempt node. All graph writes go through one construction."""
         constr = ScConstruction()
 
         if record.source is not None:
@@ -251,8 +398,49 @@ class OneiroBridge:
             link_addr = self._numeric_link(int(record.timestamp))
             self._add_relation(constr, attempt_addr, NREL_TIMESTAMP, link_addr)
 
+        if record.episode is not None:
+            episode_node = self.resolve_entity(EPISODE_PREFIX + record.episode)
+            self._add_relation(constr, attempt_addr, NREL_EPISODE, episode_node)
+            self._classify_episode_once(episode_node)
+        if record.step_index is not None:
+            link_addr = self._numeric_link(int(record.step_index))
+            self._add_relation(constr, attempt_addr, NREL_STEP_INDEX, link_addr)
+        if record.state is not None:
+            self._add_text_relation(constr, attempt_addr, NREL_STATE, record.state)
+        if record.legal is not None:
+            self._add_text_relation(constr, attempt_addr, NREL_LEGAL, record.legal)
+        if record.strategy is not None:
+            strategy_node = self.resolve_entity(STRATEGY_PREFIX + record.strategy)
+            self._add_relation(constr, attempt_addr, NREL_STRATEGY, strategy_node)
+        if record.note is not None:
+            self._add_text_relation(constr, attempt_addr, NREL_NOTE, record.note)
+
         if len(constr.commands):
             generate_elements(constr)
+
+    def _classify_episode_once(self, episode_node: ScAddr) -> None:
+        """Give an episode node its class arc exactly once per bridge session."""
+        key = str(episode_node.value)
+        if key in self._episodes_classified:
+            return
+        self._episodes_classified.add(key)
+        constr = ScConstruction()
+        constr.generate_connector(
+            sc_type.CONST_PERM_POS_ARC, self.keynode(CONCEPT_EXPERIENCE_EVENT), episode_node
+        )
+        generate_elements(constr)
+
+    def _add_text_relation(self, constr: ScConstruction, source: ScAddr, relation_idtf: str, text: str) -> None:
+        """Relation whose value is a string link, all inside one construction."""
+        link_alias = f"text_link_{relation_idtf}"
+        constr.generate_link(
+            sc_type.CONST_NODE_LINK,
+            ScLinkContent(text, ScLinkContentType.STRING),
+            link_alias,
+        )
+        arc_alias = f"text_arc_{relation_idtf}"
+        constr.generate_connector(sc_type.CONST_COMMON_ARC, source, link_alias, arc_alias)
+        constr.generate_connector(sc_type.CONST_PERM_POS_ARC, self.keynode(relation_idtf), arc_alias)
 
     def _add_relation(self, constr: ScConstruction, attempt: ScAddr, relation_idtf: str, value: ScAddr) -> None:
         main_arc_alias = f"rel_arc_{relation_idtf}"
@@ -424,6 +612,14 @@ class OneiroBridge:
         kind = self._relation_value_idtf(attempt_addr, NREL_KIND)
         score = self._relation_value_number(attempt_addr, NREL_SCORE)
         timestamp = self._relation_value_number(attempt_addr, NREL_TIMESTAMP)
+
+        episode = self._relation_value_idtf(attempt_addr, NREL_EPISODE)
+        if episode and episode.startswith(EPISODE_PREFIX):
+            episode = episode[len(EPISODE_PREFIX):]
+        strategy = self._relation_value_idtf(attempt_addr, NREL_STRATEGY)
+        if strategy and strategy.startswith(STRATEGY_PREFIX):
+            strategy = strategy[len(STRATEGY_PREFIX):]
+        step_index_raw = self._relation_value_number(attempt_addr, NREL_STEP_INDEX)
         return AttemptRecord(
             subject=subject,
             action=action or "",
@@ -433,6 +629,12 @@ class OneiroBridge:
             kind=kind,
             score=score,
             timestamp=timestamp,
+            episode=episode,
+            step_index=int(step_index_raw) if step_index_raw is not None else None,
+            state=self._relation_value_text(attempt_addr, NREL_STATE),
+            legal=self._relation_value_text(attempt_addr, NREL_LEGAL),
+            strategy=strategy,
+            note=self._relation_value_text(attempt_addr, NREL_NOTE),
         )
 
     def _relation_value_idtf(self, source_addr: ScAddr, relation_idtf: str) -> Optional[str]:
@@ -456,9 +658,17 @@ class OneiroBridge:
             return None
         return found[0].get(2)
 
-    def _relation_value_number(self, source_addr: ScAddr, relation_idtf: str) -> Optional[float]:
-        # The value is a sc-link, not a node — search for the link directly
-        # (VAR_NODE in _relation_value_addr does not match links).
+    def _relation_value_text(self, source_addr: ScAddr, relation_idtf: str) -> Optional[str]:
+        """Follow one nrel-relation to a string link and return its content."""
+        value_addr = self._relation_value_link_addr(source_addr, relation_idtf)
+        if value_addr is None:
+            return None
+        contents = get_link_content(value_addr)
+        if contents and contents[0].data is not None:
+            return str(contents[0].data)
+        return None
+
+    def _relation_value_link_addr(self, source_addr: ScAddr, relation_idtf: str) -> Optional[ScAddr]:
         template = ScTemplate()
         template.quintuple(
             source_addr,
@@ -470,7 +680,15 @@ class OneiroBridge:
         found = search_by_template(template)
         if not found:
             return None
-        contents = get_link_content(found[0].get(2))
+        return found[0].get(2)
+
+    def _relation_value_number(self, source_addr: ScAddr, relation_idtf: str) -> Optional[float]:
+        # The value is a sc-link, not a node — search for the link directly
+        # (VAR_NODE in _relation_value_addr does not match links).
+        value_addr = self._relation_value_link_addr(source_addr, relation_idtf)
+        if value_addr is None:
+            return None
+        contents = get_link_content(value_addr)
         if contents and contents[0].data is not None:
             try:
                 return float(contents[0].data)
