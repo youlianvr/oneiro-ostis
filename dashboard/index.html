@@ -5,11 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Oneiro-OSTIS: пульт управления</title>
 <style>
-/* ============ дизайн-токены ============
-   Палитра (R-29): чернильный navy + зелёный роста + янтарный акцент сна.
-   Светлая тема: зал жюри и проектор яркие; тёмный «техно» вид был бы
-   дефолтом, а не решением. Референсы: светлые дашборды Intelly/iCarePro
-   (Muzli 2026) — крупные цифры с человеческими подписями. */
+/* Светлая «редакторская» тема (R-29): чернильный navy + зелёный роста +
+   янтарный акцент сна. Причина: зал жюри и проектор яркие, тёмный «техно»
+   вид был бы дефолтом, а не решением. */
 :root{
   --ink:#182234; --ink2:#3d4a63; --dim:#5d6b85;
   --bg:#f4f6fa; --card:#ffffff; --line:#dde3ee;
@@ -27,7 +25,6 @@ body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15p
 header{padding:22px 28px 8px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 h1{font-size:1.35rem;margin:0;font-weight:700}
 h1 .hl{color:var(--blue)}
-.tagline{color:var(--dim);font-size:.88rem;width:100%;max-width:900px}
 .conn{display:inline-flex;align-items:center;gap:6px;font-size:.78rem;color:var(--dim)}
 .conn .dot{width:9px;height:9px;border-radius:50%;background:var(--green)}
 .conn .dot.off{background:var(--red)}
@@ -36,12 +33,6 @@ h1 .hl{color:var(--blue)}
 .subj label{color:var(--dim)}
 select{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink)}
 .hint{color:var(--dim);font-size:.75rem}
-
-/* ============ как это работает: человеческая история ============ */
-.explain{margin:6px 28px 12px;background:var(--blue-bg);border:1px solid #c9d7f5;
-  border-radius:10px;padding:12px 18px;font-size:.88rem;color:var(--ink2);max-width:none}
-.explain b{color:var(--blue)}
-.explain .step-word{font-weight:700}
 
 /* ============ конвейер: живой пульс исполнения ============ */
 .pipeline{display:flex;align-items:stretch;gap:0;margin:0 28px 6px;border:1px solid var(--line);
@@ -59,10 +50,8 @@ select{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:6
 .stage.done{background:var(--green-bg)}
 .stage.done .n{color:var(--green)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
-/* Причина: пульс и янтарная заливка показывают единственный этап, который
-   исполняется прямо сейчас, взгляд следует за реальным выполнением. */
-
-.pipeline-caption{margin:0 28px 14px;color:var(--dim);font-size:.76rem}
+/* Янтарная заливка и пульс: взгляд следует за единственным этапом,
+   который исполняется прямо сейчас. */
 
 /* ============ пульт ============ */
 .deck{display:flex;gap:10px;margin:0 28px 8px;flex-wrap:wrap;align-items:center}
@@ -77,7 +66,6 @@ button:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 .btn-danger{background:var(--card);border-color:var(--red);color:var(--red)}
 .job{font-size:.84rem;color:var(--dim)}
 .job b{color:var(--amber)}
-.deck-hint{color:var(--dim);font-size:.75rem;width:100%;margin-top:2px}
 
 /* статистика: каждая цифра с человеческим выводом */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:12px 28px 16px}
@@ -85,7 +73,6 @@ button:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 .stat .v{font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums}
 .stat .v.grow{color:var(--green)}
 .stat .l{font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--dim);margin-top:1px}
-.stat .why{font-size:.75rem;color:var(--ink2);margin-top:4px;border-top:1px dashed var(--line);padding-top:4px}
 
 .grid{display:grid;grid-template-columns:1.4fr 1fr;gap:14px;margin:0 28px 16px}
 @media(max-width:1000px){.grid{grid-template-columns:1fr}}
@@ -153,28 +140,17 @@ footer code{background:var(--card);border:1px solid var(--line);border-radius:4p
     <select id="subjectSel"><option value="">загрузка…</option></select>
   </span>
 </header>
-<p class="tagline">Каждое действие агента навсегда записывается в граф знаний OSTIS. Ночью «судья» переигрывает этот опыт и выбирает стратегию получше. Ничего не выдумывается: сны переносят только то, что реально записано.</p>
-
-<div class="explain" id="explain">
-  <b>Как читать этот экран.</b> Агент живёт в детерминированном мире: остров с 8 местами раскопок
-  и лагерем. <span class="step-word">Днём</span> он действует по текущей стратегии и каждый шаг
-  записывает в граф. <span class="step-word">Ночью</span> судья «переигрывает» записанный опыт
-  сотней других стратегий, не запуская мир, и выбирает лучшую. <span class="step-word">Утром</span>
-  агент действует по новой стратегии, и её счёт измеряется в мире по-настоящему.
-  Нажмите «Полный цикл» и смотрите на конвейер ниже.
-</div>
 
 <div class="pipeline" id="pipeline">
   <div class="stage" data-stage="day"><div class="n">этап 1</div><div class="t">День</div>
-    <div class="d">агент живёт и всё записывает в граф</div><div class="info" id="i-day"></div></div>
+    <div class="d">агент живёт, каждый шаг летит в граф</div><div class="info" id="i-day"></div></div>
   <div class="stage" data-stage="explore"><div class="n">этап 2</div><div class="t">Разведка</div>
-    <div class="d">специальные маршруты обогащают опыт</div><div class="info" id="i-explore"></div></div>
+    <div class="d">прогулки попутным маршрутом для богатого опыта</div><div class="info" id="i-explore"></div></div>
   <div class="stage" data-stage="dream"><div class="n">этап 3</div><div class="t">Сон</div>
-    <div class="d">судья переигрывает записи, мир не запускается</div><div class="info" id="i-dream"></div></div>
+    <div class="d">судья переигрывает записи, мир спит</div><div class="info" id="i-dream"></div></div>
   <div class="stage" data-stage="deploy"><div class="n">этап 4</div><div class="t">Утро</div>
-    <div class="d">новая стратегия измеряется по-настоящему</div><div class="info" id="i-deploy"></div></div>
+    <div class="d">победитель сна действует по-настоящему</div><div class="info" id="i-deploy"></div></div>
 </div>
-<p class="pipeline-caption">Конвейер подсвечивается по ходу реального исполнения. Пока никакая кнопка не нажата, он серый.</p>
 
 <div class="deck">
   <button class="btn-primary" id="btnDay">Играть день</button>
@@ -184,42 +160,33 @@ footer code{background:var(--card);border:1px solid var(--line);border-radius:4p
   <button class="btn-danger" id="btnReset">Сбросить базу</button>
   <button id="btnStop" disabled>Остановить</button>
   <span class="job" id="jobTxt">простаивает</span>
-  <span class="deck-hint">Каждая кнопка запускает настоящий пайплайн на живом стеке OSTIS. Кнопки блокируются, пока идёт работа.</span>
 </div>
 
 <div class="stats" id="stats"></div>
 
 <div class="grid">
   <div class="card">
-    <h2>Рост счёта: что агент показал в мире по-настоящему</h2>
-    <div class="sub">Каждая точка — измеренный онлайн-счёт стратегии, деплоированной после сна. Пунктир — первый день (до того, как агент начал видеть сны).</div>
+    <h2>Рост счёта в мире</h2>
     <div class="body" id="ascent"></div>
     <div class="verdict" id="ascentVerdict"></div>
   </div>
   <div class="card">
-    <h2>История снов: что судья подумал о каждой стратегии</h2>
-    <div class="sub">Вердикт — прогноз судьи по записям опыта. «Онлайн» — реальный счёт в мире, если стратегию деплоили. Зелёная строка — текущий чемпион.</div>
+    <h2>Вердикты снов</h2>
     <div class="body" style="max-height:340px;overflow:auto" id="dreamTable"></div>
   </div>
   <div class="card">
-    <h2>Память агента: то, что судья переигрывает во сне</h2>
-    <div class="sub">Полная хроника шагов эпизода, как она лежит в графе знаний. Выберите эпизод:</div>
+    <h2>Память в графе</h2>
     <div class="ep-tabs" id="epTabs"></div>
     <div class="steps" id="epBody"></div>
-    <div class="ep-legend">«копать» и «доставить» приносят очки, «перейти» стоит 0.1. Такие же записи судья переигрывает ночью, не запуская мир.</div>
   </div>
   <div class="card">
-    <h2>Журнал: что происходит прямо сейчас</h2>
-    <div class="sub">Каждое событие настоящего пайплайна, построчно.</div>
-    <div class="log" id="log"><div class="empty">пока ничего: нажмите кнопку выше, и здесь появится живой журнал</div></div>
+    <h2>Живой журнал</h2>
+    <div class="log" id="log"><div class="empty">нажмите кнопку выше: здесь появится настоящий журнал пайплайна</div></div>
   </div>
 </div>
 
 <footer>
-  Все кнопки исполняют настоящий пайплайн на живом стеке OSTIS (sc-machine, C++-агенты):
-  действия записываются в граф знаний, сон переигрывает записи в точности (мир не запускается),
-  победитель деплоится и измеряется в мире. Данные страницы читаются из графа:
-  <code>/api/state</code>.
+  Живой стек OSTIS: sc-machine, C++-агенты, данные из графа <code>/api/state</code>.
 </footer>
 
 <script>
@@ -272,24 +239,24 @@ function render(d){
     if(d.subject && d.subjects.includes(d.subject)) sel.value = d.subject;
   }
 
-  // статистика: цифра + человеческий вывод
+  // статистика: крупные цифры, подпись мельче
   const deployed = d.strategies.filter(s => s.online != null);
   const first = deployed.length ? Math.min(...deployed.map(s => s.online)) : 0;
   const last = deployed.length ? Math.max(...deployed.map(s => s.online)) : 0;
   const gain = first ? "+" + Math.round(100 * (last - first) / first) + "%" : "0%";
   const c = d.consistency;
   const items = [
-    {l:"стратегий в графе", v:d.strategies.length, why:"каждая — узел графа с дескриптором и вердиктом сна", cls:""},
-    {l:"эпизодов в памяти", v:c.episodes, why:"сколько раз агент прожил день под разными стратегиями", cls:""},
-    {l:"шагов записано", v:c.steps, why:"столько действий хранится в графе знаний навсегда", cls:""},
-    {l:"переходов опыта", v:c.transitions, why:"связей «ситуация → действие → итог» для снов", cls:""},
-    {l:"противоречий записей", v:c.conflicts, why:c.conflicts === 0 ? "мир детерминирован: судья не лжёт" : "записи расходятся, судье нельзя верить", cls:c.conflicts === 0 ? "grow" : ""},
-    {l:"первый день", v:first ? first.toFixed(1) : "0", why:"счёт до того, как агент начал видеть сны", cls:""},
-    {l:"лучший день", v:last ? last.toFixed(1) : "0", why:"реальный счёт лучшей стратегии в мире", cls:"grow"},
-    {l:"рост", v:deployed.length ? gain : "0%", why:"насколько сон улучшил измеренный результат", cls:"grow"},
+    {l:"стратегий в графе", v:d.strategies.length, cls:""},
+    {l:"эпизодов в памяти", v:c.episodes, cls:""},
+    {l:"шагов записано", v:c.steps, cls:""},
+    {l:"переходов опыта", v:c.transitions, cls:""},
+    {l:"противоречий записей", v:c.conflicts, cls:c.conflicts === 0 ? "grow" : ""},
+    {l:"первый день", v:first ? first.toFixed(1) : "0", cls:""},
+    {l:"лучший день", v:last ? last.toFixed(1) : "0", cls:"grow"},
+    {l:"рост", v:deployed.length ? gain : "0%", cls:"grow"},
   ];
   $("stats").innerHTML = items.map(it =>
-    `<div class="stat"><div class="v ${it.cls}">${it.v}</div><div class="l">${it.l}</div><div class="why">${it.why}</div></div>`).join("");
+    `<div class="stat"><div class="v ${it.cls}">${it.v}</div><div class="l">${it.l}</div></div>`).join("");
 
   renderAscent(deployed, first);
   renderTable(d.strategies);
@@ -335,13 +302,13 @@ function renderAscent(deployed, first){
   s += `</svg>`;
   $("ascent").innerHTML = s;
 
-  // человеческий вывод под графиком
+  // вывод одной строкой, цифрами
   const v = $("ascentVerdict");
   if(pts.length && first){
     const gained = pts[pts.length-1].v - first;
     v.innerHTML = gained > 0
-      ? `<b>Вывод:</b> после первого сна агент стал собирать на <b>${gained.toFixed(1)}</b> очков больше. Это измерено в мире, не по прогнозам судьи.`
-      : `<b>Вывод:</b> пока сон не дал роста на этом персонаже: честная нижняя граница метода.`;
+      ? `Первый день ${first.toFixed(1)} <b>→ ${pts[pts.length-1].v.toFixed(1)}</b> после сна: <b>+${gained.toFixed(1)}</b> очков в мире`
+      : `Сон пока не дал роста: ${first.toFixed(1)} → ${pts[pts.length-1].v.toFixed(1)}`;
   }
 }
 
@@ -363,9 +330,9 @@ function renderTable(strategies){
         <td>${st.name || "(без имени)"}
           ${st.online != null ? `<span class="tag dep">в деле</span>` : ""}
           ${isWin ? `<span class="tag win">чемпион</span>` : ""}</td>
-        <td><span class="bar-wrap"><span class="bar" style="width:0" data-w="${barW}"></span>${st.replay ?? "—"}</span></td>
-        <td>${st.online != null ? st.online.toFixed(2) : "—"}</td>
-        <td>${st.round ?? "—"}</td></tr>`;
+        <td><span class="bar-wrap"><span class="bar" style="width:0" data-w="${barW}"></span>${st.replay ?? ""}</span></td>
+        <td>${st.online != null ? st.online.toFixed(2) : ""}</td>
+        <td>${st.round ?? ""}</td></tr>`;
     }).join("") + `</table>`;
   requestAnimationFrame(() => requestAnimationFrame(() => {
     document.querySelectorAll(".bar[data-w]").forEach(b => b.style.width = b.dataset.w + "px");
