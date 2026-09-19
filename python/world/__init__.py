@@ -80,6 +80,17 @@ def _noise(seed: str, index: int) -> float:
     return 1.0 + (int.from_bytes(digest[:4], "big") % 1000) / 1000.0
 
 
+def _site_code(site: str) -> int:
+    """Process-independent site code.
+
+    Python's built-in hash() for strings is randomized per process
+    (PYTHONHASHSEED), which made artefact values differ between runs.
+    sha256 gives the same code everywhere, forever.
+    """
+    digest = hashlib.sha256(site.encode()).digest()
+    return int.from_bytes(digest[:4], "big") % 1000
+
+
 class ExpeditionWorld:
     """Deterministic island-expedition world."""
 
@@ -93,7 +104,7 @@ class ExpeditionWorld:
         self._site_value_counters: dict[str, int] = {}
         for site in DIG_SITES:
             # artefact count per site is deterministic from the seed
-            self._site_value_counters[site] = 2 + (int(_noise(self.seed + ":count", hash(site) % 1000) * 10) % 3)
+            self._site_value_counters[site] = 2 + (int(_noise(self.seed + ":count", _site_code(site)) * 10) % 3)
         return self.state
 
     # ---------- legality ----------
@@ -102,15 +113,16 @@ class ExpeditionWorld:
         s = state or self.state
         acts: list[str] = []
         if s.carrying:
-            for loc in ISLAND[s.location]:
-                acts.append(f"deliver:{loc}" if loc in DELIVERY_MULTIPLIER else f"travel:{loc}")
-        else:
-            acts.append(f"dig:{s.location}" if s.location in DIG_SITES and s.dug_count.get(s.location, 0) < self._remaining(s, s.location) else "")
-            acts = [a for a in acts if a]
+            # Deliver where you stand (only at a delivery point), or move on.
+            if s.location in DELIVERY_MULTIPLIER:
+                acts.append(f"deliver:{s.location}")
             for loc in ISLAND[s.location]:
                 acts.append(f"travel:{loc}")
-        if not s.carrying and s.location in DIG_SITES and self._remaining(s, s.location) <= 0:
-            pass  # dig stays illegal; travel only
+        else:
+            if s.location in DIG_SITES and self._remaining(s, s.location) > 0:
+                acts.append(f"dig:{s.location}")
+            for loc in ISLAND[s.location]:
+                acts.append(f"travel:{loc}")
         return acts or [f"travel:{ISLAND[s.location][0]}"]
 
     def _remaining(self, state: WorldState, site: str) -> int:
@@ -138,7 +150,7 @@ class ExpeditionWorld:
                 s.steps_used += 1
                 return Step("dig", arg, "concept_failure", 0.0, "site empty")
             idx = s.dug_count.get(s.location, 0)
-            value = _noise(self.seed + ":val", (hash(s.location) % 1000) * 10 + idx) * 10.0
+            value = _noise(self.seed + ":val", _site_code(s.location) * 10 + idx) * 10.0
             s.dug_count[s.location] = idx + 1
             s.carrying = f"artefact_{s.location}_{idx}"
             s.steps_used += 1
@@ -147,7 +159,7 @@ class ExpeditionWorld:
         if name == "deliver" and s.carrying and arg in DELIVERY_MULTIPLIER and arg == s.location:
             site = s.carrying.split("_")[1]
             idx = int(s.carrying.split("_")[2])
-            value = _noise(self.seed + ":val", (hash(site) % 1000) * 10 + idx) * 10.0
+            value = _noise(self.seed + ":val", _site_code(site) * 10 + idx) * 10.0
             gain = value * DELIVERY_MULTIPLIER[arg]
             s.score += gain
             s.carrying = ""

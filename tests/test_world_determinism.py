@@ -50,3 +50,78 @@ def test_budget_stops_episode():
     w = ExpeditionWorld(seed="oneiro-0", max_steps=5)
     trace = w.run_episode(_fixed_policy, seed=7)
     assert len(trace) <= 5
+
+
+def test_delivery_legality_and_gain():
+    """Delivery is legal only while standing at a delivery point, and the
+    multiplier applies (cove 1.5x > beach 1.2x > camp 1.0x).
+
+    Regression: an earlier version offered deliver:<neighbour> only, which
+    the executor always rejected as illegal — deliveries never succeeded.
+    """
+    w = ExpeditionWorld(seed="oneiro-0", max_steps=40)
+    assert "deliver:camp" not in w.legal_actions()  # nothing carried yet
+
+    w.step("travel:beach")
+    w.step("dig:beach")
+    assert "deliver:beach" in w.legal_actions()  # standing at a delivery point
+    carry = w.state.carrying
+    assert carry.startswith("artefact_beach_")
+
+    step = w.step("deliver:beach")
+    assert step.outcome == "concept_success"
+    assert step.score > 0
+    assert w.state.score == step.score
+
+
+def test_site_can_be_dig_out_completely():
+    """Every artefact of a site is reachable: digging stays legal while any
+    remains (regression: the old gate stopped at half the site).
+    """
+    w = ExpeditionWorld(seed="oneiro-0", max_steps=200)
+    w.reset()
+    counts: dict[str, int] = {}
+    # travel to beach (camp has no dig), then dig and deliver in place
+    w.step("travel:beach")
+    for _ in range(50):
+        legal = w.legal_actions()
+        digs = [a for a in legal if a.startswith("dig:beach")]
+        if digs:
+            w.step(digs[0])
+            counts["beach"] = w.state.dug_count.get("beach", 0)
+        elif "deliver:beach" in legal:
+            w.step("deliver:beach")
+        else:
+            break
+    assert counts["beach"] == w._site_value_counters["beach"], (
+        f"only dug {counts['beach']} of {w._site_value_counters['beach']} artefacts"
+    )
+
+
+def test_trace_hash_stable_across_processes():
+    """The same seed gives the same trace in a fresh interpreter.
+
+    Regression: artefact values used Python's built-in hash(), which is
+    randomized per process (PYTHONHASHSEED) — traces differed between runs.
+    """
+    import subprocess
+
+    script = (
+        "import sys, hashlib; "
+        "sys.path.insert(0, r'%s'); "
+        "from world import ExpeditionWorld; "
+        "w = ExpeditionWorld(seed='oneiro-0'); "
+        "trace = w.run_episode(lambda state, legal, rng: ([a for a in legal if a.startswith('dig:')] or legal)[0], seed=7); "
+        "print(hashlib.sha256(repr([(s.action, s.object, s.outcome, round(s.score, 6)) for s in trace]).encode()).hexdigest())"
+        % os.path.join(os.path.dirname(__file__), "..", "python")
+    )
+
+    env_base = dict(os.environ)
+    hashes = []
+    for hashseed in ("1", "12345"):
+        env = dict(env_base)
+        env["PYTHONHASHSEED"] = hashseed
+        out = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, env=env)
+        assert out.returncode == 0, out.stderr
+        hashes.append(out.stdout.strip())
+    assert hashes[0] == hashes[1], f"trace differs across processes: {hashes}"

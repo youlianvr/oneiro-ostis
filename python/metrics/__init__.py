@@ -61,22 +61,39 @@ ROW_HEADER = (
 
 def order_accuracy(expected: list[Step], got: list) -> float:
     """Fraction of adjacent ground-truth pairs that appear in the same order
-    in the retrieved sequence. Both sides are keyed by (action, object);
-    first occurrence positions are used so repeated attempts are handled.
+    in the retrieved sequence.
+
+    Both sides are keyed by (action, object). Repeated attempts of the same
+    kind are matched occurrence-by-occurrence (the k-th occurrence in the
+    retrieval corresponds to the k-th occurrence in the ground truth), so a
+    retrieval that reproduces the episode exactly always scores 1.0 — a
+    first-occurrence mapping used to mis-score repeated dig/deliver cycles.
     """
-    got_pairs = [(r.action, r.object) for r in got]
-    exp_pairs = [(s.action, s.object) for s in expected]
-    pos_in_got: dict = {}
-    for i, p in enumerate(got_pairs):
-        if p not in pos_in_got:
-            pos_in_got[p] = i
+    from collections import defaultdict
+
+    exp_keys: list[tuple] = []
+    occurrence = defaultdict(int)
+    for s in expected:
+        k = (s.action, s.object)
+        exp_keys.append((k, occurrence[k]))
+        occurrence[k] += 1
+
+    positions: dict = {}
+    occurrence = defaultdict(int)
+    for i, r in enumerate(got):
+        k = (r.action, r.object)
+        positions[(k, occurrence[k])] = i
+        occurrence[k] += 1
+
     correct = comparable = 0
-    for ea, eb in zip(exp_pairs, exp_pairs[1:]):
-        if ea == eb:
-            continue  # identical keys carry no order information
-        if ea in pos_in_got and eb in pos_in_got:
+    for (ka, oa), (kb, ob) in zip(exp_keys, exp_keys[1:]):
+        if (ka, oa) == (kb, ob):
+            continue  # identical occurrences carry no order information
+        pa = positions.get((ka, oa))
+        pb = positions.get((kb, ob))
+        if pa is not None and pb is not None:
             comparable += 1
-            if pos_in_got[ea] < pos_in_got[eb]:
+            if pa < pb:
                 correct += 1
     return correct / comparable if comparable else 0.0
 
