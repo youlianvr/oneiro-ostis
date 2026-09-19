@@ -122,7 +122,7 @@ numbers below were produced by the offline sweep.
 
 ## 6. Results
 
-### 6.1 Recursive loop — `python -m loop > docs/rounds.md`
+### 6.1 Recursive loop, island — `python -m loop > docs/rounds.md`
 
 | round | strategy | measured score | dream winner | replay verdict |
 |---|---|---|---|---|
@@ -135,7 +135,31 @@ stayed there — the value matches the best strategy found by exhaustively
 running the whole candidate sweep in the world offline, i.e. the dream
 reached the sweep's optimum, then the loop converged.
 
-### 6.2 One-command demo — `python demo/run_demo.py` → `docs/demo-log.md`
+### 6.2 Second domain: the machinery transfers — `docs/rounds-workshop.md`
+
+A second deterministic world (workshop crafting economy: five locations, three
+resource nodes, recipes plank/ingot/rope and the combo item **cart**, worth
+2.2x its components) exists to test that the dream loop is not an island
+story. The judge contract is pluggable and tiny: a domain supplies
+`signature(raw_state, action)` (workshop: location + full inventory + units
+taken at the current node) and `observe(raw_state)`; the graph schema, the
+recording path and the dream are shared.
+
+| round | strategy | measured score | dream winner | replay verdict |
+|---|---|---|---|---|
+| 1 | ws_weak_plank | 16.6 | ws_cart_wof | 237.6 over 3 episodes, coverage 1.00 |
+| 2 | ws_cart_wof | 79.2 | kept | — |
+| 3 | ws_cart_wof | 79.2 | kept | per-episode replay 79.2 = measured 79.2 |
+
+One dream lifted the measured score **16.6 → 79.2 (4.8x)** and then converged;
+the candidate sweep and the judge never touched the world during the dream.
+Notable honest observations: in this domain the gather *order* does not matter
+(all resource nodes are one hop from the shop hub — the sweep discovered the
+tie), and the replay judge was exact here (per-episode estimate equals the
+measured online score) whereas on the island it over-estimates (see the
+calibration section).
+
+### 6.3 One-command demo — `python demo/run_demo.py` → `docs/demo-log.md`
 
 - day 1 (`weak_wander`, 8 digs, 8 deliveries): **137.5**
 - dream: 21 candidates replayed over 3 episodes / 120 steps / 76

@@ -70,10 +70,16 @@ def dream(
     generator=None,
     limit: int = 24,
     save: bool = True,
+    signature=None,
+    observe=None,
 ) -> DreamResult:
-    """Run one dream cycle over the recordings of `subject`."""
+    """Run one dream cycle over the recordings of `subject`.
+
+    `signature` and `observe` are the domain's replay contract; the defaults
+    are the island's (see replay.engine).
+    """
     records = bridge.retrieve_attempts(subject)
-    tree = ExperienceTree.from_records(records)
+    tree = ExperienceTree.from_records(records, signature_fn=signature)
     if tree.episode_count == 0:
         raise RuntimeError(
             f"no recorded trajectories for subject {subject!r}: nothing to dream about "
@@ -92,7 +98,7 @@ def dream(
     if not candidates:
         raise RuntimeError("candidate generator returned nothing")
 
-    results = [(c, tree.replay(c)) for c in candidates]
+    results = [(c, tree.replay(c, observe=observe)) for c in candidates]
     winner, _ = select_winner(results)
     consistency = tree.verify_consistency()
 

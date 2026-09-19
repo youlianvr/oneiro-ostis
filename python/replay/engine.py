@@ -34,7 +34,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Iterable, Optional
 
-from strategy import Observation, Strategy
+from strategy import Strategy
 
 
 # ---------- tree nodes ----------
@@ -42,13 +42,19 @@ from strategy import Observation, Strategy
 
 @dataclass(frozen=True)
 class TreeStep:
-    """One recorded step: everything the world showed and produced."""
+    """One recorded step: everything the world showed and produced.
+
+    `raw` is the state snapshot as recorded (domain-specific shape); the
+    island convenience fields (location/carrying/dug_count) are derived from
+    it when present. The domain defines how a raw snapshot is turned into a
+    replay signature and into the policy's observation.
+    """
 
     episode: str
     index: int
     location: str
     carrying: str
-    dug_count: tuple  # sorted tuple of (site, count)
+    dug_count: tuple  # sorted tuple of (site, count); empty for other domains
     legal: tuple[str, ...]
     action: str
     object: str
@@ -56,6 +62,7 @@ class TreeStep:
     score: float
     strategy: Optional[str] = None
     note: str = ""
+    raw: dict = field(default_factory=dict, compare=False)
 
     def dug_dict(self) -> dict[str, int]:
         return dict(self.dug_count)
@@ -84,6 +91,23 @@ def _signature_of(location: str, carrying: str, dug_count: dict[str, int]) -> tu
     return (location, carrying, dug_count.get(location, 0))
 
 
+def island_signature(raw: dict, full_action: str) -> tuple:
+    """Default (island) outcome-sufficient signature: (location, carried
+    artefact, artefacts already taken from the current site)."""
+    return _signature_of(
+        str(raw.get("location", "")),
+        str(raw.get("carrying", "")),
+        {str(k): int(v) for k, v in (raw.get("dug") or {}).items()},
+    )
+
+
+def island_observe(raw: dict):
+    """Default observation builder for the island domain."""
+    from strategy import observation_of_snapshot
+
+    return observation_of_snapshot(raw)
+
+
 def _step_from_record(rec) -> Optional[TreeStep]:
     """Convert an AttemptRecord (bridge) into a TreeStep, or None if it has no
     trajectory fields (older recordings stay usable for memory metrics only)."""
@@ -108,6 +132,7 @@ def _step_from_record(rec) -> Optional[TreeStep]:
         score=float(rec.score or 0.0),
         strategy=rec.strategy,
         note=rec.note or "",
+        raw=dict(state),
     )
 
 
@@ -117,8 +142,9 @@ def _step_from_record(rec) -> Optional[TreeStep]:
 class ExperienceTree:
     """All recorded trajectories of one subject, indexed for replay."""
 
-    def __init__(self, episodes: dict[str, list[TreeStep]]):
+    def __init__(self, episodes: dict[str, list[TreeStep]], signature_fn=None):
         self.episodes = episodes
+        self.signature_fn = signature_fn or island_signature
         self.index: dict[tuple, TreeStep] = {}
         self.support: Counter = Counter()
         self.successors: dict[tuple, Optional[TreeStep]] = {}
@@ -127,7 +153,7 @@ class ExperienceTree:
     # ---------- construction ----------
 
     @classmethod
-    def from_records(cls, records: Iterable) -> "ExperienceTree":
+    def from_records(cls, records: Iterable, signature_fn=None) -> "ExperienceTree":
         episodes: dict[str, list[TreeStep]] = {}
         for rec in records:
             step = _step_from_record(rec)
@@ -136,12 +162,16 @@ class ExperienceTree:
             episodes.setdefault(step.episode, []).append(step)
         for ep in episodes.values():
             ep.sort(key=lambda s: s.index)
-        return cls(episodes)
+        return cls(episodes, signature_fn=signature_fn)
+
+    def key_of(self, step: TreeStep) -> tuple:
+        """Index key for a recorded step under this tree's domain signature."""
+        return (self.signature_fn(step.raw, step.full_action), step.full_action)
 
     def _build_index(self) -> None:
         for ep in self.episodes.values():
             for i, step in enumerate(ep):
-                key = (step.signature(), step.full_action)
+                key = self.key_of(step)
                 self.support[key] += 1
                 if key not in self.index:
                     self.index[key] = step
@@ -163,24 +193,25 @@ class ExperienceTree:
         return len(self.index)
 
     def to_summary(self) -> dict:
-        """Compact description of the tree (context for candidate generators)."""
-        sites: dict[str, dict] = {}
+        """Compact, domain-agnostic description of the tree (context for
+        candidate generators): what actions were tried and what they yielded."""
+        by_action: Counter = Counter()
+        successes: Counter = Counter()
+        rewards: dict[str, float] = {}
         for ep in self.episodes.values():
             for s in ep:
-                if s.action == "dig" and s.outcome == "concept_success":
-                    sites.setdefault(s.object, {"digs": 0})
-                    sites[s.object]["digs"] += 1
-        deliveries = Counter()
-        for ep in self.episodes.values():
-            for s in ep:
-                if s.action == "deliver" and s.outcome == "concept_success":
-                    deliveries[s.object] += 1
+                by_action[s.action] += 1
+                if s.outcome == "concept_success":
+                    successes[s.action] += 1
+                if s.score > 0:
+                    rewards[s.action] = rewards.get(s.action, 0.0) + s.score
         return {
             "episodes": self.episode_count,
             "steps": self.step_count,
             "transitions": self.transition_count,
-            "digs_per_site": {k: v["digs"] for k, v in sorted(sites.items())},
-            "deliveries": dict(deliveries),
+            "actions": dict(by_action),
+            "successes": dict(successes),
+            "reward_by_action": {k: round(v, 2) for k, v in sorted(rewards.items())},
         }
 
     # ---------- consistency (exactness) ----------
@@ -197,7 +228,7 @@ class ExperienceTree:
         per_key: dict[tuple, set] = {}
         for ep in self.episodes.values():
             for s in ep:
-                key = (s.signature(), s.full_action)
+                key = self.key_of(s)
                 outcome = (s.outcome, round(s.score, 9), s.object)
                 seen = per_key.setdefault(key, set())
                 if seen and outcome not in seen:
@@ -215,7 +246,7 @@ class ExperienceTree:
             total = 0.0
             ok = True
             for s in steps:
-                entry = self.index.get((s.signature(), s.full_action))
+                entry = self.index.get(self.key_of(s))
                 if entry is None:
                     ok = False
                     break
@@ -232,8 +263,14 @@ class ExperienceTree:
 
     # ---------- the walk ----------
 
-    def replay(self, strategy: Strategy, *, max_episodes: Optional[int] = None) -> "ReplayResult":
-        """Evaluate `strategy` over the whole tree. Executes nothing."""
+    def replay(self, strategy: Strategy, *, max_episodes: Optional[int] = None, observe=None) -> "ReplayResult":
+        """Evaluate `strategy` over the whole tree. Executes nothing.
+
+        `observe(raw_state) -> observation` is the domain's view builder; the
+        default is the island's. The candidate only ever sees recorded states
+        and recorded legal actions.
+        """
+        observe = observe or island_observe
         result = ReplayResult(strategy=strategy.name)
         episodes = list(self.episodes.items())
         if max_episodes is not None:
@@ -255,7 +292,7 @@ class ExperienceTree:
             cap = len(steps)
 
             while steps_taken < cap and cur is not None:
-                obs = Observation(location=cur.location, carrying=cur.carrying, dug_count=cur.dug_dict())
+                obs = observe(cur.raw)
                 action = strategy.choose(obs, list(cur.legal))
                 steps_taken += 1
 
@@ -272,7 +309,7 @@ class ExperienceTree:
 
                 # divergence: consult the global recordings
                 follow_own = False
-                key = (_signature_of(cur.location, cur.carrying, cur.dug_dict()), action)
+                key = (self.signature_fn(cur.raw, action), action)
                 entry = self.index.get(key)
                 if entry is None:
                     row.uncovered += 1

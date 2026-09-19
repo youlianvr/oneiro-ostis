@@ -63,11 +63,23 @@ class WorldState:
 
     location: str = "camp"
     carrying: str = ""            # artefact id currently carried, "" if none
-    score: float = 0.0            # accumulated score
+    score: float = 0.0            # accumulated reward (deliveries); travel
+                                  # overhead lives in the individual Step scores
     steps_used: int = 0
     dug_out: set[str] = field(default_factory=set)   # (site) emptied entirely
     dug_count: dict[str, int] = field(default_factory=dict)  # site -> taken count
     rng_cursor: int = 0           # position in the deterministic noise stream
+
+    def snapshot(self) -> dict:
+        """Serialisable snapshot recorded on the attempt node (nrel_state) —
+        the same shape for both worlds, read back by the replay judge."""
+        return {
+            "location": self.location,
+            "carrying": self.carrying,
+            "dug": dict(self.dug_count),
+            "score": round(self.score, 6),
+            "steps": self.steps_used,
+        }
 
 
 def _noise(seed: str, index: int) -> float:
@@ -78,6 +90,45 @@ def _noise(seed: str, index: int) -> float:
     """
     digest = hashlib.sha256(f"{seed}:{index}".encode()).digest()
     return 1.0 + (int.from_bytes(digest[:4], "big") % 1000) / 1000.0
+
+
+def bfs_next_hop(src: str, dst: str, graph: dict[str, list[str]] | None = None) -> str | None:
+    """First step of a shortest path src -> dst; None if unreachable or equal."""
+    graph = graph if graph is not None else ISLAND
+    if src == dst:
+        return None
+    seen = {src}
+    frontier = [(src, None)]
+    while frontier:
+        node, first_hop = frontier.pop(0)
+        for nb in graph.get(node, []):
+            if nb in seen:
+                continue
+            hop = first_hop or nb
+            if nb == dst:
+                return hop
+            seen.add(nb)
+            frontier.append((nb, hop))
+    return None
+
+
+def distance(src: str, dst: str, graph: dict[str, list[str]] | None = None) -> int:
+    """Shortest path length in edges; a large number if unreachable."""
+    graph = graph if graph is not None else ISLAND
+    if src == dst:
+        return 0
+    seen = {src}
+    frontier = [(src, 0)]
+    while frontier:
+        node, d = frontier.pop(0)
+        for nb in graph.get(node, []):
+            if nb in seen:
+                continue
+            if nb == dst:
+                return d + 1
+            seen.add(nb)
+            frontier.append((nb, d + 1))
+    return 10**6
 
 
 def _site_code(site: str) -> int:

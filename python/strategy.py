@@ -20,49 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-from world import DELIVERY_MULTIPLIER, DIG_SITES, ISLAND
-
-
-# ---------- topology helpers ----------
-
-
-def bfs_next_hop(src: str, dst: str, graph: dict[str, list[str]] | None = None) -> Optional[str]:
-    """First step of a shortest path src -> dst; None if unreachable."""
-    graph = graph or ISLAND
-    if src == dst:
-        return None
-    seen = {src}
-    frontier = [(src, None)]
-    while frontier:
-        node, first_hop = frontier.pop(0)
-        for nb in graph.get(node, []):
-            if nb in seen:
-                continue
-            hop = first_hop or nb
-            if nb == dst:
-                return hop
-            seen.add(nb)
-            frontier.append((nb, hop))
-    return None
-
-
-def distance(src: str, dst: str, graph: dict[str, list[str]] | None = None) -> int:
-    """Shortest path length in edges; large number if unreachable."""
-    graph = graph or ISLAND
-    if src == dst:
-        return 0
-    seen = {src}
-    frontier = [(src, 0)]
-    while frontier:
-        node, d = frontier.pop(0)
-        for nb in graph.get(node, []):
-            if nb in seen:
-                continue
-            if nb == dst:
-                return d + 1
-            seen.add(nb)
-            frontier.append((nb, d + 1))
-    return 10**6
+from world import DELIVERY_MULTIPLIER, DIG_SITES, ISLAND, bfs_next_hop, distance
 
 
 # ---------- strategy ----------
@@ -70,11 +28,20 @@ def distance(src: str, dst: str, graph: dict[str, list[str]] | None = None) -> i
 
 @dataclass
 class Observation:
-    """What the policy sees before choosing: the world as recorded."""
+    """What the island policy sees before choosing: the world as recorded."""
 
     location: str
     carrying: str = ""
     dug_count: dict[str, int] = field(default_factory=dict)
+
+
+def observation_of_snapshot(raw: dict) -> "Observation":
+    """Build the island policy's view from a recorded state snapshot."""
+    return Observation(
+        location=str(raw.get("location", "")),
+        carrying=str(raw.get("carrying", "")),
+        dug_count={str(k): int(v) for k, v in (raw.get("dug") or {}).items()},
+    )
 
 
 @dataclass
