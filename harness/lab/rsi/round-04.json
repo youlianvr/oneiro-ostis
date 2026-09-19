@@ -1,0 +1,193 @@
+{
+  "round": 4,
+  "criteria_version": 2,
+  "criteria": {
+    "frozen_at": "2026-09-20T01:18:26",
+    "version": 2,
+    "search_tasks": [
+      "t01-start-total",
+      "t02-clamp-bounds",
+      "t03-parse-duration",
+      "t05-retry-backoff"
+    ],
+    "held_out_tasks": [
+      "t04-dedupe-order",
+      "t06-csv-column-total"
+    ],
+    "efficiency": {
+      "min_predicted_saving": 0.15,
+      "note": "a candidate must be predicted to save at least 15% of prompt tokens"
+    },
+    "capability": {
+      "max_tasks_lost": 1,
+      "min_decision_replayable": 0.5,
+      "note": "online on the search set, a deployed candidate may lose at most one task against the incumbent; the judge cannot settle capability and does not pretend to"
+    },
+    "budget": {
+      "online_runs_per_round": 8,
+      "note": "measured runs per round, search plus held-out"
+    },
+    "revision": {
+      "from_version": 1,
+      "reason": "version 1 named a coverage field that no code read, so the gate could decide on a predicted saving while the judge had replayed no step of the candidate at all",
+      "evidence": "rounds 2 and 3 deployed candidates with decision_replayable 0.0: their prompt divergence meant zero covered steps, and the saving was an extrapolation from the token model, not a replay",
+      "unchanged": "min_predicted_saving 0.15, max_tasks_lost 1"
+    }
+  },
+  "replay_verification": [
+    {
+      "steps": 5,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        1902,
+        2410,
+        2500,
+        3260,
+        4350
+      ]
+    },
+    {
+      "steps": 10,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        1193,
+        1766,
+        2262,
+        3139,
+        4856,
+        6124,
+        7250,
+        8538,
+        12581,
+        19353
+      ]
+    },
+    {
+      "steps": 5,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        2171,
+        3061,
+        3274,
+        4047,
+        5044
+      ]
+    },
+    {
+      "steps": 6,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        2736,
+        3958,
+        3992,
+        5321,
+        6567,
+        7492
+      ]
+    }
+  ],
+  "proposed": [
+    {
+      "name": "no_initial_tests_window8",
+      "include_file_list": true,
+      "include_initial_tests": false,
+      "context_mode": "window",
+      "window_steps": 8,
+      "observation_chars": 1200,
+      "read_lines": 100,
+      "max_steps": 12,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    },
+    {
+      "name": "no_initial_tests_obs800",
+      "include_file_list": true,
+      "include_initial_tests": false,
+      "context_mode": "full",
+      "window_steps": 10,
+      "observation_chars": 800,
+      "read_lines": 100,
+      "max_steps": 12,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    },
+    {
+      "name": "no_initial_tests_window6_obs600_maxsteps12",
+      "include_file_list": true,
+      "include_initial_tests": false,
+      "context_mode": "window",
+      "window_steps": 6,
+      "observation_chars": 600,
+      "read_lines": 80,
+      "max_steps": 12,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    }
+  ],
+  "notes": [],
+  "verdicts": [
+    {
+      "policy": "no_initial_tests_window6_obs600_maxsteps12",
+      "predicted_tokens": 42538.1,
+      "recorded_tokens": 57977.0,
+      "predicted_saving": 0.2663,
+      "steps_covered": 0,
+      "steps_total": 26,
+      "decision_replayable": 0.0,
+      "passed_efficiency": true,
+      "passed_evidence": false,
+      "passed_gate": false,
+      "reasons": [
+        "predicted saving 26.6% vs required 15%",
+        "decisions replayed 0% vs required 50%",
+        "22 characters clipped from observations",
+        "5/5 steps diverge: the model's decisions there are NOT replayable (abstain)"
+      ]
+    },
+    {
+      "policy": "no_initial_tests_window8",
+      "predicted_tokens": 44432.6,
+      "recorded_tokens": 57977.0,
+      "predicted_saving": 0.2336,
+      "steps_covered": 0,
+      "steps_total": 26,
+      "decision_replayable": 0.0,
+      "passed_efficiency": true,
+      "passed_evidence": false,
+      "passed_gate": false,
+      "reasons": [
+        "predicted saving 23.4% vs required 15%",
+        "decisions replayed 0% vs required 50%",
+        "5/5 steps diverge: the model's decisions there are NOT replayable (abstain)",
+        "5 observations would be dropped by windowing"
+      ]
+    },
+    {
+      "policy": "no_initial_tests_obs800",
+      "predicted_tokens": 44944.9,
+      "recorded_tokens": 57977.0,
+      "predicted_saving": 0.2248,
+      "steps_covered": 0,
+      "steps_total": 26,
+      "decision_replayable": 0.0,
+      "passed_efficiency": true,
+      "passed_evidence": false,
+      "passed_gate": false,
+      "reasons": [
+        "predicted saving 22.5% vs required 15%",
+        "decisions replayed 0% vs required 50%",
+        "5/5 steps diverge: the model's decisions there are NOT replayable (abstain)",
+        "10/10 steps diverge: the model's decisions there are NOT replayable (abstain)"
+      ]
+    }
+  ],
+  "deployed": null,
+  "outcome": "no candidate passed the efficiency gate; nothing deployed"
+}

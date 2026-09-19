@@ -1,6 +1,6 @@
 {
-  "frozen_at": "2026-09-20T00:50:47",
-  "version": 1,
+  "frozen_at": "2026-09-20T01:18:26",
+  "version": 2,
   "search_tasks": [
     "t01-start-total",
     "t02-clamp-bounds",
@@ -17,11 +17,17 @@
   },
   "capability": {
     "max_tasks_lost": 1,
-    "min_covered_steps": 0,
+    "min_decision_replayable": 0.5,
     "note": "online on the search set, a deployed candidate may lose at most one task against the incumbent; the judge cannot settle capability and does not pretend to"
   },
   "budget": {
     "online_runs_per_round": 8,
     "note": "measured runs per round, search plus held-out"
+  },
+  "revision": {
+    "from_version": 1,
+    "reason": "version 1 named a coverage field that no code read, so the gate could decide on a predicted saving while the judge had replayed no step of the candidate at all",
+    "evidence": "rounds 2 and 3 deployed candidates with decision_replayable 0.0: their prompt divergence meant zero covered steps, and the saving was an extrapolation from the token model, not a replay",
+    "unchanged": "min_predicted_saving 0.15, max_tasks_lost 1"
   }
 }

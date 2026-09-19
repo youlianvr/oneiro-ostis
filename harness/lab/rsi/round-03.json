@@ -1,0 +1,248 @@
+{
+  "round": 3,
+  "criteria_version": 1,
+  "replay_verification": [
+    {
+      "steps": 5,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        1902,
+        2410,
+        2500,
+        3260,
+        4350
+      ]
+    },
+    {
+      "steps": 10,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        1193,
+        1766,
+        2262,
+        3139,
+        4856,
+        6124,
+        7250,
+        8538,
+        12581,
+        19353
+      ]
+    },
+    {
+      "steps": 5,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        2171,
+        3061,
+        3274,
+        4047,
+        5044
+      ]
+    },
+    {
+      "steps": 6,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        2736,
+        3958,
+        3992,
+        5321,
+        6567,
+        7492
+      ]
+    }
+  ],
+  "proposed": [
+    {
+      "name": "no_initial_tests_short_obs",
+      "include_file_list": true,
+      "include_initial_tests": false,
+      "context_mode": "full",
+      "window_steps": 10,
+      "observation_chars": 800,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    },
+    {
+      "name": "no_initial_tests_window",
+      "include_file_list": true,
+      "include_initial_tests": false,
+      "context_mode": "window",
+      "window_steps": 6,
+      "observation_chars": 2000,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    }
+  ],
+  "notes": [],
+  "verdicts": [
+    {
+      "policy": "no_initial_tests_window",
+      "predicted_tokens": 42861.2,
+      "recorded_tokens": 57977.0,
+      "predicted_saving": 0.2607,
+      "steps_covered": 0,
+      "steps_total": 26,
+      "decision_replayable": 0.0,
+      "passed_efficiency": true,
+      "reasons": [
+        "predicted saving 26.1% vs required 15%",
+        "5/5 steps diverge: the model's decisions there are NOT replayable (abstain)",
+        "12 observations would be dropped by windowing"
+      ]
+    },
+    {
+      "policy": "no_initial_tests_short_obs",
+      "predicted_tokens": 44944.9,
+      "recorded_tokens": 57977.0,
+      "predicted_saving": 0.2248,
+      "steps_covered": 0,
+      "steps_total": 26,
+      "decision_replayable": 0.0,
+      "passed_efficiency": true,
+      "reasons": [
+        "predicted saving 22.5% vs required 15%",
+        "5/5 steps diverge: the model's decisions there are NOT replayable (abstain)",
+        "10/10 steps diverge: the model's decisions there are NOT replayable (abstain)"
+      ]
+    }
+  ],
+  "deployed": {
+    "policy": {
+      "name": "no_initial_tests_window",
+      "include_file_list": true,
+      "include_initial_tests": false,
+      "context_mode": "window",
+      "window_steps": 6,
+      "observation_chars": 2000,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    },
+    "online_search": {
+      "tasks": 4,
+      "solved": 3,
+      "prompt_tokens": 42740,
+      "mean_wall_seconds": 20.2
+    },
+    "online_held_out": {
+      "tasks": 2,
+      "solved": 1,
+      "prompt_tokens": 12422,
+      "mean_wall_seconds": 20.5
+    },
+    "results_search": [
+      {
+        "task": "t01-start-total",
+        "solved": true,
+        "steps": 5,
+        "tool_calls": 3,
+        "prompt_tokens": 5971,
+        "total_tokens": 6465,
+        "wall_seconds": 9.99,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t01-start-total-rsi-r3-search-no_initial_tests_window-20260920-011143-jbof"
+      },
+      {
+        "task": "t02-clamp-bounds",
+        "solved": true,
+        "steps": 8,
+        "tool_calls": 6,
+        "prompt_tokens": 13755,
+        "total_tokens": 15231,
+        "wall_seconds": 24.55,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t02-clamp-bounds-rsi-r3-search-no_initial_tests_window-20260920-011155-99df"
+      },
+      {
+        "task": "t03-parse-duration",
+        "solved": false,
+        "steps": 5,
+        "tool_calls": 3,
+        "prompt_tokens": 6580,
+        "total_tokens": 7129,
+        "wall_seconds": 20.58,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t03-parse-duration-rsi-r3-search-no_initial_tests_window-20260920-011223-nhyj"
+      },
+      {
+        "task": "t05-retry-backoff",
+        "solved": true,
+        "steps": 8,
+        "tool_calls": 6,
+        "prompt_tokens": 16434,
+        "total_tokens": 18278,
+        "wall_seconds": 25.73,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t05-retry-backoff-rsi-r3-search-no_initial_tests_window-20260920-011252-lz5i"
+      }
+    ],
+    "results_held_out": [
+      {
+        "task": "t04-dedupe-order",
+        "solved": false,
+        "steps": 5,
+        "tool_calls": 3,
+        "prompt_tokens": 5855,
+        "total_tokens": 6345,
+        "wall_seconds": 18.44,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t04-dedupe-order-rsi-r3-heldout-no_initial_tests_window-20260920-011320-p783"
+      },
+      {
+        "task": "t06-csv-column-total",
+        "solved": true,
+        "steps": 5,
+        "tool_calls": 3,
+        "prompt_tokens": 6567,
+        "total_tokens": 7123,
+        "wall_seconds": 22.47,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t06-csv-column-total-rsi-r3-heldout-no_initial_tests_window-20260920-011343-53wk"
+      }
+    ],
+    "comparison": {
+      "search": {
+        "tasks": 4,
+        "solved_before": 4,
+        "solved_after": 3,
+        "tasks_lost": 1,
+        "tasks_gained": 0,
+        "prompt_tokens_before": 57977,
+        "prompt_tokens_after": 42740,
+        "token_delta": -0.2628111147524018
+      },
+      "held_out": {
+        "tasks": 2,
+        "solved_before": 1,
+        "solved_after": 1,
+        "tasks_lost": 0,
+        "tasks_gained": 0,
+        "prompt_tokens_before": 9995,
+        "prompt_tokens_after": 12422,
+        "token_delta": 0.24282141070535268
+      }
+    }
+  },
+  "generalisation": {
+    "search_token_delta": -0.2628111147524018,
+    "held_out_token_delta": 0.24282141070535268,
+    "search_solved_delta": -1,
+    "held_out_solved_delta": 0,
+    "transferred": false
+  },
+  "outcome": "deployed and within capability tolerance; the saving did not transfer to the held-out tasks"
+}

@@ -194,6 +194,56 @@ concept_dream_cycle
     [dream cycle]
     (* <- lang_en;; *);;
 
+/* ---------- harness policies: the RSI search tree ---------- */
+
+nrel_harness_descriptor <- sc_node_non_role_relation;;
+nrel_harness_descriptor
+=> nrel_main_idtf:
+    [descriptor of harness policy*]
+    (* <- lang_en;; *);;
+
+nrel_harness_replay_saving <- sc_node_non_role_relation;;
+nrel_harness_replay_saving
+=> nrel_main_idtf:
+    [replay-predicted saving of harness policy*]
+    (* <- lang_en;; *);;
+
+nrel_harness_gate <- sc_node_non_role_relation;;
+nrel_harness_gate
+=> nrel_main_idtf:
+    [efficiency gate verdict on harness policy*]
+    (* <- lang_en;; *);;
+
+nrel_harness_online_result <- sc_node_non_role_relation;;
+nrel_harness_online_result
+=> nrel_main_idtf:
+    [measured online result of harness policy*]
+    (* <- lang_en;; *);;
+
+nrel_harness_search_round <- sc_node_non_role_relation;;
+nrel_harness_search_round
+=> nrel_main_idtf:
+    [search round that produced harness policy*]
+    (* <- lang_en;; *);;
+
+nrel_harness_round_record <- sc_node_non_role_relation;;
+nrel_harness_round_record
+=> nrel_main_idtf:
+    [record of a harness search round*]
+    (* <- lang_en;; *);;
+
+concept_harness <- sc_node_class;;
+concept_harness
+=> nrel_main_idtf:
+    [harness policy]
+    (* <- lang_en;; *);;
+
+concept_harness_round <- sc_node_class;;
+concept_harness_round
+=> nrel_main_idtf:
+    [harness search round]
+    (* <- lang_en;; *);;
+
 /* ---------- provenance constants ---------- */
 
 source_direct <- concept;;

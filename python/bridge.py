@@ -85,8 +85,22 @@ NREL_DREAM_ROUND = "nrel_dream_round"
 CONCEPT_STRATEGY = "concept_strategy"
 CONCEPT_EXPERIENCE_EVENT = "concept_experience_event"
 
+# Harness policies: the search tree of the RSI loop (a different species of
+# strategy — it is a program about what the agent is shown, not a behaviour).
+NREL_HARNESS_DESCRIPTOR = "nrel_harness_descriptor"
+NREL_HARNESS_REPLAY_SAVING = "nrel_harness_replay_saving"
+NREL_HARNESS_GATE = "nrel_harness_gate"
+NREL_HARNESS_ONLINE_RESULT = "nrel_harness_online_result"
+NREL_HARNESS_SEARCH_ROUND = "nrel_harness_search_round"
+NREL_HARNESS_ROUND_RECORD = "nrel_harness_round_record"
+
+CONCEPT_HARNESS = "concept_harness"
+CONCEPT_HARNESS_ROUND = "concept_harness_round"
+
 EPISODE_PREFIX = "episode_"
 STRATEGY_PREFIX = "strategy_"
+HARNESS_PREFIX = "harness_"
+HARNESS_ROUND_PREFIX = "harness_round_"
 
 RRELS = ["rrel_1", "rrel_2", "rrel_3", "rrel_4", "rrel_5"]
 
@@ -398,6 +412,125 @@ class OneiroBridge:
                 }
             )
         return strategies
+
+    # ---------- harness policies (the RSI search tree) ----------
+
+    def save_harness(
+        self,
+        name: str,
+        descriptor: dict,
+        *,
+        replay_saving: Optional[float] = None,
+        gate: Optional[dict] = None,
+        online_result: Optional[dict] = None,
+        derived_from: Optional[str] = None,
+        round_index: Optional[int] = None,
+    ) -> str:
+        """Store a harness policy as a graph entity of class concept_harness.
+
+        The policy descriptor, the judge's verdict, the gate decision and what
+        the online run measured all hang off one node, so the search tree is
+        readable in sc-web instead of being a log file somewhere.
+        """
+        node = self.resolve_entity(HARNESS_PREFIX + name)
+        constr = ScConstruction()
+        constr.generate_connector(
+            sc_type.CONST_PERM_POS_ARC, self.keynode(CONCEPT_HARNESS), node, "class_arc"
+        )
+        self._add_json_relation(constr, node, NREL_HARNESS_DESCRIPTOR, descriptor)
+        if gate is not None:
+            self._add_json_relation(constr, node, NREL_HARNESS_GATE, gate)
+        if online_result is not None:
+            self._add_json_relation(constr, node, NREL_HARNESS_ONLINE_RESULT, online_result)
+        if replay_saving is not None:
+            self._add_numeric_relation(constr, node, NREL_HARNESS_REPLAY_SAVING, float(replay_saving))
+        if round_index is not None:
+            self._add_numeric_relation(constr, node, NREL_HARNESS_SEARCH_ROUND, int(round_index))
+        if derived_from is not None:
+            parent = self.resolve_entity(HARNESS_PREFIX + derived_from)
+            constr.generate_connector(sc_type.CONST_COMMON_ARC, node, parent, "derived_arc")
+            constr.generate_connector(
+                sc_type.CONST_PERM_POS_ARC, self.keynode(NREL_DERIVED_FROM), "derived_arc"
+            )
+        generate_elements(constr)
+        return name
+
+    def save_harness_round(self, index: int, record: dict) -> str:
+        """Store one search round (frozen criteria, candidates, outcome)."""
+        name = f"{HARNESS_ROUND_PREFIX}{index}"
+        node = self.resolve_entity(name)
+        constr = ScConstruction()
+        constr.generate_connector(
+            sc_type.CONST_PERM_POS_ARC, self.keynode(CONCEPT_HARNESS_ROUND), node, "class_arc"
+        )
+        self._add_json_relation(constr, node, NREL_HARNESS_ROUND_RECORD, record)
+        generate_elements(constr)
+        return name
+
+    def load_harnesses(self) -> list[dict]:
+        """Every harness policy node with the fields the loop wrote to it."""
+        template = ScTemplate()
+        template.triple(self.keynode(CONCEPT_HARNESS), sc_type.VAR_PERM_POS_ARC, sc_type.VAR_NODE)
+        found = search_by_template(template)
+
+        rows: list[dict] = []
+        for item in found:
+            node = item.get(2)
+            idtf = self.idtf_of(node) or ""
+            name = idtf[len(HARNESS_PREFIX):] if idtf.startswith(HARNESS_PREFIX) else idtf
+            derived = self._relation_value_idtf(node, NREL_DERIVED_FROM)
+            if derived and derived.startswith(HARNESS_PREFIX):
+                derived = derived[len(HARNESS_PREFIX):]
+            rows.append({
+                "name": name,
+                "descriptor": self._json_relation(node, NREL_HARNESS_DESCRIPTOR),
+                "replay_saving": self._relation_value_number(node, NREL_HARNESS_REPLAY_SAVING),
+                "gate": self._json_relation(node, NREL_HARNESS_GATE),
+                "online_result": self._json_relation(node, NREL_HARNESS_ONLINE_RESULT),
+                "round_index": self._relation_value_number(node, NREL_HARNESS_SEARCH_ROUND),
+                "derived_from": derived,
+            })
+        return rows
+
+    def load_harness_rounds(self) -> list[dict]:
+        """Every stored search round, newest last; one row per round.
+
+        A round republished after a later run leaves the same record linked
+        twice, so rows are deduplicated by round identifier: a reader wants one
+        row per round, not one per arc in the graph.
+        """
+        template = ScTemplate()
+        template.triple(self.keynode(CONCEPT_HARNESS_ROUND), sc_type.VAR_PERM_POS_ARC, sc_type.VAR_NODE)
+        rows: dict[str, dict] = {}
+        for item in search_by_template(template):
+            node = item.get(2)
+            idtf = self.idtf_of(node) or ""
+            index = idtf[len(HARNESS_ROUND_PREFIX):] if idtf.startswith(HARNESS_ROUND_PREFIX) else idtf
+            rows.setdefault(index, {"round": index,
+                                    "record": self._json_relation(node, NREL_HARNESS_ROUND_RECORD)})
+        return sorted(rows.values(), key=lambda row: str(row["round"]))
+
+    def _json_relation(self, node: ScAddr, relation_idtf: str):
+        """Read a JSON string link hanging off `node` through `relation_idtf`."""
+        text = self._relation_value_text(node, relation_idtf)
+        if not text:
+            return None
+        try:
+            return json.loads(text)
+        except ValueError:
+            return None
+
+    def _add_json_relation(self, constr: ScConstruction, node: ScAddr, relation_idtf: str, payload) -> None:
+        """JSON relation: the payload is stored as a string link on an arc."""
+        link_alias = f"json_link_{relation_idtf}"
+        constr.generate_link(
+            sc_type.CONST_NODE_LINK,
+            ScLinkContent(json.dumps(payload, sort_keys=True), ScLinkContentType.STRING),
+            link_alias,
+        )
+        arc_alias = f"json_arc_{relation_idtf}"
+        constr.generate_connector(sc_type.CONST_COMMON_ARC, node, link_alias, arc_alias)
+        constr.generate_connector(sc_type.CONST_PERM_POS_ARC, self.keynode(relation_idtf), arc_alias)
 
     def _add_numeric_relation(self, constr: ScConstruction, node: ScAddr, relation_idtf: str, value) -> None:
         """Numeric relation (link inside the same construction)."""
