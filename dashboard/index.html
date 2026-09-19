@@ -159,18 +159,18 @@ footer code{background:var(--card);border:1px solid var(--line);border-radius:4p
     <div class="d">стратегия действует в детерминированном мире, каждый шаг пишется в граф</div><div class="info" id="i-day"></div></div>
   <div class="stage" data-stage="explore"><div class="n">этап 2 · сбор данных</div><div class="t">Разведка</div>
     <div class="d">дополнительные эпизоды расширяют покрытие опыта для судьи</div><div class="info" id="i-explore"></div></div>
-  <div class="stage" data-stage="dream"><div class="n">этап 3 · оценка</div><div class="t">Сон</div>
+  <div class="stage" data-stage="dream"><div class="n">этап 3 · оценка</div><div class="t">Replay</div>
     <div class="d">точный replay по записям: оценка кандидатов без запуска мира</div><div class="info" id="i-dream"></div></div>
-  <div class="stage" data-stage="deploy"><div class="n">этап 4 · измерение</div><div class="t">Утро</div>
+  <div class="stage" data-stage="deploy"><div class="n">этап 4 · измерение</div><div class="t">Деплой</div>
     <div class="d">победитель проверяется в мире, оценка сверяется с прогнозом</div><div class="info" id="i-deploy"></div></div>
 </div>
 
 <div class="deck">
-  <button class="btn-primary" id="btnDay">Играть день</button>
-  <button id="btnExplore">Играть разведку</button>
-  <button class="btn-dream" id="btnDream">Устроить сон</button>
-  <button class="btn-primary" id="btnCycle">Полный цикл (день + разведка + сон)</button>
-  <button class="btn-danger" id="btnReset">Сбросить базу</button>
+  <button class="btn-primary" id="btnDay">Эпизод: текущая стратегия</button>
+  <button id="btnExplore">Эпизоды: разведка</button>
+  <button class="btn-dream" id="btnDream">Оценка кандидатов (replay)</button>
+  <button class="btn-primary" id="btnCycle">Полный цикл (эпизод + разведка + оценка + деплой)</button>
+  <button class="btn-danger" id="btnReset">Сброс базы знаний</button>
   <button id="btnStop" disabled>Остановить</button>
   <span class="job" id="jobTxt">простаивает</span>
 </div>
@@ -191,7 +191,7 @@ footer code{background:var(--card);border:1px solid var(--line);border-radius:4p
     <div class="verdict" id="ascentVerdict"></div>
   </div>
   <div class="card">
-    <h2>Вердикты снов</h2>
+    <h2>Оценка стратегий судьёй (replay)</h2>
     <div class="body" style="max-height:340px;overflow:auto" id="dreamTable"></div>
   </div>
   <div class="card">
@@ -249,7 +249,7 @@ function render(d){
   // статус задачи приходит с сервера: завершённая работа гасит индикацию
   setUI(d.job.running, d.job.name || "");
 
-  // переключатель персонажа
+  // переключатель субъекта опыта
   const sel = $("subjectSel");
   if(sel.dataset.loaded !== d.subjects.join(",")){
     sel.dataset.loaded = d.subjects.join(",");
@@ -318,8 +318,8 @@ function renderClaims(bench){
        <td class="pos">${r.delta == null ? "" : "+" + r.delta.toFixed(1)}</td>
        <td>${r.ratio == null ? "" : r.ratio.toFixed(2) + "x"}</td></tr>`).join("");
     const domName = dom.name.replace(/\u2014/g, "\u00b7");
-    return `<div class="claim"><div class="ct">${domName}: сон улучшил результат</div>
-      <div class="cn">каждая строка: отдельный мир, 3 раунда «день → сон → день». Дельта измерена в мире, не оценена судьёй</div>
+    return `<div class="claim"><div class="ct">${domName}: самоулучшение измерено</div>
+      <div class="cn">каждая строка: отдельный мир, 3 цикла «эпизод, оценка, деплой». Дельта измерена в мире, не спрогнозирована</div>
       <table><tr><th>мир</th><th>день 1</th><th>итог</th><th>дельта</th><th>×раз</th></tr>${rows}</table></div>`;
   }).join("");
 
@@ -350,7 +350,7 @@ function renderClaims(bench){
 function renderAscent(d, first){
   const eps = d.episodes || {};
   if(!Object.keys(eps).length){
-    $("ascent").innerHTML = `<div class="empty">онлайн-день ещё не игрался: нажмите «Играть день», затем «Устроить сон»</div>`;
+    $("ascent").innerHTML = `<div class="empty">деплой-эпизодов нет: запустите полный цикл, затем одиночные этапы кнопками выше</div>`;
     $("ascentVerdict").innerHTML = "";
     return;
   }
@@ -399,28 +399,28 @@ function renderAscent(d, first){
   if(pts.length && first){
     const gained = pts[pts.length-1].v - first;
     v.innerHTML = gained > 0
-      ? `Первый день ${first.toFixed(1)} <b>→ ${pts[pts.length-1].v.toFixed(1)}</b> после сна: <b>+${gained.toFixed(1)}</b> очков в мире`
-      : `Сон пока не дал роста: ${first.toFixed(1)} → ${pts[pts.length-1].v.toFixed(1)}`;  }
+      ? `Первый цикл ${first.toFixed(1)} <b>→ ${pts[pts.length-1].v.toFixed(1)}</b> после деплоя лучшей стратегии: <b>+${gained.toFixed(1)}</b> очков`
+      : `Роста нет: ${first.toFixed(1)} → ${pts[pts.length-1].v.toFixed(1)}`;  }
 }
 
-/* ---------- таблица снов ---------- */
+/* ---------- таблица оценок стратегий ---------- */
 function renderTable(strategies){
   const maxR = Math.max(...strategies.map(s => s.replay || 0), 1);
   const rows = [...strategies].sort((a,b) => (b.replay||0) - (a.replay||0));
   if(!rows.length){
-    $("dreamTable").innerHTML = `<div class="empty">в графе ещё нет стратегий: устройте сон</div>`;
+    $("dreamTable").innerHTML = `<div class="empty">в графе нет стратегий: запустите оценку кандидатов</div>`;
     return;
   }
   const bestOnline = Math.max(...strategies.map(s => s.online ?? -Infinity));
   $("dreamTable").innerHTML = `<table>
-    <tr><th>стратегия</th><th>вердикт сна</th><th>онлайн</th><th>сон №</th></tr>` +
+    <tr><th>стратегия</th><th>replay-прогноз</th><th>измерено онлайн</th><th>раунд</th></tr>` +
     rows.map(st => {
       const isWin = st.online != null && st.online >= bestOnline - 0.01;
       const barW = Math.max(3, Math.round(140 * (st.replay || 0) / maxR));
       return `<tr class="${isWin ? "winrow" : ""}">
         <td>${st.name || "(без имени)"}
-          ${st.online != null ? `<span class="tag dep">в деле</span>` : ""}
-          ${isWin ? `<span class="tag win">чемпион</span>` : ""}</td>
+          ${st.online != null ? `<span class="tag dep">деплой</span>` : ""}
+          ${isWin ? `<span class="tag win">лучшая</span>` : ""}</td>
         <td><span class="bar-wrap"><span class="bar" style="width:0" data-w="${barW}"></span>${st.replay ?? ""}</span></td>
         <td>${st.online != null ? st.online.toFixed(2) : ""}</td>
         <td>${st.round ?? ""}</td></tr>`;
@@ -436,7 +436,7 @@ function renderEpisodes(eps){
   const names = Object.keys(eps);
   if(!names.length){
     $("epTabs").innerHTML = "";
-    $("epBody").innerHTML = `<div class="empty">для этого персонажа эпизодов пока нет: нажмите «Играть день»</div>`;
+    $("epBody").innerHTML = `<div class="empty">для этого субъекта эпизодов нет: запустите «Эпизод: текущая стратегия»</div>`;
     currentEp = null;
     return;
   }
@@ -506,13 +506,14 @@ es.onmessage = e => {
   log.scrollTop = log.scrollHeight;
   // подсветка этапов по содержимому реальных событий
   if(line.includes("экспедицию") || line.includes("Запущено: День")) { resetStages(); setStage("day","active"); }
-  if(line.includes("Запущено: Сон")) setStage("dream","active");
+  if(line.includes("Запущено: Сон") || line.includes("Запущено: Оценка")) setStage("dream","active");
+  if(line.includes("Запущено: Оценка")) setStage("dream","active");
   if(line.includes("Запущено: Разведка")) setStage("explore","active");
   if(line.includes("Запущено: Полный")) resetStages();
   if(line.includes("Разведка маршрутом")) { setStage("day","done","записано"); setStage("explore","active"); }
-  if(line.includes("засыпает")) { setStage("explore","done","2 маршрута"); setStage("dream","active"); }
-  if(line.includes("Судья переиграл")) $("i-dream").textContent = line.slice(0,64);
-  if(line.includes("Победитель:")) { setStage("dream","done"); setStage("deploy","active"); }
+  if(line.includes("Оценка кандидатов")) { setStage("explore","done","2 маршрута"); setStage("dream","active"); }
+  if(line.includes("Replay завершил")) $("i-dream").textContent = line.slice(0,64);
+  if(line.includes("Победитель replay")) { setStage("dream","done"); setStage("deploy","active"); }
   if(line.includes("День завершён:")) { setStage("day","done","измерено"); setStage("deploy","done","измерено онлайн"); scheduleReset(); }
   if(line.includes("Раунд")) { /* полный цикл пишет свои строки, баннер уже обновлён по этапам */ }
   if(line.includes("Полный цикл")) resetStages();

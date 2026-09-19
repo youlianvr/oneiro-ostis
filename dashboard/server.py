@@ -341,7 +341,7 @@ def _start(kind: str):
     actions = {
         "day": (_do_day, subject, "День"),
         "explore": (_do_explore, subject, "Разведка"),
-        "dream": (_do_dream, subject, "Сон"),
+        "dream": (_do_dream, subject, "Оценка (replay)"),
         "cycle": (_do_cycle, subject, "Полный цикл"),
         "reset": (_do_reset, None, "Сброс базы"),
     }
@@ -366,7 +366,7 @@ def _do_day():
     subject = _job["subject"]
     with _lock:
         b = _bridge()
-        _log_event(f"Агент отправляется в экспедицию (стратегия «блуждание»), каждый шаг записывается в граф знаний")
+        _log_event(f"Эпизод по текущей стратегии: каждый шаг пишется в граф (субъект {subject})")
         _check_stop()
         result = run_episode(b, subject, strategy_weak_incumbent(), episode_id=episode_id_for("day", "weak_wander"))
         b.mark_strategy_online_score("weak_wander", result.total_score)
@@ -396,7 +396,7 @@ def _do_dream():
     subject = _job["subject"] or _find_any_subject()
     if not subject:
         raise RuntimeError("Нет записанного опыта: сначала запустите день")
-    _log_event(f"Агент «засыпает»: судья перебирает варианты стратегии по записям за {subject}")
+    _log_event(f"Оценка кандидатов: точный replay по записям опыта за {subject}")
     with _lock:
         b = _bridge()
         _check_stop()
@@ -411,10 +411,10 @@ def _do_dream():
         )
         elapsed = time.perf_counter() - t0
     ranked = sorted(result.results, key=lambda p: p[1].estimated_score, reverse=True)
-    _log_event(f"Судья переиграл {len(result.results)} вариантов стратегии за {elapsed:.1f} сек, ни разу не запустив мир")
+    _log_event(f"Replay завершил {len(result.results)} вариантов стратегии за {elapsed:.1f} сек, мир не запускался ни разу")
     for cand, rr in ranked[:3]:
         _log_event(f"   {cand.name}: прогноз {rr.estimated_score:.1f} (покрытие {rr.coverage:.2f})")
-    _log_event(f"Победитель: {result.winner.name}, станет поведением агента на следующий день")
+    _log_event(f"Победитель replay-оценки: {result.winner.name} (прогноз {result.results and sorted(result.results, key=lambda p: p[1].estimated_score, reverse=True)[0][1].estimated_score or 0:.1f}), будет измерен в следующем эпизоде")
     _log_event(f"Противоречий в записях: {len(result.consistency['conflicts'])}")
 
 
@@ -422,7 +422,7 @@ def _do_cycle():
     from loop import run_loop
 
     subject = _job["subject"]
-    _log_event(f"Полный цикл: день, разведка, сон, деплой для {subject}")
+    _log_event(f"Полный цикл: эпизод, разведка, оценка, деплой для {subject}")
     with _lock:
         b = _bridge()
         report = run_loop(b, subject=subject, rounds=2, max_steps=40, limit=24,
