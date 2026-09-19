@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import statistics
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -38,7 +39,7 @@ from pathlib import Path
 import agent
 import replay
 import runner
-from policy import HarnessPolicy, get_policy
+from policy import VARIANTS, HarnessPolicy, get_policy
 
 LAB = Path(__file__).resolve().parent / "lab"
 RSI_DIR = LAB / "rsi"
@@ -126,8 +127,40 @@ CRITERIA_V3 = {
     },
 }
 
-CRITERIA_HISTORY = {1: CRITERIA_V1, 2: CRITERIA_V2, 3: CRITERIA_V3}
-DEFAULT_CRITERIA = CRITERIA_V3
+CRITERIA_V4 = {
+    **CRITERIA_V3,
+    "version": 4,
+    "evidence": {
+        **CRITERIA_V3["evidence"],
+        "trajectory_changes": {
+            "fields": ["context_mode", "window_steps", "observation_chars", "read_lines",
+                       "include_initial_tests", "include_file_list", "max_steps",
+                       "verify_before_finish", "max_verify_nudges"],
+            "note": "a policy that changes what the agent is shown or how long it may run "
+                    "does not just change a prompt, it changes the trajectory. Replay "
+                    "covers aligned steps, and a candidate like that produces fewer "
+                    "aligned steps in reality than the estimate assumed, so the estimate "
+                    "is an estimate about a trajectory that no longer exists",
+            "requirement": "such a candidate is measured online on the search set before "
+                           "it may be deployed, whatever its replay coverage",
+        },
+    },
+    "revision": {
+        "from_version": 3,
+        "reason": "replay coverage measures how many of the recorded steps a candidate "
+                  "would have sent, not how many steps it would then take. Measured: a "
+                  "windowed candidate at 62% coverage was predicted to save 15% and cost "
+                  "20% more, because the agent, with less history, took more steps on five "
+                  "of six tasks (t02: 6 to 9 steps, t06: 6 to 10)",
+        "evidence": "reference measurement stored under the label reference-window3; "
+                    "the per-task step counts are in the recorded runs",
+        "unchanged": "min_predicted_saving 0.15, max_tasks_lost 1, "
+                     "min_decision_replayable 0.5",
+    },
+}
+
+CRITERIA_HISTORY = {1: CRITERIA_V1, 2: CRITERIA_V2, 3: CRITERIA_V3, 4: CRITERIA_V4}
+DEFAULT_CRITERIA = CRITERIA_V4
 
 # The proposer is a different job from the agent under test: it reasons about
 # trajectories rather than acting, so it may be a different model. The agent
@@ -192,10 +225,17 @@ You will get a JSON object with four keys:
   episodes        full recorded trajectories: every tool call, its arguments,
                   and the observation the agent received, step by step
   past_candidates judged estimates and online measurements from earlier rounds
+  past_deployments what the online runs actually measured: token change on the
+                  search set, solved count and token change on the held-out set,
+                  and whether the saving transferred. This is the only feedback
+                  about reality; read it before proposing
+  measured_references  the same measurements for hand-written policies, run as a
+                  control. A policy that looks good to the judge and cost more
+                  when run is the most useful thing here
   judge           how the judge decides, and which past candidates it could not
                   judge at all: read it before proposing, because a policy whose
-                  prompts diverge from the recording at step 0 costs a whole
-                  online round to measure
+                  prompts diverge from the recording at step 0 cannot be judged
+                  and can only be measured online at the cost of real runs
 
 Propose policies that make the agent cheaper (fewer prompt tokens) or more
 reliable (more tasks solved) by acting on what the trajectories actually show:
@@ -247,15 +287,44 @@ def judge_briefing(history: list[dict], criteria: dict) -> dict:
                            "Removing the initial test output changes the first message, "
                            "so no step aligns and nothing can be replayed",
         "past_unjudgeable": unjudgeable,
-        "cost_of_being_unjudgeable": "such a candidate is measured online inside the "
-                                      "round budget instead: slower, costs real runs, "
-                                      "and it is deployed on measurement, not on a "
-                                      "judged saving",
+        "the_choice": "a candidate the judge can replay is decided for free and at once; "
+                      "a candidate it cannot replay is measured online inside the round "
+                      "budget, which costs real runs and is slower but is not refused. "
+                      "Both are legitimate proposals; the second is worth it only when "
+                      "the predicted saving is large",
     }
 
 
+def deployment_history(rounds: list[dict]) -> list[dict]:
+    """What the online runs measured, for the proposer to learn from.
+
+    The judge's verdicts say what a candidate would have cost. Only these say
+    what happened: whether the saving survived being run, and whether it held on
+    tasks the policy never touched.
+    """
+    rows = []
+    for payload in rounds:
+        deployed = payload.get("deployed") or {}
+        if not deployed:
+            continue
+        comparison = deployed.get("comparison") or {}
+        general = payload.get("generalisation") or {}
+        rows.append({
+            "round": payload["round"],
+            "policy": deployed.get("policy", {}).get("name"),
+            "evidence": payload.get("evidence"),
+            "search_token_delta": (comparison.get("search") or {}).get("token_delta"),
+            "search_tasks_lost": (comparison.get("search") or {}).get("tasks_lost"),
+            "held_out_solved": (deployed.get("online_held_out") or {}).get("solved"),
+            "held_out_tasks": (deployed.get("online_held_out") or {}).get("tasks"),
+            "held_out_token_delta": (comparison.get("held_out") or {}).get("token_delta"),
+            "transferred": general.get("transferred"),
+        })
+    return rows
+
+
 def proposer_context(records: list[dict], history: list[dict], criteria: dict,
-                     trace_budget: int = 7000) -> dict:
+                     trace_budget: int = 7000, deployments: list[dict] | None = None) -> dict:
     """Everything the proposer is allowed to see: full traces, not summaries."""
     traces = []
     for record in records:
@@ -280,6 +349,8 @@ def proposer_context(records: list[dict], history: list[dict], criteria: dict,
         "criteria": {k: criteria[k] for k in ("efficiency", "capability", "budget")},
         "episodes": traces,
         "past_candidates": history,
+        "past_deployments": deployments,
+        "measured_references": reference_measurements(),
         "judge": judge_briefing(history, criteria),
     }
 
@@ -351,6 +422,10 @@ def gate(candidates: list[HarnessPolicy], estimates: dict[str, list[replay.Estim
     minimum = criteria["efficiency"]["min_predicted_saving"]
     floor = criteria["capability"].get("min_decision_replayable", 0.0)
     online_ok = bool(criteria.get("evidence", {}).get("unjudgeable_path", {}).get("enabled"))
+    trajectory_fields = (criteria.get("evidence", {})
+                         .get("trajectory_changes", {}).get("fields") or [])
+    baseline = get_policy("baseline")
+    by_name = {candidate.name: candidate for candidate in candidates}
     verdicts = []
     for name, rows in estimates.items():
         predicted = sum(e.prompt_tokens_predicted for e in rows)
@@ -361,7 +436,16 @@ def gate(candidates: list[HarnessPolicy], estimates: dict[str, list[replay.Estim
         replayable = covered / total if total else 0.0
         saving_ok = saving >= minimum
         evidence_ok = replayable >= floor
-        path = ("replay" if saving_ok and evidence_ok
+        candidate = by_name.get(name)
+        changed = ([f for f in trajectory_fields
+                    if getattr(candidate, f) != getattr(baseline, f)]
+                   if candidate is not None else [])
+        # A policy that changes what the agent sees or how long it may run does
+        # not just change a prompt: the trajectory itself will differ, so a
+        # replay verdict about it has to be checked against a real run.
+        needs_verification = bool(saving_ok and evidence_ok and changed)
+        path = ("verify" if needs_verification
+                else "replay" if saving_ok and evidence_ok
                 else "online" if saving_ok and online_ok
                 else "refused")
         verdicts.append({
@@ -376,11 +460,13 @@ def gate(candidates: list[HarnessPolicy], estimates: dict[str, list[replay.Estim
             "passed_evidence": evidence_ok,
             "passed_gate": saving_ok and evidence_ok,
             "path": path,
+            "changed_fields": changed,
             "reasons": [
                 f"predicted saving {saving:.1%} vs required {minimum:.0%}",
                 f"decisions replayed {replayable:.0%} vs required {floor:.0%}",
                 f"path: {path}",
-            ] + [note for e in rows for note in e.notes][:2],
+            ] + ([f"changes the trajectory: {', '.join(changed)}"] if changed else []) \
+              + [note for e in rows for note in e.notes][:2],
         })
     verdicts.sort(key=lambda v: v["predicted_saving"], reverse=True)
     return verdicts
@@ -434,17 +520,16 @@ def summarise(results: list[dict]) -> dict:
     }
 
 
-def incumbent_results(tasks: list[str]) -> list[dict]:
-    """The best recorded baseline run per task, from the corpora already on disk."""
-    records = {}
-    for record in replay.load_records("base"):
-        task = record["task"]
-        if task not in tasks:
-            continue
-        if task not in records or (record.get("solved") and not records[task].get("solved")):
-            records[task] = record
+# The same rule the judge uses when it loads its corpus, so the judge's bar and
+# the online bar are set by the same runs. Defined in replay.py, the module that
+# owns recordings.
+NORMAL_STOPS = replay.NORMAL_STOPS
+
+
+def results_from_records(records: list[dict]) -> list[dict]:
+    """Recorded episodes in the same shape `measure` returns, for comparison."""
     return [{
-        "task": task,
+        "task": record["task"],
         "solved": bool(record.get("solved")),
         "steps": len(record.get("steps") or []),
         "tool_calls": record.get("tool_calls", 0),
@@ -453,7 +538,40 @@ def incumbent_results(tasks: list[str]) -> list[dict]:
         "wall_seconds": record.get("wall_seconds", 0),
         "stop_reason": record.get("stop_reason", "recorded"),
         "scratch": record.get("_path", ""),
-    } for task, record in sorted(records.items())]
+    } for record in sorted(records, key=lambda r: r["task"])]
+
+
+def incumbent_results(tasks: list[str]) -> list[dict]:
+    """The recorded baseline per task: normal runs only, solved if any solved.
+
+    Several runs of the same task exist. Averaging over the runs that terminated
+    normally is the honest baseline: one lucky cheap run must not set the bar for
+    every later policy.
+    """
+    by_task: dict[str, list[dict]] = {}
+    for record in replay.load_records("base"):
+        if record["task"] in tasks and record.get("stop_reason") in NORMAL_STOPS:
+            by_task.setdefault(record["task"], []).append(record)
+
+    results = []
+    for task, group in sorted(by_task.items()):
+        solved = [r for r in group if r.get("solved")]
+        chosen = solved or group
+        results.append({
+            "task": task,
+            "solved": bool(solved),
+            "steps": int(statistics.mean(len(r.get("steps") or []) for r in chosen)),
+            "tool_calls": int(statistics.mean(r.get("tool_calls", 0) for r in chosen)),
+            "prompt_tokens": int(statistics.mean((r.get("tokens") or {}).get("input", 0)
+                                                 for r in chosen)),
+            "total_tokens": int(statistics.mean((r.get("tokens") or {}).get("total", 0)
+                                                for r in chosen)),
+            "wall_seconds": round(statistics.mean(r.get("wall_seconds", 0) for r in chosen), 1),
+            "stop_reason": "recorded",
+            "scratch": ",".join(r.get("_path", "") for r in chosen),
+            "runs_averaged": len(chosen),
+        })
+    return results
 
 
 # ---------- one round ----------
@@ -496,7 +614,8 @@ def run_round(index: int, proposer_model: str = PROPOSER_MODEL,
         "status": "incumbent",
     })
 
-    context = proposer_context(search_records, history, criteria)
+    context = proposer_context(search_records, history, criteria,
+                               deployments=deployment_history(previous))
     RSI_DIR.mkdir(parents=True, exist_ok=True)
     notes: list[str] = []
     candidates, notes, answered_by = propose_with_fallback(
@@ -516,6 +635,7 @@ def run_round(index: int, proposer_model: str = PROPOSER_MODEL,
     estimates = replay.judge(search_records, candidates)
     verdicts = gate(candidates, estimates, criteria)
     winner = first_by_path(verdicts, candidates, "replay")
+    verify_candidate = first_by_path(verdicts, candidates, "verify")
     online_candidate = first_by_path(verdicts, candidates, "online")
 
     payload = {
@@ -533,18 +653,32 @@ def run_round(index: int, proposer_model: str = PROPOSER_MODEL,
         "deployed": None,
     }
 
-    if winner is None and online_candidate is not None:
+    measured_before_deploy = False
+    if winner is None and verify_candidate is not None:
+        # Judged, but the judgement is about a trajectory this policy will not
+        # produce: it changes what the agent is shown or how long it may run.
+        winner, measured_before_deploy = verify_candidate, True
+        payload["evidence"] = (
+            "judged by replay, then measured online before deployment: the policy "
+            "changes what the agent is shown, so its trajectory, not only its "
+            "prompt, was in question")
+    elif winner is None and online_candidate is not None:
         # The judge abstained on everything, so nothing here is decided by
         # prediction. The candidate is measured online inside the round budget
         # and the number that matters is the measurement, not the estimate.
-        winner = online_candidate
+        winner, measured_before_deploy = online_candidate, True
         payload["evidence"] = ("online measurement: the judge could not replay this "
                                "candidate's decisions, so its efficiency is what "
                                "running it actually cost")
-        search_results = measure(winner, search, agent_model, f"rsi-r{index}-online-search")
+
+    if winner is not None and measured_before_deploy:
+        label = (f"rsi-r{index}-verify-search" if payload["evidence"].startswith("judged")
+                 else f"rsi-r{index}-online-search")
+        search_results = measure(winner, search, agent_model, label)
         online_comparison = compare(incumbent_results(search), search_results)
         tolerance = criteria["capability"]["max_tasks_lost"]
         payload["online_ab"] = {"results_search": search_results, "comparison": online_comparison}
+        predicted = next(v["predicted_saving"] for v in verdicts if v["policy"] == winner.name)
         if online_comparison.get("unmeasured_tasks"):
             payload["deployed"] = None
             payload["outcome"] = (
@@ -553,12 +687,13 @@ def run_round(index: int, proposer_model: str = PROPOSER_MODEL,
                 "capability was not settled and nothing was deployed")
             round_path(index).write_text(json.dumps(payload, indent=2), encoding="utf-8")
             return payload
-        if online_comparison["tasks_lost"] > tolerance:
+        if online_comparison["token_delta"] >= 0 or online_comparison["tasks_lost"] > tolerance:
+            # The measurement contradicts the estimate, and the measurement wins.
             payload["deployed"] = None
             payload["outcome"] = (
-                f"online path: measured and refused. The predicted saving of "
-                f"{next(v['predicted_saving'] for v in verdicts if v['policy'] == winner.name):+.1%} "
-                f"came with {online_comparison['token_delta']:+.1%} prompt tokens and "
+                f"online path: measured and refused. Predicted {predicted:+.1%}, measured "
+                f"{online_comparison['token_delta']:+.1%} prompt tokens on "
+                f"{len(online_comparison['token_scope_tasks'])} comparable tasks, "
                 f"{online_comparison['tasks_lost']} of {online_comparison['tasks']} tasks lost "
                 f"(tolerance {tolerance}); held-out tasks were never touched")
             round_path(index).write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -632,18 +767,26 @@ def compare(incumbent: list[dict], candidate: list[dict]) -> dict:
                     if before[t]["solved"] is not None and after[t]["solved"] is not None)
     solved_before = sum(1 for t in shared if before[t]["solved"])
     solved_after = sum(1 for t in shared if after[t]["solved"])
-    tokens_before = sum(before[t]["prompt_tokens"] for t in shared)
-    tokens_after = sum(after[t]["prompt_tokens"] for t in shared)
+    # Tokens are only comparable on work both sides finished. A task neither
+    # solved burns steps until the budget ends, and counting that as a cost
+    # increase would punish a policy for failing exactly as much as the baseline.
+    comparable = [t for t in shared if before[t]["solved"] and after[t]["solved"]]
+    tokens_before = sum(before[t]["prompt_tokens"] for t in comparable)
+    tokens_after = sum(after[t]["prompt_tokens"] for t in comparable)
     return {
         "tasks": len(shared),
         "unmeasured_tasks": unmeasured,
+        "token_scope_tasks": comparable,
+        "unsolved_in_both": [t for t in shared
+                             if not before[t]["solved"] and not after[t]["solved"]],
         "solved_before": solved_before,
         "solved_after": solved_after,
         "tasks_lost": sum(1 for t in shared if before[t]["solved"] and not after[t]["solved"]),
         "tasks_gained": sum(1 for t in shared if after[t]["solved"] and not before[t]["solved"]),
         "prompt_tokens_before": tokens_before,
         "prompt_tokens_after": tokens_after,
-        "token_delta": (tokens_after - tokens_before) / tokens_before if tokens_before else 0.0,
+        "token_delta": ((tokens_after - tokens_before) / tokens_before
+                        if tokens_before else 0.0),
     }
 
 
@@ -776,6 +919,165 @@ def replay_health() -> dict:
     }
 
 
+def reference_table() -> list[dict]:
+    """Judge the hand-written policies, so a round that finds nothing has a scale.
+
+    Offline, free, no provider: this is the judge's own answer to "what could be
+    saved by trimming what the agent sees and keeps", which is the honest way to
+    read a proposal that came in at zero.
+    """
+    criteria = load_criteria()
+    records = [r for r in replay.load_records("base") if r["task"] in criteria["search_tasks"]]
+    if not records:
+        return []
+    policies = [get_policy(name) for name in sorted(VARIANTS)]
+    estimates = replay.judge(records, policies)
+    rows = []
+    for verdict in gate(policies, estimates, criteria):
+        rows.append({**verdict, "policy": verdict["policy"]})
+    return rows
+
+
+def render_reference(rows: list[dict]) -> str:
+    if not rows:
+        return "no replayable episodes on the search set yet"
+    lines = ["Hand-written harness policies, judged from the recordings (no runs):", "",
+             "| policy | predicted saving | decisions replayed | path |", "|---|---|---|---|"]
+    for row in sorted(rows, key=lambda r: r["predicted_saving"], reverse=True):
+        lines.append(f"| {row['policy']} | {row['predicted_saving']:+.1%} | "
+                     f"{row['decision_replayable']:.0%} | {row['path']} |")
+    return "\n".join(lines)
+
+
+def measure_reference(name: str, agent_model: str) -> dict:
+    """Measure a hand-written policy online, clearly labelled as a reference.
+
+    Not a proposal, not gated: this is the control experiment, and the label on
+    its runs says so.
+    """
+    criteria = load_criteria()
+    search, held_out = criteria["search_tasks"], criteria["held_out_tasks"]
+    policy = get_policy(name)
+    label = f"reference-{name}"
+    search_results = measure(policy, search, agent_model, label)
+    held_out_results = measure(policy, held_out, agent_model, label)
+    comparison = {"search": compare(incumbent_results(search), search_results),
+                  "held_out": compare(incumbent_results(held_out), held_out_results)}
+    return {
+        "policy": policy.descriptor(),
+        "label": label,
+        "online_search": summarise(search_results),
+        "online_held_out": summarise(held_out_results),
+        "comparison": comparison,
+        "generalisation": generalisation(comparison["search"], comparison["held_out"]),
+    }
+
+
+def recompare() -> list[dict]:
+    """Recompute every recorded round's comparison from the runs it wrote.
+
+    The first baseline this loop used picked, per task, the cheapest recording
+    including runs that ended in an error; on a task the agent failed, that is a
+    one step failure against which any real attempt looks wasteful. The originals
+    stay in the round files, the corrected numbers are added beside them, and the
+    reason is written down: a correction that erases what it corrects is not a
+    correction.
+    """
+    criteria = load_criteria()
+    rows = []
+    for path in sorted(RSI_DIR.glob("round-*.json")):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        deployed = payload.get("deployed") or {}
+        if not deployed:
+            continue
+        index = payload["round"]
+        rebuilt = {}
+        for name, tasks in (("search", criteria["search_tasks"]),
+                            ("held_out", criteria["held_out_tasks"])):
+            labels = [f"rsi-r{index}-{name}", f"rsi-r{index}-online-search"] if name == "search" \
+                else [f"rsi-r{index}-heldout"]
+            records = [r for label in labels for r in replay.load_records(label)
+                       if r["task"] in tasks]
+            if not records:
+                rebuilt = {}
+                break
+            rebuilt[name] = compare(incumbent_results(tasks), results_from_records(records))
+        if not rebuilt:
+            continue
+        payload["comparison_corrected"] = rebuilt
+        payload["generalisation_corrected"] = generalisation(rebuilt["search"], rebuilt["held_out"])
+        payload["correction"] = (
+            "the recorded comparison used the cheapest recorded run per task as the "
+            "baseline, including runs that ended in an error; this one averages only "
+            "runs that terminated normally, divided by solved, and compares tokens "
+            "only on tasks both sides solved")
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        rows.append({"round": index, "policy": deployed.get("policy", {}).get("name"),
+                     "before": deployed.get("comparison"),
+                     "corrected": rebuilt,
+                     "transferred": payload["generalisation_corrected"]["transferred"]})
+    return rows
+
+
+def compare_label(label: str) -> dict:
+    """Recompute the comparison for a set of recorded runs, from the runs.
+
+    The runs are the measurement; a stored comparison is a summary that can be
+    recomputed, and when the baseline definition is corrected, recomputing beats
+    re-running something already paid for.
+    """
+    criteria = load_criteria()
+    search, held_out = criteria["search_tasks"], criteria["held_out_tasks"]
+    records = replay.load_records(label)
+    by_task = {r["task"]: r for r in records}
+    search_records = [by_task[t] for t in search if t in by_task]
+    held_records = [by_task[t] for t in held_out if t in by_task]
+    comparison = {
+        "search": compare(incumbent_results(search), results_from_records(search_records)),
+        "held_out": compare(incumbent_results(held_out), results_from_records(held_records)),
+    }
+    return {"label": label, "runs": len(records), "comparison": comparison,
+            "generalisation": generalisation(comparison["search"], comparison["held_out"])}
+
+
+def reference_measurements() -> list[dict]:
+    """Online measurements of hand-written policies, recomputed from their runs.
+
+    These are the control experiment: what actually happened when a policy that
+    the judge liked was run. The proposer is shown them, because they are facts
+    about the world, and a search that cannot see the world's answer to a policy
+    will keep proposing it.
+    """
+    criteria = load_criteria()
+    records = [r for r in replay.load_records("base")
+               if r["task"] in criteria["search_tasks"]]
+    labels = sorted({(r.get("label") or "") for r in replay.load_records()
+                     if (r.get("label") or "").startswith("reference-")})
+    rows = []
+    for label in labels:
+        data = compare_label(label)
+        search, held = data["comparison"]["search"], data["comparison"]["held_out"]
+        name = label.replace("reference-", "")
+        judge = None
+        if name in VARIANTS and records:
+            policy = get_policy(name)
+            judge = gate([policy], replay.judge(records, [policy]), criteria)[0]
+        rows.append({
+            "policy": name,
+            "label": label,
+            "runs": data["runs"],
+            "predicted_saving": (judge or {}).get("predicted_saving"),
+            "decision_replayable": (judge or {}).get("decision_replayable"),
+            "judge_path": (judge or {}).get("path"),
+            "search_token_delta": search["token_delta"],
+            "search_token_scope_tasks": len(search["token_scope_tasks"]),
+            "search_tasks_lost": search["tasks_lost"],
+            "held_out_token_delta": held["token_delta"],
+            "transferred": data["generalisation"]["transferred"],
+        })
+    return rows
+
+
 def state() -> dict:
     """The whole loop as JSON, so every report renders from the same source."""
     criteria = load_criteria()
@@ -809,7 +1111,13 @@ def state() -> dict:
             "evidence": payload.get("evidence"),
             "online_search": deployed.get("online_search"),
             "online_held_out": deployed.get("online_held_out"),
+            "online_ab": (payload.get("online_ab") or {}).get("comparison"),
             "generalisation": payload.get("generalisation"),
+            # present when the comparison was recomputed against the corrected
+            # baseline; the stored one stays readable beside it
+            "generalisation_corrected": payload.get("generalisation_corrected"),
+            "comparison_corrected": payload.get("comparison_corrected"),
+            "correction": payload.get("correction"),
             "outcome": payload.get("outcome"),
             "replay_episodes_rebuilt": sum(1 for c in verification if c.get("chars_match")),
             "replay_episodes": len(verification),
@@ -818,6 +1126,7 @@ def state() -> dict:
         "criteria": criteria,
         "rounds": rounds,
         "recheck": recheck(),
+        "references": reference_measurements(),
         "ledger": ledger(),
         "replayability": replay_health(),
         "incumbent": {
@@ -841,10 +1150,10 @@ def show() -> None:
         general = payload.get("generalisation")
         judged = sum(1 for v in payload.get("verdicts") or []
                      if v.get("passed_gate", v.get("passed_efficiency")))
-        evidence = payload.get("evidence", "") or ""
-        route = ("replay" if evidence.startswith("judged")
-                 else "online" if evidence.startswith("online")
-                 else "none")
+        name = (deployed or {}).get("policy", {}).get("name") if deployed else None
+        verdict_for = next((v for v in payload.get("verdicts") or [] if v["policy"] == name), None)
+        route = ((verdict_for or {}).get("path")
+                 or ("none" if name else "-"))
         held_solved = f"{held['solved']}/{held['tasks']}" if held else "-"
         print(f"| {payload['round']} | {len(payload.get('proposed') or [])} | {judged} | "
               f"{(deployed or {}).get('policy', {}).get('name', '-') if deployed else '-'} | "
@@ -865,6 +1174,14 @@ def main() -> None:
                         help="what the loop spent online, against an online sweep")
     parser.add_argument("--state", action="store_true",
                         help="the whole loop as JSON for reports and the dashboard")
+    parser.add_argument("--reference", action="store_true",
+                        help="judge the hand-written policies from the recordings")
+    parser.add_argument("--measure-reference", metavar="NAME",
+                        help="measure a hand-written policy online, as a labelled control")
+    parser.add_argument("--recompare", action="store_true",
+                        help="recompute stored round comparisons from their runs")
+    parser.add_argument("--compare-label", metavar="LABEL",
+                        help="recompute the comparison for a label from its recorded runs")
     parser.add_argument("--model", default=PROPOSER_MODEL,
                         help="model that writes the candidate policies")
     parser.add_argument("--agent-model", default=agent.DEFAULT_MODEL,
@@ -892,6 +1209,27 @@ def main() -> None:
             print(json.dumps(payload["deployed"]["comparison"], indent=2))
     elif args.state:
         print(json.dumps(state(), indent=2, ensure_ascii=False))
+    elif args.reference:
+        print(render_reference(reference_table()))
+    elif args.compare_label:
+        print(json.dumps(compare_label(args.compare_label), indent=2, ensure_ascii=False))
+    elif args.recompare:
+        rows = recompare()
+        if not rows:
+            print("no measured deployments to recompute")
+        for row in rows:
+            old, new = row["before"] or {}, row["corrected"]
+            print(f"round {row['round']} · {row['policy']}")
+            for side in ("search", "held_out"):
+                o, n = (old.get(side) or {}), new[side]
+                print(f"  {side:<9} tokens {o.get('token_delta', 0):+.1%} -> {n['token_delta']:+.1%} "
+                      f"on {len(n['token_scope_tasks'])} comparable tasks · "
+                      f"solved {n['solved_before']}->{n['solved_after']}")
+            print(f"  transferred: {new['search']['token_delta'] <= 0 and new['held_out']['token_delta'] <= 0}")
+    elif args.measure_reference:
+        result = measure_reference(args.measure_reference, args.agent_model)
+        print(json.dumps({k: v for k, v in result.items() if k != "policy"},
+                         indent=2, ensure_ascii=False))
     elif args.ledger:
         if not load_rounds():
             print("no rounds recorded yet")

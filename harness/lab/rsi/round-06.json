@@ -1,0 +1,211 @@
+{
+  "round": 6,
+  "criteria_version": 3,
+  "criteria": {
+    "frozen_at": "2026-09-20T01:33:29",
+    "version": 3,
+    "search_tasks": [
+      "t01-start-total",
+      "t02-clamp-bounds",
+      "t03-parse-duration",
+      "t05-retry-backoff"
+    ],
+    "held_out_tasks": [
+      "t04-dedupe-order",
+      "t06-csv-column-total"
+    ],
+    "efficiency": {
+      "min_predicted_saving": 0.15,
+      "note": "a candidate must be predicted to save at least 15% of prompt tokens"
+    },
+    "capability": {
+      "max_tasks_lost": 1,
+      "min_decision_replayable": 0.5,
+      "note": "online on the search set, a deployed candidate may lose at most one task against the incumbent; the judge cannot settle capability and does not pretend to"
+    },
+    "budget": {
+      "online_runs_per_round": 8,
+      "note": "measured runs per round, search plus held-out"
+    },
+    "revision": {
+      "from_version": 2,
+      "reason": "version 2 left the family that diverges at step 0 permanently undeployable: the judge abstains on it, and abstention with no alternative path turns into a silent ban rather than a verdict",
+      "evidence": "round 4 proposed three candidates at +22..27% predicted saving, all with 0% replayed decisions, and the round ended with nothing measured at all",
+      "unchanged": "min_predicted_saving 0.15, max_tasks_lost 1, min_decision_replayable 0.5"
+    },
+    "evidence": {
+      "unjudgeable_path": {
+        "enabled": true,
+        "max_online_runs": 4,
+        "note": "when the judge cannot replay a candidate's decisions, the candidate may be measured online on the search set inside the round budget; its efficiency claim then rests on that measurement and is labelled as such, never on a replay estimate"
+      },
+      "note": "a replay verdict needs the judge to have replayed at least half of the candidate's decisions; below that the judge abstains and the online path decides instead"
+    }
+  },
+  "replay_verification": [
+    {
+      "steps": 5,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        1902,
+        2410,
+        2500,
+        3260,
+        4350
+      ]
+    },
+    {
+      "steps": 10,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        1193,
+        1766,
+        2262,
+        3139,
+        4856,
+        6124,
+        7250,
+        8538,
+        12581,
+        19353
+      ]
+    },
+    {
+      "steps": 5,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        2171,
+        3061,
+        3274,
+        4047,
+        5044
+      ]
+    },
+    {
+      "steps": 6,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        2736,
+        3958,
+        3992,
+        5321,
+        6567,
+        7492
+      ]
+    }
+  ],
+  "proposed": [
+    {
+      "name": "clip_obs_500",
+      "include_file_list": true,
+      "include_initial_tests": true,
+      "context_mode": "full",
+      "window_steps": 10,
+      "observation_chars": 500,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    },
+    {
+      "name": "window8_full_obs",
+      "include_file_list": true,
+      "include_initial_tests": true,
+      "context_mode": "window",
+      "window_steps": 8,
+      "observation_chars": 2000,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    },
+    {
+      "name": "no_repeat_tests_verify0",
+      "include_file_list": true,
+      "include_initial_tests": true,
+      "context_mode": "full",
+      "window_steps": 10,
+      "observation_chars": 2000,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": false,
+      "max_verify_nudges": 0,
+      "temperature": 0.2
+    }
+  ],
+  "notes": [
+    "proposer returned unparseable JSON: Expecting value: line 1 column 1 (char 0)",
+    "zai-org/GLM-5.3-Flash: returned no valid candidate"
+  ],
+  "verdicts": [
+    {
+      "policy": "clip_obs_500",
+      "predicted_tokens": 56352.0,
+      "recorded_tokens": 57977.0,
+      "predicted_saving": 0.028,
+      "steps_covered": 8,
+      "steps_total": 26,
+      "decision_replayable": 0.308,
+      "passed_efficiency": false,
+      "passed_evidence": false,
+      "passed_gate": false,
+      "path": "refused",
+      "reasons": [
+        "predicted saving 2.8% vs required 15%",
+        "decisions replayed 31% vs required 50%",
+        "path: refused",
+        "220 characters clipped from observations",
+        "2/5 steps diverge: the model's decisions there are NOT replayable (abstain)"
+      ]
+    },
+    {
+      "policy": "window8_full_obs",
+      "predicted_tokens": 57464.7,
+      "recorded_tokens": 57977.0,
+      "predicted_saving": 0.0088,
+      "steps_covered": 24,
+      "steps_total": 26,
+      "decision_replayable": 0.923,
+      "passed_efficiency": false,
+      "passed_evidence": true,
+      "passed_gate": false,
+      "path": "refused",
+      "reasons": [
+        "predicted saving 0.9% vs required 15%",
+        "decisions replayed 92% vs required 50%",
+        "path: refused",
+        "5 observations would be dropped by windowing",
+        "2/10 steps diverge: the model's decisions there are NOT replayable (abstain)"
+      ]
+    },
+    {
+      "policy": "no_repeat_tests_verify0",
+      "predicted_tokens": 57977.0,
+      "recorded_tokens": 57977.0,
+      "predicted_saving": 0.0,
+      "steps_covered": 26,
+      "steps_total": 26,
+      "decision_replayable": 1.0,
+      "passed_efficiency": false,
+      "passed_evidence": true,
+      "passed_gate": false,
+      "path": "refused",
+      "reasons": [
+        "predicted saving 0.0% vs required 15%",
+        "decisions replayed 100% vs required 50%",
+        "path: refused"
+      ]
+    }
+  ],
+  "evidence": "no candidate the judge could judge",
+  "proposer_model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+  "agent_model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+  "deployed": null,
+  "outcome": "no candidate passed the efficiency gate; nothing deployed"
+}

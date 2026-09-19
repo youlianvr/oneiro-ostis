@@ -1,6 +1,6 @@
 {
-  "frozen_at": "2026-09-20T01:33:29",
-  "version": 3,
+  "frozen_at": "2026-09-20T02:19:25",
+  "version": 4,
   "search_tasks": [
     "t01-start-total",
     "t02-clamp-bounds",
@@ -25,9 +25,9 @@
     "note": "measured runs per round, search plus held-out"
   },
   "revision": {
-    "from_version": 2,
-    "reason": "version 2 left the family that diverges at step 0 permanently undeployable: the judge abstains on it, and abstention with no alternative path turns into a silent ban rather than a verdict",
-    "evidence": "round 4 proposed three candidates at +22..27% predicted saving, all with 0% replayed decisions, and the round ended with nothing measured at all",
+    "from_version": 3,
+    "reason": "replay coverage measures how many of the recorded steps a candidate would have sent, not how many steps it would then take. Measured: a windowed candidate at 62% coverage was predicted to save 15% and cost 20% more, because the agent, with less history, took more steps on five of six tasks (t02: 6 to 9 steps, t06: 6 to 10)",
+    "evidence": "reference measurement stored under the label reference-window3; the per-task step counts are in the recorded runs",
     "unchanged": "min_predicted_saving 0.15, max_tasks_lost 1, min_decision_replayable 0.5"
   },
   "evidence": {
@@ -36,6 +36,21 @@
       "max_online_runs": 4,
       "note": "when the judge cannot replay a candidate's decisions, the candidate may be measured online on the search set inside the round budget; its efficiency claim then rests on that measurement and is labelled as such, never on a replay estimate"
     },
-    "note": "a replay verdict needs the judge to have replayed at least half of the candidate's decisions; below that the judge abstains and the online path decides instead"
+    "note": "a replay verdict needs the judge to have replayed at least half of the candidate's decisions; below that the judge abstains and the online path decides instead",
+    "trajectory_changes": {
+      "fields": [
+        "context_mode",
+        "window_steps",
+        "observation_chars",
+        "read_lines",
+        "include_initial_tests",
+        "include_file_list",
+        "max_steps",
+        "verify_before_finish",
+        "max_verify_nudges"
+      ],
+      "note": "a policy that changes what the agent is shown or how long it may run does not just change a prompt, it changes the trajectory. Replay covers aligned steps, and a candidate like that produces fewer aligned steps in reality than the estimate assumed, so the estimate is an estimate about a trajectory that no longer exists",
+      "requirement": "such a candidate is measured online on the search set before it may be deployed, whatever its replay coverage"
+    }
   }
 }

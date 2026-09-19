@@ -37,7 +37,15 @@ RUNS_DIR = Path(__file__).resolve().parent / "lab" / "runs"
 # ---------- loading ----------
 
 
-def load_records(label: str | None = None) -> list[dict]:
+# A run that ended in an error, a timeout or a provider refusal is not evidence
+# about the policy that produced it: it says nothing about whether the agent
+# could have solved the task, and its token count is a partial one. Such a run
+# must not calibrate the judge, because the judge would then predict savings
+# against a bar that no honest run ever set.
+NORMAL_STOPS = {"finished", "max_steps", "stopped"}
+
+
+def load_records(label: str | None = None, normal_only: bool = True) -> list[dict]:
     records = []
     for path in sorted(RUNS_DIR.glob("*/record.json")):
         try:
@@ -47,6 +55,8 @@ def load_records(label: str | None = None) -> list[dict]:
         if not record.get("blocks") or not record.get("steps"):
             continue  # recorded before the judge existed: nothing to replay on
         if label and record.get("label") != label:
+            continue
+        if normal_only and record.get("stop_reason") not in NORMAL_STOPS:
             continue
         record["_path"] = str(path.parent.name)
         records.append(record)

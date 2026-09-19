@@ -263,5 +263,50 @@
       }
     }
   },
-  "outcome": "deployed and within capability tolerance"
+  "outcome": "deployed and within capability tolerance",
+  "comparison_corrected": {
+    "search": {
+      "tasks": 4,
+      "unmeasured_tasks": [],
+      "token_scope_tasks": [
+        "t01-start-total",
+        "t02-clamp-bounds",
+        "t03-parse-duration",
+        "t05-retry-backoff"
+      ],
+      "unsolved_in_both": [],
+      "solved_before": 4,
+      "solved_after": 4,
+      "tasks_lost": 0,
+      "tasks_gained": 0,
+      "prompt_tokens_before": 38685,
+      "prompt_tokens_after": 49111,
+      "token_delta": 0.26951014605144114
+    },
+    "held_out": {
+      "tasks": 2,
+      "unmeasured_tasks": [],
+      "token_scope_tasks": [
+        "t06-csv-column-total"
+      ],
+      "unsolved_in_both": [
+        "t04-dedupe-order"
+      ],
+      "solved_before": 1,
+      "solved_after": 1,
+      "tasks_lost": 0,
+      "tasks_gained": 0,
+      "prompt_tokens_before": 9115,
+      "prompt_tokens_after": 6155,
+      "token_delta": -0.3247394404827208
+    }
+  },
+  "generalisation_corrected": {
+    "search_token_delta": 0.26951014605144114,
+    "held_out_token_delta": -0.3247394404827208,
+    "search_solved_delta": 0,
+    "held_out_solved_delta": 0,
+    "transferred": false
+  },
+  "correction": "the recorded comparison used the cheapest recorded run per task as the baseline, including runs that ended in an error; this one averages only runs that terminated normally, divided by solved, and compares tokens only on tasks both sides solved"
 }

@@ -1,0 +1,308 @@
+{
+  "round": 8,
+  "criteria_version": 4,
+  "criteria": {
+    "frozen_at": "2026-09-20T02:19:25",
+    "version": 4,
+    "search_tasks": [
+      "t01-start-total",
+      "t02-clamp-bounds",
+      "t03-parse-duration",
+      "t05-retry-backoff"
+    ],
+    "held_out_tasks": [
+      "t04-dedupe-order",
+      "t06-csv-column-total"
+    ],
+    "efficiency": {
+      "min_predicted_saving": 0.15,
+      "note": "a candidate must be predicted to save at least 15% of prompt tokens"
+    },
+    "capability": {
+      "max_tasks_lost": 1,
+      "min_decision_replayable": 0.5,
+      "note": "online on the search set, a deployed candidate may lose at most one task against the incumbent; the judge cannot settle capability and does not pretend to"
+    },
+    "budget": {
+      "online_runs_per_round": 8,
+      "note": "measured runs per round, search plus held-out"
+    },
+    "revision": {
+      "from_version": 3,
+      "reason": "replay coverage measures how many of the recorded steps a candidate would have sent, not how many steps it would then take. Measured: a windowed candidate at 62% coverage was predicted to save 15% and cost 20% more, because the agent, with less history, took more steps on five of six tasks (t02: 6 to 9 steps, t06: 6 to 10)",
+      "evidence": "reference measurement stored under the label reference-window3; the per-task step counts are in the recorded runs",
+      "unchanged": "min_predicted_saving 0.15, max_tasks_lost 1, min_decision_replayable 0.5"
+    },
+    "evidence": {
+      "unjudgeable_path": {
+        "enabled": true,
+        "max_online_runs": 4,
+        "note": "when the judge cannot replay a candidate's decisions, the candidate may be measured online on the search set inside the round budget; its efficiency claim then rests on that measurement and is labelled as such, never on a replay estimate"
+      },
+      "note": "a replay verdict needs the judge to have replayed at least half of the candidate's decisions; below that the judge abstains and the online path decides instead",
+      "trajectory_changes": {
+        "fields": [
+          "context_mode",
+          "window_steps",
+          "observation_chars",
+          "read_lines",
+          "include_initial_tests",
+          "include_file_list",
+          "max_steps",
+          "verify_before_finish",
+          "max_verify_nudges"
+        ],
+        "note": "a policy that changes what the agent is shown or how long it may run does not just change a prompt, it changes the trajectory. Replay covers aligned steps, and a candidate like that produces fewer aligned steps in reality than the estimate assumed, so the estimate is an estimate about a trajectory that no longer exists",
+        "requirement": "such a candidate is measured online on the search set before it may be deployed, whatever its replay coverage"
+      }
+    }
+  },
+  "replay_verification": [
+    {
+      "steps": 5,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        1902,
+        2410,
+        2500,
+        3260,
+        4350
+      ]
+    },
+    {
+      "steps": 6,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        1193,
+        1766,
+        1945,
+        2698,
+        3845,
+        4450
+      ]
+    },
+    {
+      "steps": 5,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        2171,
+        3061,
+        3274,
+        4047,
+        5044
+      ]
+    },
+    {
+      "steps": 6,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        2736,
+        3958,
+        3992,
+        5321,
+        6567,
+        7492
+      ]
+    }
+  ],
+  "proposed": [
+    {
+      "name": "no_initial_tests_obs1500",
+      "include_file_list": true,
+      "include_initial_tests": false,
+      "context_mode": "full",
+      "window_steps": 10,
+      "observation_chars": 1500,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    },
+    {
+      "name": "no_initial_tests_window9",
+      "include_file_list": true,
+      "include_initial_tests": false,
+      "context_mode": "window",
+      "window_steps": 9,
+      "observation_chars": 2000,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    },
+    {
+      "name": "no_initial_tests_obs1500_window9",
+      "include_file_list": true,
+      "include_initial_tests": false,
+      "context_mode": "window",
+      "window_steps": 9,
+      "observation_chars": 1500,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    }
+  ],
+  "notes": [
+    "proposer returned unparseable JSON: Expecting value: line 1 column 1 (char 0)",
+    "zai-org/GLM-5.3-Flash: returned no valid candidate"
+  ],
+  "verdicts": [
+    {
+      "policy": "no_initial_tests_obs1500",
+      "predicted_tokens": 26287.1,
+      "recorded_tokens": 38685.0,
+      "predicted_saving": 0.3205,
+      "steps_covered": 0,
+      "steps_total": 22,
+      "decision_replayable": 0.0,
+      "passed_efficiency": true,
+      "passed_evidence": false,
+      "passed_gate": false,
+      "path": "online",
+      "changed_fields": [
+        "observation_chars",
+        "include_initial_tests"
+      ],
+      "reasons": [
+        "predicted saving 32.0% vs required 15%",
+        "decisions replayed 0% vs required 50%",
+        "path: online",
+        "changes the trajectory: observation_chars, include_initial_tests",
+        "5/5 steps diverge: the model's decisions there are NOT replayable (abstain)",
+        "6/6 steps diverge: the model's decisions there are NOT replayable (abstain)"
+      ]
+    },
+    {
+      "policy": "no_initial_tests_window9",
+      "predicted_tokens": 26287.1,
+      "recorded_tokens": 38685.0,
+      "predicted_saving": 0.3205,
+      "steps_covered": 0,
+      "steps_total": 22,
+      "decision_replayable": 0.0,
+      "passed_efficiency": true,
+      "passed_evidence": false,
+      "passed_gate": false,
+      "path": "online",
+      "changed_fields": [
+        "context_mode",
+        "window_steps",
+        "include_initial_tests"
+      ],
+      "reasons": [
+        "predicted saving 32.0% vs required 15%",
+        "decisions replayed 0% vs required 50%",
+        "path: online",
+        "changes the trajectory: context_mode, window_steps, include_initial_tests",
+        "5/5 steps diverge: the model's decisions there are NOT replayable (abstain)",
+        "6/6 steps diverge: the model's decisions there are NOT replayable (abstain)"
+      ]
+    },
+    {
+      "policy": "no_initial_tests_obs1500_window9",
+      "predicted_tokens": 26287.1,
+      "recorded_tokens": 38685.0,
+      "predicted_saving": 0.3205,
+      "steps_covered": 0,
+      "steps_total": 22,
+      "decision_replayable": 0.0,
+      "passed_efficiency": true,
+      "passed_evidence": false,
+      "passed_gate": false,
+      "path": "online",
+      "changed_fields": [
+        "context_mode",
+        "window_steps",
+        "observation_chars",
+        "include_initial_tests"
+      ],
+      "reasons": [
+        "predicted saving 32.0% vs required 15%",
+        "decisions replayed 0% vs required 50%",
+        "path: online",
+        "changes the trajectory: context_mode, window_steps, observation_chars, include_initial_tests",
+        "5/5 steps diverge: the model's decisions there are NOT replayable (abstain)",
+        "6/6 steps diverge: the model's decisions there are NOT replayable (abstain)"
+      ]
+    }
+  ],
+  "evidence": "online measurement: the judge could not replay this candidate's decisions, so its efficiency is what running it actually cost",
+  "proposer_model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+  "agent_model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+  "deployed": null,
+  "online_ab": {
+    "results_search": [
+      {
+        "task": "t01-start-total",
+        "solved": true,
+        "steps": 5,
+        "tool_calls": 3,
+        "prompt_tokens": 6196,
+        "total_tokens": 6822,
+        "wall_seconds": 17.98,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t01-start-total-rsi-r8-online-search-no_initial_tests_obs1500-20260920-022415-4kep"
+      },
+      {
+        "task": "t02-clamp-bounds",
+        "solved": true,
+        "steps": 9,
+        "tool_calls": 7,
+        "prompt_tokens": 18834,
+        "total_tokens": 20592,
+        "wall_seconds": 29.79,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t02-clamp-bounds-rsi-r8-online-search-no_initial_tests_obs1500-20260920-022436-l47p"
+      },
+      {
+        "task": "t03-parse-duration",
+        "solved": true,
+        "steps": 5,
+        "tool_calls": 3,
+        "prompt_tokens": 6825,
+        "total_tokens": 7541,
+        "wall_seconds": 12.49,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t03-parse-duration-rsi-r8-online-search-no_initial_tests_obs1500-20260920-022509-grcj"
+      },
+      {
+        "task": "t05-retry-backoff",
+        "solved": true,
+        "steps": 5,
+        "tool_calls": 3,
+        "prompt_tokens": 7417,
+        "total_tokens": 8186,
+        "wall_seconds": 23.01,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t05-retry-backoff-rsi-r8-online-search-no_initial_tests_obs1500-20260920-022524-a49e"
+      }
+    ],
+    "comparison": {
+      "tasks": 4,
+      "unmeasured_tasks": [],
+      "token_scope_tasks": [
+        "t01-start-total",
+        "t02-clamp-bounds",
+        "t03-parse-duration",
+        "t05-retry-backoff"
+      ],
+      "unsolved_in_both": [],
+      "solved_before": 4,
+      "solved_after": 4,
+      "tasks_lost": 0,
+      "tasks_gained": 0,
+      "prompt_tokens_before": 38685,
+      "prompt_tokens_after": 39272,
+      "token_delta": 0.015173839989660074
+    }
+  },
+  "outcome": "online path: measured and refused. Predicted +32.0%, measured +1.5% prompt tokens on 4 comparable tasks, 0 of 4 tasks lost (tolerance 1); held-out tasks were never touched"
+}

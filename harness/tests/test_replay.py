@@ -14,9 +14,17 @@ from policy import HarnessPolicy, get_policy
 
 
 def newest_record() -> dict:
-    records = replay.load_records()
+    """The longest recording made by the reference policy.
+
+    The judge's contract is relative to the policy that was recorded: replaying
+    a wider policy over an episode whose own history was trimmed legitimately
+    predicts more characters, not fewer. So these tests stand on a baseline
+    recording, where the recorded prompt is the unconstrained one.
+    """
+    records = [r for r in replay.load_records()
+               if (r.get("policy") or {}).get("name") == "baseline"]
     if not records:
-        pytest.skip("no replayable records on disk yet")
+        pytest.skip("no baseline recording on disk yet")
     return max(records, key=lambda r: len(r.get("steps") or []))
 
 
@@ -35,6 +43,7 @@ def test_identical_policy_is_fully_replayable():
     estimate = replay.estimate(record, policy)
 
     assert estimate.decision_replayable == 1.0
+    assert estimate.prompt_chars_predicted == estimate.prompt_chars_recorded
     assert estimate.steps_covered == estimate.steps_total
     assert estimate.prompt_chars_predicted == estimate.prompt_chars_recorded
     # the token model is fitted out of sample, so it lands close, not exactly
@@ -64,12 +73,15 @@ def test_blind_policy_shrinks_the_system_prompt():
     assert blind_system < recorded_system
 
 
-def test_truncating_observations_is_exact_and_computed():
+def test_truncating_observations_lowers_the_prompt_against_the_recorded_policy():
+    """Clipping can only remove characters, never add them."""
     record = newest_record()
-    terse = get_policy("terse")
-    estimate = replay.estimate(record, terse)
-    assert estimate.truncation_saved_chars >= 0
-    assert estimate.prompt_chars_predicted <= estimate.prompt_chars_recorded
+    recorded = HarnessPolicy.from_descriptor(record["policy"])
+    reference = replay.estimate(record, recorded)
+    terse = replay.estimate(record, get_policy("terse"))
+
+    assert terse.truncation_saved_chars >= 0
+    assert terse.prompt_chars_predicted <= reference.prompt_chars_predicted
 
 
 def test_the_judge_never_calls_the_model(monkeypatch):

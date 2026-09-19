@@ -76,6 +76,17 @@ VARIANTS = {
                      include_initial_tests=False),
     "cautious": replace(BASE, name="cautious", max_steps=20, max_verify_nudges=2,
                         context_mode="window", window_steps=8),
+    # Reference points for the judge, written by hand rather than proposed: they
+    # say what the replayable region of the space can reach, so a round that
+    # finds nothing can be read against something. They keep the first message
+    # identical to the recording (initial tests shown), which is what makes them
+    # replayable at all.
+    "window3": replace(BASE, name="window3", context_mode="window", window_steps=3),
+    "window4_obs800": replace(BASE, name="window4_obs800", context_mode="window",
+                              window_steps=4, observation_chars=800),
+    "window4_terse": replace(BASE, name="window4_terse", context_mode="window",
+                             window_steps=4, observation_chars=600, read_lines=60),
+    "window2": replace(BASE, name="window2", context_mode="window", window_steps=2),
 }
 
 

@@ -300,6 +300,25 @@ function render(d){
   if(d.benchmarks) renderHarness(d.benchmarks.harness);
 }
 
+/* Эталонные политики: что обещал судья и что произошло в реальных прогонах.
+   Это контрольный эксперимент, поэтому обе цифры стоят рядом. */
+function referenceHtml(refs){
+  if(!refs || !refs.length) return "";
+  const p = v => v == null ? "нет" : (100*v).toFixed(1) + "%";
+  const rows = refs.map(r => `<tr>
+      <td class="mono">${r.policy}</td>
+      <td>${p(r.predicted_saving)}</td>
+      <td>${r.decision_replayable == null ? "нет" : (100*r.decision_replayable).toFixed(0) + "%"}</td>
+      <td class="${r.search_token_delta <= 0 ? "outcome-success" : "outcome-failure"}">${p(r.search_token_delta)}</td>
+      <td>${p(r.held_out_token_delta)}</td>
+      <td>${r.transferred ? "перенеслась" : "нет"}</td></tr>`).join("");
+  return `<div class="claim">
+    <div class="ct">Контроль: политики, написанные вручную</div>
+    <div class="cn">судья оценивает их по записям, затем они измеряются онлайн. Расхождение прогноза с измерением здесь и есть предел replay: судья считает символы в запросе, а не то, сколько шагов сделает агент</div>
+    <table><tr><th>политика</th><th>прогноз экономии</th><th>воспроизв.</th><th>измерено: поиск</th><th>измерено: held-out</th><th>перенос</th></tr>${rows}</table>
+  </div>`;
+}
+
 /* Тексты исходов раунда пишет цикл (harness/rsi.py). Известные формулировки
    переводим, незнакомую строку показываем как есть: лучше английская правда,
    чем придуманный русский пересказ. */
@@ -311,6 +330,7 @@ function ruOutcome(s){
     [/^deployed and within capability tolerance/, "выкачено, потеря задач в пределах допуска"],
     [/^deployed but lost (\d+) tasks \(tolerance (\d+)\)/, "выкачено, но потеряно задач: $1 (допуск $2)"],
     [/^online path: measured and refused\. The predicted saving of ([+-]?[\d.]+%) came with ([+-]?[\d.]+%) prompt tokens and (\d+) of (\d+) tasks lost \(tolerance (\d+)\); held-out tasks were never touched/, "онлайн-путь: измерено и отклонено. Прогноз экономии $1 обернулся $2 токенов промпта, потеряно задач $3 из $4 (допуск $5), held-out задачи не трогались"],
+    [/^online path: measured and refused\. Predicted ([+-]?[\d.]+%), measured ([+-]?[\d.]+%) prompt tokens on (\d+) comparable tasks, (\d+) of (\d+) tasks lost \(tolerance (\d+)\); held-out tasks were never touched/, "онлайн-путь: измерено и отклонено. Прогноз $1, измерено $2 токенов промпта на $3 сопоставимых задачах, потеряно задач $4 из $5 (допуск $6); held-out задачи не трогались"],
     [/^online path: measurement incomplete\. The provider refused (\d+) of (\d+) runs, so capability was not settled and nothing was deployed/, "онлайн-путь: измерение неполное, провайдер отказал в $1 из $2 прогонов: способность не установлена, ничего не выкачено"],
     [/; the saving did not transfer to the held-out tasks/, "; экономия не перенеслась на held-out задачи"],
     [/; deployed on its online measurement, not on a judged estimate/, "; выкачено по онлайн-измерению, а не по прогнозу судьи"],
@@ -340,6 +360,7 @@ function renderHarness(h){
   const roundsHtml = h.rounds.map(r => {
     const rows = (r.verdicts || []).map(v => {
       const tag = v.path === "replay" ? `<span class="tag win">судья</span>`
+        : v.path === "verify" ? `<span class="tag dep">онлайн-проверка</span>`
         : v.path === "online" ? `<span class="tag dep">онлайн-AB</span>`
         : v.path === "gate-v1" ? `<span class="tag dep">ворота v1</span>`
         : `<span class="tag">отказ</span>`;
@@ -350,8 +371,16 @@ function renderHarness(h){
     }).join("");
     const held = r.online_held_out;
     const online = r.online_search;
+    const corr = r.comparison_corrected;
     const measured = held && online
       ? `<div class="cn">измерено онлайн: поиск ${online.solved}/${online.tasks} задач, ${online.prompt_tokens} токенов промпта · held-out ${held.solved}/${held.tasks} задач, ${held.prompt_tokens} токенов</div>`
+      : "";
+    const corrected = corr
+      ? `<div class="cn">пересчёт по честной базовой линии: поиск ${(100*corr.search.token_delta).toFixed(0)}% токенов на ${corr.search.token_scope_tasks.length} сопоставимых задачах, held-out ${(100*corr.held_out.token_delta).toFixed(0)}% на ${corr.held_out.token_scope_tasks.length}</div>`
+      : "";
+    const ab = r.online_ab;
+    const abLine = ab && !r.deployed
+      ? `<div class="cn">онлайн-проверка перед выкаткой: ${(100*ab.token_delta).toFixed(1)}% токенов промпта на ${ab.token_scope_tasks.length} сопоставимых задачах, решено ${ab.solved_after} из ${ab.tasks}</div>`
       : "";
     const v1note = r.criteria_version === 1
       ? `<div class="cn">правила v1: решение принималось по прогнозу, требования воспроизводимости ещё не было</div>` : "";
@@ -359,6 +388,8 @@ function renderHarness(h){
       <div class="ct">Раунд ${r.round}: кандидатов ${r.candidates}, ${r.deployed ? "выкачено «" + r.deployed + "»" : "ничего не выкачено"}</div>
       ${v1note}
       ${measured}
+      ${corrected}
+      ${abLine}
       <table><tr><th>кандидат</th><th>прогноз экономии</th><th>воспроизводимость решения</th></tr>${rows}</table>
       ${r.outcome ? `<div class="cn" style="margin-top:6px">${ruOutcome(r.outcome)}</div>` : ""}</div>`;
   }).join("");
@@ -379,6 +410,7 @@ function renderHarness(h){
       <div><span class="big">${rep.rebuilt_exactly}/${rep.episodes}</span> эпизодов восстановлены посимвольно (${rep.steps} шагов)</div>
       <div class="cn">модель токенов проверена на чужой задаче: средняя ошибка ${(100 * (rep.token_model_mean_error || 0)).toFixed(1)}%, худшая ${(100 * (rep.token_model_max_error || 0)).toFixed(1)}%</div>
     </div>
+    ${referenceHtml(h.references)}
     ${roundsHtml}
   </div>
   <div class="claims-note">Числа прочитаны из harness/lab/rsi: цикл отчитывается сам, дашборд ничего не добавляет. Правила приёмки пересчитаны по замороженным критериям: ${refused} из ${recheck.length} вердиктов, записанных по прежним правилам, были бы отклонены сейчас, выкачки среди них: ${deployedRefused}.</div>`;

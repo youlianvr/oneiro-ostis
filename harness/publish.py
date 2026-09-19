@@ -67,6 +67,7 @@ def round_record(payload: dict, criteria: dict) -> dict:
         },
         "proposed": [p.get("name") for p in payload.get("proposed") or []],
         "evidence": payload.get("evidence"),
+        "correction": payload.get("correction"),
         "verdicts": [
             {
                 "policy": v["policy"],
@@ -74,7 +75,8 @@ def round_record(payload: dict, criteria: dict) -> dict:
                 "decision_replayable": v["decision_replayable"],
                 "passed_efficiency": v["passed_efficiency"],
                 "passed_gate": v.get("passed_gate", v["passed_efficiency"]),
-                "path": v.get("path", "replay" if v.get("passed_gate") else "refused"),
+                "path": v.get("path") or ("replay" if v.get("passed_gate") else "refused"),
+                "changed_fields": v.get("changed_fields") or [],
             }
             for v in payload.get("verdicts") or []
         ],
