@@ -39,6 +39,7 @@ _lock = threading.Lock()          # serializes every bridge use
 _job_lock = threading.Lock()      # one pipeline job at a time
 _state_lock = threading.Lock()    # guards the snapshot cache
 _state_cache: dict = {}           # subject -> (built_at, snapshot)
+_building: dict = {}              # subject -> True while a snapshot builds
 _job: dict = {"running": False, "name": None, "started": None}
 
 
@@ -129,17 +130,47 @@ def index():
 def state():
     args = request.args
     subject = args.get("subject") or None
-    # The bridge round-trip for a full snapshot takes seconds; dashboard polling
-    # must stay instant, so snapshots are cached briefly per subject.
+    # The bridge round-trip for a full snapshot takes ~10s cold; dashboard
+    # polling must stay instant. stale-while-revalidate: serve the cached copy
+    # immediately (however old) and rebuild in the background; the UI picks
+    # the fresh data on its next 4s poll.
     key = subject or ""
     with _state_lock:
         cached = _state_cache.get(key)
-        if cached and time.time() - cached[0] < 5.0:
-            return jsonify(cached[1])
-    data = _snapshot(subject)
+        building = _building.get(key)
+    if cached and time.time() - cached[0] < 60.0:
+        if not building and time.time() - cached[0] > 5.0:
+            _rebuild_async(key, subject)
+        return jsonify(cached[1])
+    if not building:
+        data = _snapshot(subject)
+        with _state_lock:
+            _state_cache[key] = (time.time(), data)
+        return jsonify(data)
+    # a rebuild is already running: show what we have (possibly nothing yet)
+    return jsonify(cached[1] if cached else {
+        "subject": subject, "strategies": [], "episodes": {},
+        "consistency": {"episodes": 0, "steps": 0, "transitions": 0, "conflicts": 0},
+        "subjects": [], "job": {"running": _job["running"], "name": _job["name"]},
+    })
+
+
+def _rebuild_async(key: str, subject: str | None):
     with _state_lock:
-        _state_cache[key] = (time.time(), data)  # stamp AFTER the slow build
-    return jsonify(data)
+        _building[key] = True
+
+    def work():
+        try:
+            data = _snapshot(subject)
+            with _state_lock:
+                _state_cache[key] = (time.time(), data)
+        except Exception:
+            pass
+        finally:
+            with _state_lock:
+                _building.pop(key, None)
+
+    threading.Thread(target=work, daemon=True).start()
 
 
 def _invalidate_cache():
@@ -233,18 +264,18 @@ def _start(kind: str):
     else:
         subject = f"dash_{int(time.time())}" if kind != "reset" else None
     actions = {
-        "day": (_do_day, subject, "Online day"),
-        "explore": (_do_explore, subject, "Exploration day"),
-        "dream": (_do_dream, subject, "Dream"),
-        "cycle": (_do_cycle, subject, "Full cycle"),
-        "reset": (_do_reset, None, "KB reset"),
+        "day": (_do_day, subject, "День"),
+        "explore": (_do_explore, subject, "Разведка"),
+        "dream": (_do_dream, subject, "Сон"),
+        "cycle": (_do_cycle, subject, "Полный цикл"),
+        "reset": (_do_reset, None, "Сброс базы"),
     }
     if kind not in actions:
         return jsonify({"error": "unknown action"}), 400
     fn, subj, label = actions[kind]
     _stop_event.clear()
     _event_q.queue.clear()
-    _log_event(f"job queued: {label}")
+    _log_event(f"Запущено: {label}")
     return _run_job(label, fn, subj)
 
 
@@ -260,11 +291,11 @@ def _do_day():
     subject = _job["subject"]
     with _lock:
         b = _bridge()
-        _log_event(f"online day for {subject}: strategy weak_wander")
+        _log_event(f"Агент отправляется в экспедицию (стратегия «блуждание»), каждый шаг записывается в граф знаний")
         _check_stop()
         result = run_episode(b, subject, strategy_weak_incumbent(), episode_id=episode_id_for("day", "weak_wander"))
         b.mark_strategy_online_score("weak_wander", result.total_score)
-    _log_event(f"day done: score {result.total_score:.1f}, {result.recorded} attempts recorded")
+    _log_event(f"День завершён: счёт {result.total_score:.1f}, в память записано {result.recorded} действий")
 
 
 def _do_explore():
@@ -276,9 +307,9 @@ def _do_explore():
         b = _bridge()
         for strat in (strategy_survey(), strategy_survey_reverse()):
             _check_stop()
-            _log_event(f"exploration: {strat.name}")
+            _log_event(f"Разведка маршрутом «{strat.name}»: агент намеренно ходит иначе, чтобы опыт был богаче")
             result = run_episode(b, subject, strat, episode_id=episode_id_for("explore", strat.name))
-            _log_event(f"{strat.name} done: score {result.total_score:.1f}")
+            _log_event(f"Маршрут «{strat.name}» завершён: счёт {result.total_score:.1f}")
 
 
 def _do_dream():
@@ -289,8 +320,8 @@ def _do_dream():
 
     subject = _job["subject"] or _find_any_subject()
     if not subject:
-        raise RuntimeError("no recorded subject to dream over; run a day first")
-    _log_event(f"dream over recordings of {subject}")
+        raise RuntimeError("Нет записанного опыта: сначала запустите день")
+    _log_event(f"Агент «засыпает»: судья перебирает варианты стратегии по записям за {subject}")
     with _lock:
         b = _bridge()
         _check_stop()
@@ -305,25 +336,25 @@ def _do_dream():
         )
         elapsed = time.perf_counter() - t0
     ranked = sorted(result.results, key=lambda p: p[1].estimated_score, reverse=True)
-    _log_event(f"judge replayed {len(result.results)} candidates in {elapsed:.1f}s, zero world executions")
+    _log_event(f"Судья переиграл {len(result.results)} вариантов стратегии за {elapsed:.1f} сек, ни разу не запустив мир")
     for cand, rr in ranked[:3]:
-        _log_event(f"  {cand.name}: replay {rr.estimated_score:.1f} (coverage {rr.coverage:.2f})")
-    _log_event(f"winner: {result.winner.name} -> deployed for the next day")
-    _log_event(f"conflicts: {len(result.consistency['conflicts'])}")
+        _log_event(f"   {cand.name}: прогноз {rr.estimated_score:.1f} (покрытие {rr.coverage:.2f})")
+    _log_event(f"Победитель: {result.winner.name} — станет поведением агента на следующий день")
+    _log_event(f"Противоречий в записях: {len(result.consistency['conflicts'])}")
 
 
 def _do_cycle():
     from loop import run_loop
 
     subject = _job["subject"]
-    _log_event(f"full cycle: day -> explore -> dream -> deploy for {subject}")
+    _log_event(f"Полный цикл: день, разведка, сон, деплой — для {subject}")
     with _lock:
         b = _bridge()
         report = run_loop(b, subject=subject, rounds=2, max_steps=40, limit=24,
                           generator=None, exploration=True)
     for r in report.rounds:
-        _log_event(f"round {r.round_index}: online {r.online.total_score:.1f}, "
-                   f"deployed next {r.deployed_next.name}")
+        _log_event(f"Раунд {r.round_index}: онлайн-счёт {r.online.total_score:.1f}, "
+                   f"на следующий день выбрана стратегия {r.deployed_next.name}")
 
 
 def _bash_exe() -> str:
@@ -339,7 +370,7 @@ def _bash_exe() -> str:
 
 
 def _do_reset():
-    _log_event("resetting the runtime KB (docker volume rebuild)")
+    _log_event("Сброс базы знаний (пересборка docker-тома из исходников онтологии)")
     script = os.path.join(ROOT, "scripts", "reset_stack.sh")
     proc = subprocess.run(
         [_bash_exe(), script, "--yes"],
@@ -349,8 +380,8 @@ def _do_reset():
     for line in (proc.stdout or "").strip().splitlines()[-8:]:
         _log_event(line)
     if proc.returncode != 0:
-        raise RuntimeError(f"reset failed: {(proc.stderr or '').strip()[-300:]}")
-    _log_event("stack healthy, KB rebuilt from sources")
+        raise RuntimeError(f"Сброс не удался: {(proc.stderr or '').strip()[-300:]}")
+    _log_event("Стек здоров, база знаний собрана заново из исходников")
 
 
 def _find_any_subject() -> str | None:

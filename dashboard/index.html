@@ -1,16 +1,15 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Oneiro-OSTIS control panel</title>
+<title>Oneiro-OSTIS: пульт управления</title>
 <style>
-/* ============ design tokens ============
-   Palette (R-29): ink navy + growth green + amber accent.
-   Reason: the story of the system is "an agent grows by sleeping"; green
-   marks measured growth, amber marks the dream phase that produces it.
-   Light theme: jury rooms and projectors are bright; the dark "tech" look
-   would be a default, not a decision. */
+/* ============ дизайн-токены ============
+   Палитра (R-29): чернильный navy + зелёный роста + янтарный акцент сна.
+   Светлая тема: зал жюри и проектор яркие; тёмный «техно» вид был бы
+   дефолтом, а не решением. Референсы: светлые дашборды Intelly/iCarePro
+   (Muzli 2026) — крупные цифры с человеческими подписями. */
 :root{
   --ink:#182234; --ink2:#3d4a63; --dim:#5d6b85;
   --bg:#f4f6fa; --card:#ffffff; --line:#dde3ee;
@@ -23,71 +22,87 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0}
-body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.45}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5}
 
-header{padding:20px 28px 12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-h1{font-size:1.3rem;margin:0;font-weight:700}
+header{padding:22px 28px 8px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+h1{font-size:1.35rem;margin:0;font-weight:700}
 h1 .hl{color:var(--blue)}
+.tagline{color:var(--dim);font-size:.88rem;width:100%;max-width:900px}
 .conn{display:inline-flex;align-items:center;gap:6px;font-size:.78rem;color:var(--dim)}
 .conn .dot{width:9px;height:9px;border-radius:50%;background:var(--green)}
 .conn .dot.off{background:var(--red)}
 .spacer{flex:1}
 .subj{display:flex;align-items:center;gap:8px;font-size:.85rem}
+.subj label{color:var(--dim)}
 select{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink)}
+.hint{color:var(--dim);font-size:.75rem}
 
-/* ============ pipeline banner: the identity motif ============ */
-.pipeline{display:flex;align-items:stretch;gap:0;margin:8px 28px 14px;border:1px solid var(--line);
+/* ============ как это работает: человеческая история ============ */
+.explain{margin:6px 28px 12px;background:var(--blue-bg);border:1px solid #c9d7f5;
+  border-radius:10px;padding:12px 18px;font-size:.88rem;color:var(--ink2);max-width:none}
+.explain b{color:var(--blue)}
+.explain .step-word{font-weight:700}
+
+/* ============ конвейер: живой пульс исполнения ============ */
+.pipeline{display:flex;align-items:stretch;gap:0;margin:0 28px 6px;border:1px solid var(--line);
   border-radius:10px;overflow:hidden;background:var(--card)}
-.stage{flex:1;padding:10px 14px;border-right:1px solid var(--line);position:relative;transition:background .4s}
+.stage{flex:1;padding:12px 14px;border-right:1px solid var(--line);position:relative;transition:background .4s}
 .stage:last-child{border-right:none}
-.stage .n{font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--dim)}
-.stage .t{font-weight:600;font-size:.92rem}
-.stage .info{font-size:.74rem;color:var(--dim);min-height:1.1em}
+.stage .n{font-size:.66rem;text-transform:uppercase;letter-spacing:.06em;color:var(--dim)}
+.stage .t{font-weight:700;font-size:.95rem}
+.stage .d{font-size:.75rem;color:var(--dim);margin-top:2px;min-height:2.1em}
+.stage .info{font-size:.74rem;color:var(--ink2);min-height:1.1em;font-weight:600}
 .stage.active{background:var(--amber-bg)}
-.stage.active .n{color:var(--amber)}
+.stage.active .n,.stage.active .t{color:var(--amber)}
 .stage.active::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--amber);
   animation:pulse 1.2s ease-in-out infinite}
 .stage.done{background:var(--green-bg)}
 .stage.done .n{color:var(--green)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
-/* reason: the pulsing underline and the amber fill mark the one stage running
-   right now, so the eye follows the real execution instead of decoration. */
+/* Причина: пульс и янтарная заливка показывают единственный этап, который
+   исполняется прямо сейчас, взгляд следует за реальным выполнением. */
 
-/* ============ control deck ============ */
-.deck{display:flex;gap:10px;margin:0 28px 16px;flex-wrap:wrap;align-items:center}
-button{font:inherit;font-weight:600;padding:9px 18px;border-radius:8px;border:1px solid var(--line);
+.pipeline-caption{margin:0 28px 14px;color:var(--dim);font-size:.76rem}
+
+/* ============ пульт ============ */
+.deck{display:flex;gap:10px;margin:0 28px 8px;flex-wrap:wrap;align-items:center}
+button{font:inherit;font-weight:600;padding:10px 18px;border-radius:8px;border:1px solid var(--line);
   background:var(--card);color:var(--ink);cursor:pointer;transition:transform .08s, box-shadow .15s}
-button:hover:not(:disabled){box-shadow:0 2px 8px rgba(24,34,52,.12)}
+button:hover:not(:disabled){box-shadow:0 2px 8px rgba(24,34,52,.14)}
 button:active:not(:disabled){transform:translateY(1px)}
 button:disabled{opacity:.45;cursor:not-allowed}
 button:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 .btn-primary{background:var(--blue);border-color:var(--blue);color:#fff}
 .btn-dream{background:var(--amber);border-color:var(--amber);color:#fff}
 .btn-danger{background:var(--card);border-color:var(--red);color:var(--red)}
-.job{font-size:.82rem;color:var(--dim)}
+.job{font-size:.84rem;color:var(--dim)}
 .job b{color:var(--amber)}
+.deck-hint{color:var(--dim);font-size:.75rem;width:100%;margin-top:2px}
+
+/* статистика: каждая цифра с человеческим выводом */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:12px 28px 16px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+.stat .v{font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums}
+.stat .v.grow{color:var(--green)}
+.stat .l{font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--dim);margin-top:1px}
+.stat .why{font-size:.75rem;color:var(--ink2);margin-top:4px;border-top:1px dashed var(--line);padding-top:4px}
 
 .grid{display:grid;grid-template-columns:1.4fr 1fr;gap:14px;margin:0 28px 16px}
 @media(max-width:1000px){.grid{grid-template-columns:1fr}}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
-.card h2{margin:0;padding:10px 16px;font-size:.85rem;font-weight:600;border-bottom:1px solid var(--line);color:var(--ink2)}
+.card h2{margin:0;padding:10px 16px 2px;font-size:.88rem;font-weight:700;color:var(--ink)}
+.card .sub{padding:0 16px 8px;color:var(--dim);font-size:.76rem;border-bottom:1px solid var(--line)}
 .card .body{padding:12px 16px}
 
-/* stats */
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:0 28px 16px}
-.stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px}
-.stat .v{font-size:1.35rem;font-weight:700;font-variant-numeric:tabular-nums}
-.stat .v.grow{color:var(--green)}
-.stat .l{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--dim)}
-
-/* ascent chart */
 svg text{font-family:var(--sans)}
 .axis{stroke:var(--line)}
 .axislabel{fill:var(--dim);font-size:10px}
+.verdict{background:var(--green-bg);border:1px solid #bfe5d4;border-radius:8px;padding:8px 12px;
+  font-size:.8rem;color:var(--ink2);margin-top:10px}
+.verdict b{color:var(--green)}
 
-/* strategy table */
 table{border-collapse:collapse;width:100%;font-size:.82rem}
-th{text-align:left;color:var(--dim);font-weight:600;font-size:.68rem;text-transform:uppercase;
+th{text-align:left;color:var(--dim);font-weight:600;font-size:.66rem;text-transform:uppercase;
    letter-spacing:.05em;padding:6px 8px;border-bottom:1px solid var(--line)}
 td{padding:6px 8px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
 tr.winrow{background:var(--green-bg)}
@@ -95,106 +110,124 @@ tr:hover:not(.winrow){background:var(--blue-bg)}
 .bar-wrap{display:flex;align-items:center;gap:8px}
 .bar{height:10px;border-radius:3px;background:var(--blue);min-width:2px;transition:width .8s cubic-bezier(.2,.7,.3,1)}
 .bar.green{background:var(--green)}
-/* reason: bars grow animated so the eye compares verdicts by length, and the
-   transition marks the change when a new dream writes new verdicts. */
-.tag{display:inline-block;padding:1px 8px;border-radius:9px;font-size:.68rem;font-weight:600}
+/* Причина: бары растут анимированно, вердикты сравниваются по длине. */
+.tag{display:inline-block;padding:1px 8px;border-radius:9px;font-size:.66rem;font-weight:600}
 .tag.win{background:var(--green-bg);color:var(--green)}
 .tag.dep{background:var(--blue-bg);color:var(--blue)}
 
-/* episode explorer */
 .ep-tabs{display:flex;gap:6px;flex-wrap:wrap;padding:10px 16px 0}
-.ep-tab{font-size:.76rem;padding:4px 10px;border-radius:7px;border:1px solid var(--line);
+.ep-tab{font-size:.74rem;padding:4px 10px;border-radius:7px;border:1px solid var(--line);
   background:var(--bg);color:var(--dim);cursor:pointer}
 .ep-tab.active{background:var(--blue-bg);border-color:var(--blue);color:var(--blue);font-weight:600}
 .steps{max-height:300px;overflow:auto;padding:10px 16px}
-.step{display:flex;gap:10px;padding:4px 6px;border-radius:6px;font-size:.8rem;font-variant-numeric:tabular-nums}
+.step{display:flex;gap:10px;padding:4px 6px;border-radius:6px;font-size:.79rem;font-variant-numeric:tabular-nums}
 .step:nth-child(odd){background:var(--bg)}
 .step .idx{color:var(--dim);width:26px;text-align:right}
-.step .act{font-family:var(--mono);font-size:.74rem;width:150px}
+.step .act{font-family:var(--mono);font-size:.73rem;width:150px}
 .step .sc{width:60px;text-align:right;font-weight:600}
 .step .sc.pos{color:var(--green)}
 .step .sc.neg{color:var(--red)}
 .step .note{color:var(--dim);flex:1}
 .outcome-success{color:var(--green)}
 .outcome-failure,.outcome-illegal{color:var(--red)}
+.ep-legend{color:var(--dim);font-size:.73rem;padding:6px 16px 10px}
 
-/* event log */
-.log{font-family:var(--mono);font-size:.74rem;max-height:260px;overflow:auto;padding:10px 16px}
+.log{font-family:var(--mono);font-size:.73rem;max-height:280px;overflow:auto;padding:10px 16px;background:var(--bg)}
 .log .t{color:var(--dim);margin-right:8px}
 .log .err{color:var(--red);font-weight:600}
 .log .line{padding:2px 0;animation:logIn .25s ease-out}
 @keyframes logIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
 
-.empty{color:var(--dim);font-size:.85rem;padding:14px 0;text-align:center}
-footer{padding:10px 28px 26px;color:var(--dim);font-size:.72rem}
-code{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0 5px;font-size:.85em}
+.empty{color:var(--dim);font-size:.84rem;padding:14px 0;text-align:center}
+footer{padding:12px 28px 28px;color:var(--dim);font-size:.73rem}
+footer code{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:0 5px}
 </style>
 </head>
 <body>
 <header>
-  <h1><span class="hl">Oneiro-OSTIS</span> control panel</h1>
-  <span class="conn"><span class="dot" id="connDot"></span><span id="connTxt">connecting</span></span>
+  <h1><span class="hl">Oneiro-OSTIS</span>: агент, который улучшается во сне</h1>
+  <span class="conn"><span class="dot" id="connDot"></span><span id="connTxt">подключение</span></span>
   <span class="spacer"></span>
   <span class="subj">
-    <label for="subjectSel">subject</label>
-    <select id="subjectSel"><option value="">loading…</option></select>
+    <label for="subjectSel">Персонаж:</label>
+    <select id="subjectSel"><option value="">загрузка…</option></select>
   </span>
 </header>
+<p class="tagline">Каждое действие агента навсегда записывается в граф знаний OSTIS. Ночью «судья» переигрывает этот опыт и выбирает стратегию получше. Ничего не выдумывается: сны переносят только то, что реально записано.</p>
 
-<!-- the pipeline the jury will watch run for real -->
-<div class="pipeline" id="pipeline">
-  <div class="stage" data-stage="day"><div class="n">stage 1</div><div class="t">Online day</div><div class="info" id="i-day"></div></div>
-  <div class="stage" data-stage="explore"><div class="n">stage 2</div><div class="t">Exploration</div><div class="info" id="i-explore"></div></div>
-  <div class="stage" data-stage="dream"><div class="n">stage 3</div><div class="t">Dream (exact replay)</div><div class="info" id="i-dream"></div></div>
-  <div class="stage" data-stage="deploy"><div class="n">stage 4</div><div class="t">Deploy + measure</div><div class="info" id="i-deploy"></div></div>
+<div class="explain" id="explain">
+  <b>Как читать этот экран.</b> Агент живёт в детерминированном мире: остров с 8 местами раскопок
+  и лагерем. <span class="step-word">Днём</span> он действует по текущей стратегии и каждый шаг
+  записывает в граф. <span class="step-word">Ночью</span> судья «переигрывает» записанный опыт
+  сотней других стратегий, не запуская мир, и выбирает лучшую. <span class="step-word">Утром</span>
+  агент действует по новой стратегии, и её счёт измеряется в мире по-настоящему.
+  Нажмите «Полный цикл» и смотрите на конвейер ниже.
 </div>
 
+<div class="pipeline" id="pipeline">
+  <div class="stage" data-stage="day"><div class="n">этап 1</div><div class="t">День</div>
+    <div class="d">агент живёт и всё записывает в граф</div><div class="info" id="i-day"></div></div>
+  <div class="stage" data-stage="explore"><div class="n">этап 2</div><div class="t">Разведка</div>
+    <div class="d">специальные маршруты обогащают опыт</div><div class="info" id="i-explore"></div></div>
+  <div class="stage" data-stage="dream"><div class="n">этап 3</div><div class="t">Сон</div>
+    <div class="d">судья переигрывает записи, мир не запускается</div><div class="info" id="i-dream"></div></div>
+  <div class="stage" data-stage="deploy"><div class="n">этап 4</div><div class="t">Утро</div>
+    <div class="d">новая стратегия измеряется по-настоящему</div><div class="info" id="i-deploy"></div></div>
+</div>
+<p class="pipeline-caption">Конвейер подсвечивается по ходу реального исполнения. Пока никакая кнопка не нажата, он серый.</p>
+
 <div class="deck">
-  <button class="btn-primary" id="btnDay">Run online day</button>
-  <button id="btnExplore">Run exploration</button>
-  <button class="btn-dream" id="btnDream">Run dream</button>
-  <button class="btn-primary" id="btnCycle">Full cycle (day + explore + dream)</button>
-  <button class="btn-danger" id="btnReset">Reset KB</button>
-  <button id="btnStop" disabled>Stop</button>
-  <span class="job" id="jobTxt">idle</span>
+  <button class="btn-primary" id="btnDay">Играть день</button>
+  <button id="btnExplore">Играть разведку</button>
+  <button class="btn-dream" id="btnDream">Устроить сон</button>
+  <button class="btn-primary" id="btnCycle">Полный цикл (день + разведка + сон)</button>
+  <button class="btn-danger" id="btnReset">Сбросить базу</button>
+  <button id="btnStop" disabled>Остановить</button>
+  <span class="job" id="jobTxt">простаивает</span>
+  <span class="deck-hint">Каждая кнопка запускает настоящий пайплайн на живом стеке OSTIS. Кнопки блокируются, пока идёт работа.</span>
 </div>
 
 <div class="stats" id="stats"></div>
 
 <div class="grid">
   <div class="card">
-    <h2>Score ascent: measured online after each dream</h2>
+    <h2>Рост счёта: что агент показал в мире по-настоящему</h2>
+    <div class="sub">Каждая точка — измеренный онлайн-счёт стратегии, деплоированной после сна. Пунктир — первый день (до того, как агент начал видеть сны).</div>
     <div class="body" id="ascent"></div>
+    <div class="verdict" id="ascentVerdict"></div>
   </div>
   <div class="card">
-    <h2>Dream history: every strategy the judge has scored</h2>
-    <div class="body" style="max-height:320px;overflow:auto" id="dreamTable"></div>
+    <h2>История снов: что судья подумал о каждой стратегии</h2>
+    <div class="sub">Вердикт — прогноз судьи по записям опыта. «Онлайн» — реальный счёт в мире, если стратегию деплоили. Зелёная строка — текущий чемпион.</div>
+    <div class="body" style="max-height:340px;overflow:auto" id="dreamTable"></div>
   </div>
   <div class="card">
-    <h2>Recorded experience: what the judge replays</h2>
+    <h2>Память агента: то, что судья переигрывает во сне</h2>
+    <div class="sub">Полная хроника шагов эпизода, как она лежит в графе знаний. Выберите эпизод:</div>
     <div class="ep-tabs" id="epTabs"></div>
     <div class="steps" id="epBody"></div>
+    <div class="ep-legend">«копать» и «доставить» приносят очки, «перейти» стоит 0.1. Такие же записи судья переигрывает ночью, не запуская мир.</div>
   </div>
   <div class="card">
-    <h2>Live log from the pipeline</h2>
-    <div class="log" id="log"><div class="empty">no job run yet: press a button above, every action is real</div></div>
+    <h2>Журнал: что происходит прямо сейчас</h2>
+    <div class="sub">Каждое событие настоящего пайплайна, построчно.</div>
+    <div class="log" id="log"><div class="empty">пока ничего: нажмите кнопку выше, и здесь появится живой журнал</div></div>
   </div>
 </div>
 
 <footer>
-  Every button executes the real pipeline against the live OSTIS stack (sc-machine, C++ agents):
-  episodes are recorded into the knowledge graph, the dream replays recordings exactly (no world
-  execution), the winner is deployed and measured online. Data source: <code>/api/state</code>,
-  read back from the graph.
+  Все кнопки исполняют настоящий пайплайн на живом стеке OSTIS (sc-machine, C++-агенты):
+  действия записываются в граф знаний, сон переигрывает записи в точности (мир не запускается),
+  победитель деплоится и измеряется в мире. Данные страницы читаются из графа:
+  <code>/api/state</code>.
 </footer>
 
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
 let SUBJECT = "";
-let POLL = null;
 
-/* ---------- helpers ---------- */
+/* ---------- помощники ---------- */
 async function api(path, opts){ const r = await fetch(path, opts); return r.json(); }
 
 function setConn(ok, txt){
@@ -214,62 +247,64 @@ function resetStages(){
   ["day","explore","dream","deploy"].forEach(s => setStage(s, null, ""));
 }
 
-/* ---------- state ---------- */
+/* ---------- состояние ---------- */
 async function refresh(){
   try{
     const d = await api("/api/state" + (SUBJECT ? "?subject=" + encodeURIComponent(SUBJECT) : ""));
-    setConn(true, "connected to sc-machine");
+    setConn(true, "связь с графом есть");
     render(d);
   }catch(e){
-    setConn(false, "cannot reach the stack");
+    setConn(false, "нет связи со стеком");
   }
 }
 
 function render(d){
-  // job status comes from the server, so a finished job clears the UI
+  // статус задачи приходит с сервера: завершённая работа гасит индикацию
   setUI(d.job.running, d.job.name || "");
 
-  // subject selector
+  // переключатель персонажа
   const sel = $("subjectSel");
   if(sel.dataset.loaded !== d.subjects.join(",")){
     sel.dataset.loaded = d.subjects.join(",");
     sel.innerHTML = d.subjects.length
       ? d.subjects.map(s => `<option value="${s}">${s}</option>`).join("")
-      : "<option value=\"\">no subjects yet</option>";
+      : "<option value=\"\">пока никого</option>";
     if(d.subject && d.subjects.includes(d.subject)) sel.value = d.subject;
   }
 
-  // stats
+  // статистика: цифра + человеческий вывод
   const deployed = d.strategies.filter(s => s.online != null);
   const first = deployed.length ? Math.min(...deployed.map(s => s.online)) : 0;
   const last = deployed.length ? Math.max(...deployed.map(s => s.online)) : 0;
   const gain = first ? "+" + Math.round(100 * (last - first) / first) + "%" : "0%";
   const c = d.consistency;
-  $("stats").innerHTML = [
-    ["strategies in graph", d.strategies.length, ""],
-    ["episodes recorded", c.episodes, ""],
-    ["steps recorded", c.steps, ""],
-    ["replay transitions", c.transitions, ""],
-    ["recording conflicts", c.conflicts, c.conflicts === 0 ? "grow" : ""],
-    ["day 1 online", first ? first.toFixed(1) : "0", ""],
-    ["best online", last ? last.toFixed(1) : "0", "grow"],
-    ["ascent", deployed.length ? gain : "0%", "grow"],
-  ].map(([l,v,cls]) =>
-    `<div class="stat"><div class="v ${cls}">${v}</div><div class="l">${l}</div></div>`).join("");
+  const items = [
+    {l:"стратегий в графе", v:d.strategies.length, why:"каждая — узел графа с дескриптором и вердиктом сна", cls:""},
+    {l:"эпизодов в памяти", v:c.episodes, why:"сколько раз агент прожил день под разными стратегиями", cls:""},
+    {l:"шагов записано", v:c.steps, why:"столько действий хранится в графе знаний навсегда", cls:""},
+    {l:"переходов опыта", v:c.transitions, why:"связей «ситуация → действие → итог» для снов", cls:""},
+    {l:"противоречий записей", v:c.conflicts, why:c.conflicts === 0 ? "мир детерминирован: судья не лжёт" : "записи расходятся, судье нельзя верить", cls:c.conflicts === 0 ? "grow" : ""},
+    {l:"первый день", v:first ? first.toFixed(1) : "0", why:"счёт до того, как агент начал видеть сны", cls:""},
+    {l:"лучший день", v:last ? last.toFixed(1) : "0", why:"реальный счёт лучшей стратегии в мире", cls:"grow"},
+    {l:"рост", v:deployed.length ? gain : "0%", why:"насколько сон улучшил измеренный результат", cls:"grow"},
+  ];
+  $("stats").innerHTML = items.map(it =>
+    `<div class="stat"><div class="v ${it.cls}">${it.v}</div><div class="l">${it.l}</div><div class="why">${it.why}</div></div>`).join("");
 
   renderAscent(deployed, first);
   renderTable(d.strategies);
   renderEpisodes(d.episodes);
 }
 
-/* ---------- ascent chart (SVG, animated) ---------- */
+/* ---------- график роста ---------- */
 function renderAscent(deployed, first){
   if(!deployed.length){
-    $("ascent").innerHTML = `<div class="empty">no online day has run for this subject yet: press "Run online day"</div>`;
+    $("ascent").innerHTML = `<div class="empty">онлайн-день ещё не игрался: нажмите «Играть день», затем «Устроить сон»</div>`;
+    $("ascentVerdict").innerHTML = "";
     return;
   }
   const W = 620, H = 220, P = 42;
-  const seen = new Map(); // round -> best online so far
+  const seen = new Map();
   deployed.forEach(s => {
     const r = s.round || 1;
     if(!seen.has(r) || s.online > seen.get(r)) seen.set(r, s.online);
@@ -280,64 +315,70 @@ function renderAscent(deployed, first){
   const X = i => P + i * ((W - 2*P) / Math.max(pts.length, 1));
   const Y = v => H - P - (v - lo) / (hi - lo) * (H - 2*P);
 
-  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="online score by round">`;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="онлайн-счёт по раундам">`;
   for(let g = 0; g <= 4; g++){
     const y = P + g * (H - 2*P) / 4, v = hi - g * (hi - lo) / 4;
     s += `<line class="axis" x1="${P}" y1="${y}" x2="${W-P}" y2="${y}"/>`;
     s += `<text class="axislabel" x="${W-P+6}" y="${y+4}">${Math.round(v)}</text>`;
   }
-  // incumbent baseline
   s += `<line x1="${P}" y1="${Y(first)}" x2="${W-P}" y2="${Y(first)}" stroke="#5d6b85" stroke-dasharray="4 4" opacity=".5"/>`;
-  s += `<text class="axislabel" x="${P}" y="${Y(first)-6}">day 1: ${first.toFixed(1)}</text>`;
-  // growth line
+  s += `<text class="axislabel" x="${P}" y="${Y(first)-6}">первый день: ${first.toFixed(1)}</text>`;
   let path = `M ${X(0)} ${Y(first)}`;
   pts.forEach((p,i) => path += ` L ${X(i)} ${Y(p.v)}`);
   if(pts.length) path += ` L ${W-P} ${Y(pts[pts.length-1].v)}`;
   s += `<path d="${path}" fill="none" stroke="var(--green)" stroke-width="2.6" stroke-linejoin="round"/>`;
   pts.forEach((p,i) => {
-    s += `<circle cx="${X(i)}" cy="${Y(p.v)}" r="5" fill="var(--green)"><title>round ${p.r}: ${p.v}</title></circle>`;
+    s += `<circle cx="${X(i)}" cy="${Y(p.v)}" r="5" fill="var(--green)"><title>раунд ${p.r}: ${p.v}</title></circle>`;
     s += `<text x="${X(i)}" y="${Y(p.v)-10}" text-anchor="middle" font-size="11" font-weight="600" fill="var(--green)">${p.v.toFixed(1)}</text>`;
-    s += `<text class="axislabel" x="${X(i)}" y="${H-12}" text-anchor="middle">round ${p.r}</text>`;
+    s += `<text class="axislabel" x="${X(i)}" y="${H-12}" text-anchor="middle">раунд ${p.r}</text>`;
   });
   s += `</svg>`;
   $("ascent").innerHTML = s;
+
+  // человеческий вывод под графиком
+  const v = $("ascentVerdict");
+  if(pts.length && first){
+    const gained = pts[pts.length-1].v - first;
+    v.innerHTML = gained > 0
+      ? `<b>Вывод:</b> после первого сна агент стал собирать на <b>${gained.toFixed(1)}</b> очков больше. Это измерено в мире, не по прогнозам судьи.`
+      : `<b>Вывод:</b> пока сон не дал роста на этом персонаже: честная нижняя граница метода.`;
+  }
 }
 
-/* ---------- dream table ---------- */
+/* ---------- таблица снов ---------- */
 function renderTable(strategies){
   const maxR = Math.max(...strategies.map(s => s.replay || 0), 1);
   const rows = [...strategies].sort((a,b) => (b.replay||0) - (a.replay||0));
   if(!rows.length){
-    $("dreamTable").innerHTML = `<div class="empty">graph has no strategies yet: run a dream</div>`;
+    $("dreamTable").innerHTML = `<div class="empty">в графе ещё нет стратегий: устройте сон</div>`;
     return;
   }
   const bestOnline = Math.max(...strategies.map(s => s.online ?? -Infinity));
   $("dreamTable").innerHTML = `<table>
-    <tr><th>strategy</th><th>replay verdict</th><th>online</th><th>dream</th></tr>` +
+    <tr><th>стратегия</th><th>вердикт сна</th><th>онлайн</th><th>сон №</th></tr>` +
     rows.map(st => {
       const isWin = st.online != null && st.online >= bestOnline - 0.01;
       const barW = Math.max(3, Math.round(140 * (st.replay || 0) / maxR));
       return `<tr class="${isWin ? "winrow" : ""}">
-        <td>${st.name || "(unnamed)"}
-          ${st.online != null ? `<span class="tag dep">deployed</span>` : ""}
-          ${isWin ? `<span class="tag win">winner</span>` : ""}</td>
+        <td>${st.name || "(без имени)"}
+          ${st.online != null ? `<span class="tag dep">в деле</span>` : ""}
+          ${isWin ? `<span class="tag win">чемпион</span>` : ""}</td>
         <td><span class="bar-wrap"><span class="bar" style="width:0" data-w="${barW}"></span>${st.replay ?? "—"}</span></td>
         <td>${st.online != null ? st.online.toFixed(2) : "—"}</td>
         <td>${st.round ?? "—"}</td></tr>`;
     }).join("") + `</table>`;
-  // animate bars in on the next frame (reason: length comparison reads better animated once)
   requestAnimationFrame(() => requestAnimationFrame(() => {
     document.querySelectorAll(".bar[data-w]").forEach(b => b.style.width = b.dataset.w + "px");
   }));
 }
 
-/* ---------- episode explorer ---------- */
+/* ---------- просмотр эпизодов ---------- */
 let currentEp = null;
 function renderEpisodes(eps){
   const names = Object.keys(eps);
   if(!names.length){
     $("epTabs").innerHTML = "";
-    $("epBody").innerHTML = `<div class="empty">no episodes recorded for this subject yet</div>`;
+    $("epBody").innerHTML = `<div class="empty">для этого персонажа эпизодов пока нет: нажмите «Играть день»</div>`;
     currentEp = null;
     return;
   }
@@ -351,20 +392,20 @@ function renderEpisodes(eps){
   $("epBody").innerHTML = steps.map(st =>
     `<div class="step"><span class="idx">${st.i}</span>
      <span class="act">${st.action}:${st.object}</span>
-     <span class="outcome-${st.outcome}">${st.outcome}</span>
+     <span class="outcome-${st.outcome}">${st.outcome === "success" ? "успех" : st.outcome === "failure" ? "неудача" : st.outcome}</span>
      <span class="sc ${st.score >= 0 ? "pos" : "neg"}">${st.score != null ? st.score.toFixed(2) : ""}</span>
      <span class="note">${st.note || ""}</span></div>`).join("") +
     `<div class="step" style="border-top:1px solid var(--line);margin-top:6px;padding-top:8px">
-     <span class="idx"></span><span class="act"><b>total</b></span>
+     <span class="idx"></span><span class="act"><b>итого</b></span>
      <span></span><span class="sc pos"><b>${total.toFixed(1)}</b></span>
-     <span class="note">${steps.length} steps recorded</span></div>`;
+     <span class="note">${steps.length} шагов записано в граф</span></div>`;
 }
 
-/* ---------- job control ---------- */
+/* ---------- управление задачами ---------- */
 function setUI(running, name){
   ["btnDay","btnExplore","btnDream","btnCycle","btnReset"].forEach(id => $(id).disabled = running);
   $("btnStop").disabled = !running;
-  $("jobTxt").innerHTML = running ? `running: <b>${name}</b>` : "idle";
+  $("jobTxt").innerHTML = running ? `работает: <b>${name}</b>` : "простаивает";
 }
 
 async function act(kind){
@@ -375,9 +416,9 @@ async function act(kind){
       body: JSON.stringify(body)
     });
     const j = await r.json();
-    if(j.error){ alert("cannot start: " + j.error); return; }
+    if(j.error){ alert("Не удалось запустить: " + j.error); return; }
     setUI(true, j.started);
-  }catch(e){ alert("server unreachable: " + e); }
+  }catch(e){ alert("Сервер недоступен: " + e); }
 }
 
 $("btnDay").addEventListener("click", () => act("day"));
@@ -385,7 +426,7 @@ $("btnExplore").addEventListener("click", () => act("explore"));
 $("btnDream").addEventListener("click", () => act("dream"));
 $("btnCycle").addEventListener("click", () => act("cycle"));
 $("btnReset").addEventListener("click", () => {
-  if(confirm("Reset the runtime KB? All recorded episodes and strategies are dropped (rebuilt from ontology sources).")) act("reset");
+  if(confirm("Сбросить базу знаний? Все записанные эпизоды и стратегии будут удалены (онтология пересоберётся из исходников).")) act("reset");
 });
 $("btnStop").addEventListener("click", () => api("/api/stop", {method: "POST"}));
 $("subjectSel").addEventListener("change", e => {
@@ -394,43 +435,46 @@ $("subjectSel").addEventListener("change", e => {
   refresh();
 });
 
-/* ---------- SSE log ---------- */
+/* ---------- поток событий ---------- */
 const es = new EventSource("/api/events");
 es.onmessage = e => {
   const {t, line} = JSON.parse(e.data);
   const log = $("log");
   if(log.querySelector(".empty")) log.innerHTML = "";
   const div = document.createElement("div");
-  div.className = "line" + (line.startsWith("ERROR") ? " err" : "");
+  div.className = "line" + (line.startsWith("ERROR") || line.startsWith("Сброс не удался") ? " err" : "");
   div.innerHTML = `<span class="t">${t}</span>${line}`;
   log.appendChild(div);
   log.scrollTop = log.scrollHeight;
-  // map log lines to pipeline stages so the banner follows the real execution
-  const l = line.toLowerCase();
-  if(l.includes("online day") && l.includes("for")) { resetStages(); setStage("day","active"); }
-  if(l.includes("exploration:")) { setStage("day","done","recorded"); setStage("explore","active"); }
-  if(l.includes("dream over")) { setStage("explore","done","2 walks"); setStage("dream","active"); }
-  if(l.includes("judge replayed")) $("i-dream").textContent = line.slice(0,60);
-  if(l.includes("winner:")) { setStage("dream","done"); setStage("deploy","active"); }
-  if(l.includes("day done:")) { setStage("day","done",$("i-day").textContent || "measured"); setStage("deploy","done","measured online"); resetStagesAfter(); }
-  if(l.includes("full cycle")) { resetStages(); }
-  if(l.includes("resetting")) resetStages();
+  // подсветка этапов по содержимому реальных событий
+  if(line.includes("экспедицию") || line.includes("Запущено: День")) { resetStages(); setStage("day","active"); }
+  if(line.includes("Запущено: Сон")) setStage("dream","active");
+  if(line.includes("Запущено: Разведка")) setStage("explore","active");
+  if(line.includes("Запущено: Полный")) resetStages();
+  if(line.includes("Разведка маршрутом")) { setStage("day","done","записано"); setStage("explore","active"); }
+  if(line.includes("засыпает")) { setStage("explore","done","2 маршрута"); setStage("dream","active"); }
+  if(line.includes("Судья переиграл")) $("i-dream").textContent = line.slice(0,64);
+  if(line.includes("Победитель:")) { setStage("dream","done"); setStage("deploy","active"); }
+  if(line.includes("День завершён:")) { setStage("day","done","измерено"); setStage("deploy","done","измерено онлайн"); scheduleReset(); }
+  if(line.includes("Раунд")) { /* полный цикл пишет свои строки, баннер уже обновлён по этапам */ }
+  if(line.includes("Полный цикл")) resetStages();
+  if(line.includes("Сброс базы")) resetStages();
 };
 let resetTimer = null;
-function resetStagesAfter(){
+function scheduleReset(){
   clearTimeout(resetTimer);
   resetTimer = setTimeout(() => { resetStages(); refresh(); }, 2500);
 }
 
-/* ---------- boot ---------- */
+/* ---------- старт ---------- */
 (async () => {
   const d = await api("/api/state");
   SUBJECT = d.subjects[0] || "";
   if(SUBJECT) $("subjectSel").value = SUBJECT;
   render(d);
-  setConn(true, "connected to sc-machine");
+  setConn(true, "связь с графом есть");
 })();
-POLL = setInterval(refresh, 4000);
+setInterval(refresh, 4000);
 </script>
 </body>
 </html>
