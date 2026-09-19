@@ -167,8 +167,9 @@ reached the sweep's optimum, then the loop converged.
 ## 8. Related work and novelty (bounded search)
 
 Searches run 2026-09-19 via web search (queries: "OSTIS memory agent episodic
-memory…", "OSTIS 'dreaming' replay self-improvement…", '"ОСТИС"… эпизодическая
-память', '"learning by dreaming" replay experience agent self-improvement'):
+memory…", "OSTIS 'dreaming' replay self-improvement…", '"ОСТИС" ИЛИ "OSTIS"
+эпизодическая память агента проект Ника', '"НИКА ОСТИС" ассистент', '"learning
+by dreaming" replay experience agent self-improvement'):
 - "Dreaming" as policy improvement inside a learned world model is the
   established Dreamer-style model-based RL line (search hits: 2025–2026 theses
   on "learning by dreaming"); there, dreaming *executes the learned model*.
@@ -176,6 +177,14 @@ memory…", "OSTIS 'dreaming' replay self-improvement…", '"ОСТИС"… эп
   common industry practice (IBM/mem0/Atlan articles).
 - The OSTIS ecosystem hits in the bounded search are knowledge-processing and
   semantic-technology works (BSUIR/Minsk), not experience-replay optimizers.
+
+In-ecosystem prior art, checked explicitly as the plan demanded: **NIKA** is
+an OSTIS-based intelligent dialogue assistant (BSUIR; Sadovsky 2023, "Model
+for personalization of user interfaces", applied within NIKA) — semantic
+assistant work, not an experience-replay optimiser. The OSTIS-2025
+conference materials likewise cover knowledge-processing and design
+automation. No OSTIS work was found that records an agent's full action
+trajectory as graph entities and optimises it by exact replay.
 
 Within this bounded search, no prior work was found that (a) records the full
 trajectory of an agent natively in an OSTIS sc-graph and (b) improves the
