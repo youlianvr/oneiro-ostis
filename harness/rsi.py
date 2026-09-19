@@ -159,8 +159,39 @@ CRITERIA_V4 = {
     },
 }
 
-CRITERIA_HISTORY = {1: CRITERIA_V1, 2: CRITERIA_V2, 3: CRITERIA_V3, 4: CRITERIA_V4}
-DEFAULT_CRITERIA = CRITERIA_V4
+CRITERIA_V5 = {
+    **CRITERIA_V4,
+    "version": 5,
+    "evidence": {
+        **CRITERIA_V4["evidence"],
+        "repeats": {
+            "min_runs_per_task": 3,
+            "note": "a saving is a claim about a distribution. One run per task "
+                    "cannot separate a three percent saving from variance, and the "
+                    "spread across runs of one policy reached 90% of the baseline "
+                    "here, so every online claim is averaged over at least this "
+                    "many runs per task",
+        },
+    },
+    "budget": {
+        "online_runs_per_round": 18,
+        "note": "three runs per search task, three per held-out task, when a round deploys",
+    },
+    "revision": {
+        "from_version": 4,
+        "reason": "version 4 accepted a deployment on one run per task, and the first "
+                  "policy deployed under it did not survive repeats",
+        "evidence": "round 9 read -3.4% on the search set from single runs; with three "
+                    "runs per task the same policy reads +4.0% overall and no transfer, "
+                    "with per-task spreads of 34% and 91% of the baseline",
+        "unchanged": "min_predicted_saving 0.15, max_tasks_lost 1, "
+                     "min_decision_replayable 0.5, the online path, the trajectory rule",
+    },
+}
+
+CRITERIA_HISTORY = {1: CRITERIA_V1, 2: CRITERIA_V2, 3: CRITERIA_V3, 4: CRITERIA_V4,
+                    5: CRITERIA_V5}
+DEFAULT_CRITERIA = CRITERIA_V5
 
 # The proposer is a different job from the agent under test: it reasons about
 # trajectories rather than acting, so it may be a different model. The agent
@@ -475,34 +506,64 @@ def gate(candidates: list[HarnessPolicy], estimates: dict[str, list[replay.Estim
 # ---------- online measurement ----------
 
 
-def measure(policy: HarnessPolicy, tasks: list[str], model: str, label: str) -> list[dict]:
-    """Run the policy online and record the outcome of every task.
+def measure(policy: HarnessPolicy, tasks: list[str], model: str, label: str,
+            repeats: int = 1) -> list[dict]:
+    """Run the policy online, `repeats` times per task, and average the samples.
 
-    A provider outage is recorded as unmeasured (`solved` stays None), never as
-    a failure: an accounting where a refused request looks like a lost task
-    would quietly make every policy look worse than it is.
+    A saving is a claim about a distribution. One run per task cannot separate a
+    three percent saving from variance, and the variance measured here reaches
+    90% of the baseline on one task, so a claim quoted from a single run is not a
+    claim. `solved` means every measured sample solved the task, which is the
+    strict reading of capability under repeats; the sample counts are kept so a
+    reader can see what the average hides.
+
+    A provider outage is recorded as unmeasured (`solved` stays None), never as a
+    failure: an accounting where a refused request looks like a lost task would
+    quietly make every policy look worse than it is.
     """
     results = []
     for task in tasks:
-        try:
-            record = agent.run_task(task, model=model, label=label, policy=policy)
-        except RuntimeError as exc:
-            results.append({
-                "task": task, "solved": None, "steps": 0, "tool_calls": 0,
-                "prompt_tokens": 0, "total_tokens": 0, "wall_seconds": 0.0,
-                "stop_reason": "provider_refused", "error": str(exc)[:200], "scratch": "",
+        samples = []
+        for attempt in range(1, repeats + 1):
+            run_label = label if repeats == 1 else f"{label}-r{attempt}"
+            try:
+                record = agent.run_task(task, model=model, label=run_label, policy=policy)
+            except RuntimeError as exc:
+                samples.append({"solved": None, "prompt_tokens": 0, "total_tokens": 0,
+                                "steps": 0, "tool_calls": 0, "wall_seconds": 0.0,
+                                "stop_reason": "provider_refused", "error": str(exc)[:200],
+                                "scratch": ""})
+                continue
+            samples.append({
+                "solved": bool(record["solved"]),
+                "prompt_tokens": record["tokens"]["input"],
+                "total_tokens": record["tokens"]["total"],
+                "steps": len(record["steps"]),
+                "tool_calls": record["tool_calls"],
+                "wall_seconds": record["wall_seconds"],
+                "stop_reason": record["stop_reason"],
+                "scratch": record["scratch"],
             })
+        measured = [s for s in samples if s["solved"] is not None]
+        if not measured:
+            results.append({"task": task, "solved": None, "steps": 0, "tool_calls": 0,
+                            "prompt_tokens": 0, "total_tokens": 0, "wall_seconds": 0.0,
+                            "stop_reason": "provider_refused", "samples": samples,
+                            "error": samples[0].get("error", ""), "scratch": ""})
             continue
         results.append({
             "task": task,
-            "solved": bool(record["solved"]),
-            "steps": len(record["steps"]),
-            "tool_calls": record["tool_calls"],
-            "prompt_tokens": record["tokens"]["input"],
-            "total_tokens": record["tokens"]["total"],
-            "wall_seconds": record["wall_seconds"],
-            "stop_reason": record["stop_reason"],
-            "scratch": record["scratch"],
+            "solved": all(s["solved"] for s in measured),
+            "samples_solved": sum(1 for s in measured if s["solved"]),
+            "samples_measured": len(measured),
+            "samples": [s["prompt_tokens"] for s in measured],
+            "steps": round(statistics.mean(s["steps"] for s in measured), 1),
+            "tool_calls": round(statistics.mean(s["tool_calls"] for s in measured), 1),
+            "prompt_tokens": round(statistics.mean(s["prompt_tokens"] for s in measured), 1),
+            "total_tokens": round(statistics.mean(s["total_tokens"] for s in measured), 1),
+            "wall_seconds": round(statistics.mean(s["wall_seconds"] for s in measured), 1),
+            "stop_reason": measured[0]["stop_reason"],
+            "scratch": measured[0]["scratch"],
         })
     return results
 
@@ -526,19 +587,43 @@ def summarise(results: list[dict]) -> dict:
 NORMAL_STOPS = replay.NORMAL_STOPS
 
 
+def aggregate_records(records: list[dict]) -> list[dict]:
+    """One row per task, averaged over every run of it that terminated normally.
+
+    Several runs of one policy on one task are samples of a distribution: they
+    are averaged, their spread is kept, and the task counts as solved only if
+    every measured sample solved it. Averaging is what separates a saving from
+    the noise floor, which on these tasks reaches 90% of the baseline.
+    """
+    by_task: dict[str, list[dict]] = {}
+    for record in records:
+        by_task.setdefault(record["task"], []).append(record)
+
+    rows = []
+    for task, group in sorted(by_task.items()):
+        measured = [r for r in group if r.get("stop_reason") in NORMAL_STOPS] or group
+        tokens = [(r.get("tokens") or {}).get("input", 0) for r in measured]
+        rows.append({
+            "task": task,
+            "solved": all(bool(r.get("solved")) for r in measured),
+            "samples": tokens,
+            "samples_measured": len(measured),
+            "samples_solved": sum(1 for r in measured if r.get("solved")),
+            "prompt_tokens": round(statistics.mean(tokens), 1),
+            "steps": round(statistics.mean(len(r.get("steps") or []) for r in measured), 1),
+            "tool_calls": round(statistics.mean(r.get("tool_calls", 0) for r in measured), 1),
+            "total_tokens": round(statistics.mean((r.get("tokens") or {}).get("total", 0)
+                                                 for r in measured), 1),
+            "wall_seconds": round(statistics.mean(r.get("wall_seconds", 0) for r in measured), 1),
+            "stop_reason": measured[0].get("stop_reason", "recorded"),
+            "scratch": ",".join(r.get("_path", "") for r in measured),
+        })
+    return rows
+
+
 def results_from_records(records: list[dict]) -> list[dict]:
     """Recorded episodes in the same shape `measure` returns, for comparison."""
-    return [{
-        "task": record["task"],
-        "solved": bool(record.get("solved")),
-        "steps": len(record.get("steps") or []),
-        "tool_calls": record.get("tool_calls", 0),
-        "prompt_tokens": (record.get("tokens") or {}).get("input", 0),
-        "total_tokens": (record.get("tokens") or {}).get("total", 0),
-        "wall_seconds": record.get("wall_seconds", 0),
-        "stop_reason": record.get("stop_reason", "recorded"),
-        "scratch": record.get("_path", ""),
-    } for record in sorted(records, key=lambda r: r["task"])]
+    return aggregate_records(records)
 
 
 def incumbent_results(tasks: list[str]) -> list[dict]:
@@ -617,6 +702,7 @@ def run_round(index: int, proposer_model: str = PROPOSER_MODEL,
     context = proposer_context(search_records, history, criteria,
                                deployments=deployment_history(previous))
     RSI_DIR.mkdir(parents=True, exist_ok=True)
+    repeats = criteria.get("evidence", {}).get("repeats", {}).get("min_runs_per_task", 1)
     notes: list[str] = []
     candidates, notes, answered_by = propose_with_fallback(
         context, proposer_chain(proposer_model), notes)
@@ -674,7 +760,7 @@ def run_round(index: int, proposer_model: str = PROPOSER_MODEL,
     if winner is not None and measured_before_deploy:
         label = (f"rsi-r{index}-verify-search" if payload["evidence"].startswith("judged")
                  else f"rsi-r{index}-online-search")
-        search_results = measure(winner, search, agent_model, label)
+        search_results = measure(winner, search, agent_model, label, repeats=repeats)
         online_comparison = compare(incumbent_results(search), search_results)
         tolerance = criteria["capability"]["max_tasks_lost"]
         payload["online_ab"] = {"results_search": search_results, "comparison": online_comparison}
@@ -706,8 +792,10 @@ def run_round(index: int, proposer_model: str = PROPOSER_MODEL,
         # than spending the same budget twice on one candidate
         search_results = (payload["online_ab"]["results_search"]
                           if payload.get("online_ab") else
-                          measure(winner, search, agent_model, f"rsi-r{index}-search"))
-        held_out_results = measure(winner, held_out, agent_model, f"rsi-r{index}-heldout")
+                          measure(winner, search, agent_model, f"rsi-r{index}-search",
+                                  repeats=repeats))
+        held_out_results = measure(winner, held_out, agent_model, f"rsi-r{index}-heldout",
+                                   repeats=repeats)
         payload["deployed"] = {
             "policy": winner.descriptor(),
             "online_search": summarise(search_results),
@@ -949,28 +1037,21 @@ def render_reference(rows: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def measure_reference(name: str, agent_model: str) -> dict:
+def measure_reference(name: str, agent_model: str, times: int = 1) -> dict:
     """Measure a hand-written policy online, clearly labelled as a reference.
 
     Not a proposal, not gated: this is the control experiment, and the label on
-    its runs says so.
+    its runs says so. Its comparison is aggregated over every run of the label,
+    so repeats made earlier are reused rather than paid for again.
     """
     criteria = load_criteria()
     search, held_out = criteria["search_tasks"], criteria["held_out_tasks"]
     policy = get_policy(name)
     label = f"reference-{name}"
-    search_results = measure(policy, search, agent_model, label)
-    held_out_results = measure(policy, held_out, agent_model, label)
-    comparison = {"search": compare(incumbent_results(search), search_results),
-                  "held_out": compare(incumbent_results(held_out), held_out_results)}
-    return {
-        "policy": policy.descriptor(),
-        "label": label,
-        "online_search": summarise(search_results),
-        "online_held_out": summarise(held_out_results),
-        "comparison": comparison,
-        "generalisation": generalisation(comparison["search"], comparison["held_out"]),
-    }
+    if times > 0:
+        measure(policy, search, agent_model, label, repeats=times)
+        measure(policy, held_out, agent_model, label, repeats=times)
+    return {"policy": policy.descriptor(), **compare_label(label)}
 
 
 def recompare() -> list[dict]:
@@ -1028,16 +1109,28 @@ def compare_label(label: str) -> dict:
     """
     criteria = load_criteria()
     search, held_out = criteria["search_tasks"], criteria["held_out_tasks"]
-    records = replay.load_records(label)
-    by_task = {r["task"]: r for r in records}
-    search_records = [by_task[t] for t in search if t in by_task]
-    held_records = [by_task[t] for t in held_out if t in by_task]
+    # every run of the policy counts, including the numbered repeats
+    records = [r for r in replay.load_records()
+               if (r.get("label") or "") == label or (r.get("label") or "").startswith(f"{label}-r")]
+    by_task: dict[str, list[dict]] = {}
+    for record in records:
+        by_task.setdefault(record["task"], []).append(record)
+    search_records = [r for t in search for r in by_task.get(t, [])]
+    held_records = [r for t in held_out for r in by_task.get(t, [])]
     comparison = {
         "search": compare(incumbent_results(search), results_from_records(search_records)),
         "held_out": compare(incumbent_results(held_out), results_from_records(held_records)),
     }
-    return {"label": label, "runs": len(records), "comparison": comparison,
+    return {"label": label, "runs": len(records), "runs_per_task": max(
+                (len(v) for v in by_task.values()), default=0),
+            "comparison": comparison,
             "generalisation": generalisation(comparison["search"], comparison["held_out"])}
+
+
+def base_label(label: str) -> str:
+    """`reference-window3-r2` is another run of `reference-window3`."""
+    head, sep, tail = label.rpartition("-r")
+    return head if sep and tail.isdigit() else label
 
 
 def reference_measurements() -> list[dict]:
@@ -1051,7 +1144,8 @@ def reference_measurements() -> list[dict]:
     criteria = load_criteria()
     records = [r for r in replay.load_records("base")
                if r["task"] in criteria["search_tasks"]]
-    labels = sorted({(r.get("label") or "") for r in replay.load_records()
+    # `reference-window3-r2` is another run of the same policy, not a policy
+    labels = sorted({base_label(r.get("label") or "") for r in replay.load_records()
                      if (r.get("label") or "").startswith("reference-")})
     rows = []
     for label in labels:
@@ -1066,6 +1160,7 @@ def reference_measurements() -> list[dict]:
             "policy": name,
             "label": label,
             "runs": data["runs"],
+            "runs_per_task": data.get("runs_per_task"),
             "predicted_saving": (judge or {}).get("predicted_saving"),
             "decision_replayable": (judge or {}).get("decision_replayable"),
             "judge_path": (judge or {}).get("path"),
@@ -1076,6 +1171,107 @@ def reference_measurements() -> list[dict]:
             "transferred": data["generalisation"]["transferred"],
         })
     return rows
+
+
+def repeat_round(index: int, times: int, agent_model: str) -> dict:
+    """Run a deployed policy repeatedly, to separate a saving from run-to-run noise.
+
+    One run per task cannot tell a three percent saving from variance. The claim
+    that a policy saves tokens is a claim about a distribution, so it needs more
+    than one sample before it may be quoted. Every run of the policy counts,
+    including the one the round itself made: samples are not cherry-picked.
+    """
+    payload = json.loads(round_path(index).read_text(encoding="utf-8"))
+    if not payload.get("deployed"):
+        raise SystemExit(f"round {index} deployed nothing to repeat")
+    policy = HarnessPolicy.from_descriptor(payload["deployed"]["policy"])
+    criteria = load_criteria()
+    search, held_out = criteria["search_tasks"], criteria["held_out_tasks"]
+
+    for attempt in range(1, times + 1):
+        label = f"repeat-r{index}-{attempt}"
+        measure(policy, search, agent_model, f"{label}-search")
+        measure(policy, held_out, agent_model, f"{label}-heldout")
+
+    # every run of this policy on disk counts, including the one the round itself
+    # made: samples are not cherry-picked, and repeats made earlier are reused
+    # rather than paid for twice
+    labels = [f"rsi-r{index}-online-search", f"rsi-r{index}-search", f"rsi-r{index}-heldout"]
+    labels += sorted({(r.get("label") or "") for r in replay.load_records()
+                      if (r.get("label") or "").startswith(f"repeat-r{index}-")})
+    rows = []
+    baseline = {r["task"]: r for r in incumbent_results(search + held_out)}
+    for task in search + held_out:
+        samples = []
+        for label in labels:
+            samples.extend(r["tokens"]["input"] for r in replay.load_records(label)
+                           if r["task"] == task)
+        if not samples or task not in baseline:
+            continue
+        base = baseline[task]["prompt_tokens"]
+        # tokens are only a comparison where both sides finished the task: an
+        # unsolved task is burning steps until the budget ends on both sides
+        candidate_runs = [r for label in labels for r in replay.load_records(label)
+                          if r["task"] == task]
+        comparable = bool(baseline[task]["solved"]) and all(r["solved"] for r in candidate_runs)
+        rows.append({
+            "task": task,
+            "in_search_set": task in search,
+            "comparable": comparable,
+            "baseline_tokens": base,
+            "samples": samples,
+            "mean": round(statistics.mean(samples), 1),
+            "delta_mean": round((statistics.mean(samples) - base) / base, 4),
+            "delta_best": round((min(samples) - base) / base, 4),
+            "delta_worst": round((max(samples) - base) / base, 4),
+            "spread": round((max(samples) - min(samples)) / base, 4),
+        })
+    rows = [r for r in rows if r["comparable"]]
+    if not rows:
+        return {"round": index, "policy": policy.name, "samples_per_task": 0,
+                "totals": {}, "rows": [], "verdict": "no comparable runs to repeat"}
+    samples_per_task = max(len(r["samples"]) for r in rows)
+    totals = {
+        "baseline_tokens": sum(r["baseline_tokens"] for r in rows),
+        "mean_tokens": round(sum(r["mean"] for r in rows), 1),
+        "worst_sample_tokens": sum(r["samples"][-1] for r in rows),
+        "best_sample_tokens": sum(r["samples"][0] for r in rows),
+    }
+    totals["delta_mean"] = round((totals["mean_tokens"] - totals["baseline_tokens"])
+                                 / totals["baseline_tokens"], 4) if totals["baseline_tokens"] else 0.0
+    data = {"round": index, "policy": policy.name, "samples_per_task": samples_per_task,
+            "totals": totals, "rows": rows,
+            "verdict": ("the saving survives repeats" if totals["delta_mean"] < 0
+                        else "no saving once repeats are counted")}
+    payload = json.loads(round_path(index).read_text(encoding="utf-8"))
+    payload["repeat_check"] = {**data, "reason":
+        "a saving is a claim about a distribution: one run per task cannot separate "
+        "it from variance, and the spread across runs of one policy reached 90% of "
+        "the baseline here. Tasks that neither side solved are excluded"}
+    round_path(index).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return data
+
+
+def render_repeat(data: dict) -> str:
+    lines = [f"Policy `{data['policy']}` from round {data['round']}, "
+             f"{data['samples_per_task']} runs per task:", "",
+             "| task | baseline tok | runs | mean | delta mean | delta best | delta worst | spread |",
+             "|---|---|---|---|---|---|---|---|"]
+    for row in data["rows"]:
+        lines.append(
+            f"| {'*' if row['in_search_set'] else 'o'} {row['task']} | {row['baseline_tokens']} | "
+            f"{', '.join(str(s) for s in row['samples'])} | {row['mean']} | "
+            f"{row['delta_mean']:+.1%} | {row['delta_best']:+.1%} | {row['delta_worst']:+.1%} | "
+            f"{row['spread']:.1%} |")
+    totals = data["totals"]
+    lines += ["", f"All tasks: baseline {totals['baseline_tokens']} tokens, mean across "
+                   f"{data['samples_per_task']} runs {totals['mean_tokens']} tokens "
+                   f"({totals['delta_mean']:+.1%}); best possible sample "
+                   f"{totals['best_sample_tokens']}, worst {totals['worst_sample_tokens']}.",
+              "", "`*` search set, `o` held out. `spread` is the range across runs of the "
+                  "same policy, which is the noise floor any saving must beat.", "",
+              f"**{data['verdict']}**"]
+    return "\n".join(lines)
 
 
 def state() -> dict:
@@ -1121,6 +1317,7 @@ def state() -> dict:
             "outcome": payload.get("outcome"),
             "replay_episodes_rebuilt": sum(1 for c in verification if c.get("chars_match")),
             "replay_episodes": len(verification),
+            "repeat_check": payload.get("repeat_check"),
         })
     return {
         "criteria": criteria,
@@ -1182,6 +1379,11 @@ def main() -> None:
                         help="recompute stored round comparisons from their runs")
     parser.add_argument("--compare-label", metavar="LABEL",
                         help="recompute the comparison for a label from its recorded runs")
+    parser.add_argument("--repeat-round", type=int, metavar="N",
+                        help="re-run a round's deployed policy, to separate a saving from noise")
+    parser.add_argument("--times", type=int, default=0,
+                        help="extra runs per task for --repeat-round / --measure-reference; "
+                             "0 recomputes from the runs already on disk")
     parser.add_argument("--model", default=PROPOSER_MODEL,
                         help="model that writes the candidate policies")
     parser.add_argument("--agent-model", default=agent.DEFAULT_MODEL,
@@ -1211,6 +1413,11 @@ def main() -> None:
         print(json.dumps(state(), indent=2, ensure_ascii=False))
     elif args.reference:
         print(render_reference(reference_table()))
+    elif args.repeat_round:
+        data = repeat_round(args.repeat_round, args.times, args.agent_model)
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+        print()
+        print(render_repeat(data))
     elif args.compare_label:
         print(json.dumps(compare_label(args.compare_label), indent=2, ensure_ascii=False))
     elif args.recompare:
@@ -1227,7 +1434,7 @@ def main() -> None:
                       f"solved {n['solved_before']}->{n['solved_after']}")
             print(f"  transferred: {new['search']['token_delta'] <= 0 and new['held_out']['token_delta'] <= 0}")
     elif args.measure_reference:
-        result = measure_reference(args.measure_reference, args.agent_model)
+        result = measure_reference(args.measure_reference, args.agent_model, args.times)
         print(json.dumps({k: v for k, v in result.items() if k != "policy"},
                          indent=2, ensure_ascii=False))
     elif args.ledger:

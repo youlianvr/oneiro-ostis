@@ -302,6 +302,16 @@ function render(d){
 
 /* Эталонные политики: что обещал судья и что произошло в реальных прогонах.
    Это контрольный эксперимент, поэтому обе цифры стоят рядом. */
+/* Вердикт повторов пишет цикл; известные формулировки переводим. */
+function ruVerdict(v){
+  const known = {
+    "no saving once repeats are counted": "экономии нет, если считать повторы",
+    "the saving survives repeats": "экономия выдерживает повторы",
+    "no comparable runs to repeat": "сопоставимых прогонов для повторов нет",
+  };
+  return known[v] || v || "";
+}
+
 function referenceHtml(refs){
   if(!refs || !refs.length) return "";
   const p = v => v == null ? "нет" : (100*v).toFixed(1) + "%";
@@ -317,6 +327,28 @@ function referenceHtml(refs){
     <div class="cn">судья оценивает их по записям, затем они измеряются онлайн. Расхождение прогноза с измерением здесь и есть предел replay: судья считает символы в запросе, а не то, сколько шагов сделает агент</div>
     <table><tr><th>политика</th><th>прогноз экономии</th><th>воспроизв.</th><th>измерено: поиск</th><th>измерено: held-out</th><th>перенос</th></tr>${rows}</table>
   </div>`;
+}
+
+/* Проверка повторами: экономия это утверждение о распределении, а не об одном
+   прогоне. Разброс внутри одной политики и есть шумовой пол. */
+function repeatHtml(rounds){
+  const withCheck = (rounds || []).filter(r => r.repeat_check && r.repeat_check.rows && r.repeat_check.rows.length);
+  if(!withCheck.length) return "";
+  return withCheck.map(r => {
+    const rc = r.repeat_check, t = rc.totals || {};
+    const rows = rc.rows.map(row => `<tr>
+        <td class="mono">${row.in_search_set ? "поиск" : "held-out"} · ${row.task}</td>
+        <td>${row.baseline_tokens}</td>
+        <td>${row.samples.join(", ")}</td>
+        <td class="${row.delta_mean <= 0 ? "outcome-success" : "outcome-failure"}">${(100*row.delta_mean).toFixed(1)}%</td>
+        <td>${(100*row.spread).toFixed(0)}%</td></tr>`).join("");
+    return `<div class="claim">
+      <div class="ct">Проверка повторами: политика раунда ${rc.round}</div>
+      <div class="cn">${rc.samples_per_task} прогона на задачу вместо одного. Разброс внутри одной политики это шумовой пол: экономия меньше него ничего не значит</div>
+      <table><tr><th>набор и задача</th><th>базово, токенов</th><th>прогоны</th><th>среднее</th><th>разброс</th></tr>${rows}</table>
+      <div class="cn" style="margin-top:6px">итог по сопоставимым задачам: ${(100*(t.delta_mean||0)).toFixed(1)}% токенов; ${ruVerdict(rc.verdict)}</div>
+    </div>`;
+  }).join("");
 }
 
 /* Тексты исходов раунда пишет цикл (harness/rsi.py). Известные формулировки
@@ -411,6 +443,7 @@ function renderHarness(h){
       <div class="cn">модель токенов проверена на чужой задаче: средняя ошибка ${(100 * (rep.token_model_mean_error || 0)).toFixed(1)}%, худшая ${(100 * (rep.token_model_max_error || 0)).toFixed(1)}%</div>
     </div>
     ${referenceHtml(h.references)}
+    ${repeatHtml(h.rounds)}
     ${roundsHtml}
   </div>
   <div class="claims-note">Числа прочитаны из harness/lab/rsi: цикл отчитывается сам, дашборд ничего не добавляет. Правила приёмки пересчитаны по замороженным критериям: ${refused} из ${recheck.length} вердиктов, записанных по прежним правилам, были бы отклонены сейчас, выкачки среди них: ${deployedRefused}.</div>`;

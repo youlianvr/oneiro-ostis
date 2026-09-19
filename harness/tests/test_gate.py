@@ -149,11 +149,15 @@ def test_recheck_refuses_what_the_recorded_rounds_deployed():
 
     floor = rsi.load_criteria()["capability"]["min_decision_replayable"]
     refused = [r for r in rows if r["passed_then"] and not r["passed_now"]]
-    acted_on = [r for r in rows if r["deployed_then"] and r["decision_replayable"] < floor]
+    # Deployments that rested on a replay claim: these are the ones a coverage
+    # floor has to catch. A deployment through the online path never made a
+    # replay claim, so it is not a candidate for this revision.
+    acted_on = [r for r in rows if r["deployed_then"] and r["passed_then"]
+                and r["decision_replayable"] < floor]
 
     assert refused, "the revision exists because something passed the old gate"
     assert all(r["decision_replayable"] < floor for r in refused)
     assert acted_on, "the deployments that exposed the hole are part of that history"
     assert all(r in refused for r in acted_on), (
-        "nothing the loop acted on without replayed evidence escapes the revision"
+        "no deployment made on a replay claim without replayed evidence escapes it"
     )

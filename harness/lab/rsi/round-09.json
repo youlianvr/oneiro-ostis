@@ -1,0 +1,544 @@
+{
+  "round": 9,
+  "criteria_version": 4,
+  "criteria": {
+    "frozen_at": "2026-09-20T02:19:25",
+    "version": 4,
+    "search_tasks": [
+      "t01-start-total",
+      "t02-clamp-bounds",
+      "t03-parse-duration",
+      "t05-retry-backoff"
+    ],
+    "held_out_tasks": [
+      "t04-dedupe-order",
+      "t06-csv-column-total"
+    ],
+    "efficiency": {
+      "min_predicted_saving": 0.15,
+      "note": "a candidate must be predicted to save at least 15% of prompt tokens"
+    },
+    "capability": {
+      "max_tasks_lost": 1,
+      "min_decision_replayable": 0.5,
+      "note": "online on the search set, a deployed candidate may lose at most one task against the incumbent; the judge cannot settle capability and does not pretend to"
+    },
+    "budget": {
+      "online_runs_per_round": 8,
+      "note": "measured runs per round, search plus held-out"
+    },
+    "revision": {
+      "from_version": 3,
+      "reason": "replay coverage measures how many of the recorded steps a candidate would have sent, not how many steps it would then take. Measured: a windowed candidate at 62% coverage was predicted to save 15% and cost 20% more, because the agent, with less history, took more steps on five of six tasks (t02: 6 to 9 steps, t06: 6 to 10)",
+      "evidence": "reference measurement stored under the label reference-window3; the per-task step counts are in the recorded runs",
+      "unchanged": "min_predicted_saving 0.15, max_tasks_lost 1, min_decision_replayable 0.5"
+    },
+    "evidence": {
+      "unjudgeable_path": {
+        "enabled": true,
+        "max_online_runs": 4,
+        "note": "when the judge cannot replay a candidate's decisions, the candidate may be measured online on the search set inside the round budget; its efficiency claim then rests on that measurement and is labelled as such, never on a replay estimate"
+      },
+      "note": "a replay verdict needs the judge to have replayed at least half of the candidate's decisions; below that the judge abstains and the online path decides instead",
+      "trajectory_changes": {
+        "fields": [
+          "context_mode",
+          "window_steps",
+          "observation_chars",
+          "read_lines",
+          "include_initial_tests",
+          "include_file_list",
+          "max_steps",
+          "verify_before_finish",
+          "max_verify_nudges"
+        ],
+        "note": "a policy that changes what the agent is shown or how long it may run does not just change a prompt, it changes the trajectory. Replay covers aligned steps, and a candidate like that produces fewer aligned steps in reality than the estimate assumed, so the estimate is an estimate about a trajectory that no longer exists",
+        "requirement": "such a candidate is measured online on the search set before it may be deployed, whatever its replay coverage"
+      }
+    }
+  },
+  "replay_verification": [
+    {
+      "steps": 5,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        1902,
+        2410,
+        2500,
+        3260,
+        4350
+      ]
+    },
+    {
+      "steps": 6,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        1193,
+        1766,
+        1945,
+        2698,
+        3845,
+        4450
+      ]
+    },
+    {
+      "steps": 5,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        2171,
+        3061,
+        3274,
+        4047,
+        5044
+      ]
+    },
+    {
+      "steps": 6,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        2736,
+        3958,
+        3992,
+        5321,
+        6567,
+        7492
+      ]
+    }
+  ],
+  "proposed": [
+    {
+      "name": "no_initial_tests_deploy",
+      "include_file_list": true,
+      "include_initial_tests": false,
+      "context_mode": "full",
+      "window_steps": 10,
+      "observation_chars": 2000,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    },
+    {
+      "name": "no_initial_tests_window9_deploy",
+      "include_file_list": true,
+      "include_initial_tests": false,
+      "context_mode": "window",
+      "window_steps": 9,
+      "observation_chars": 2000,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    },
+    {
+      "name": "no_initial_tests_obs1500_deploy",
+      "include_file_list": true,
+      "include_initial_tests": false,
+      "context_mode": "full",
+      "window_steps": 10,
+      "observation_chars": 1500,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    }
+  ],
+  "notes": [
+    "zai-org/GLM-5.3-Flash: provider refused (provider failed after 4 attempts: <HTTPError 429: 'Too Many Requests'>)"
+  ],
+  "verdicts": [
+    {
+      "policy": "no_initial_tests_deploy",
+      "predicted_tokens": 26287.1,
+      "recorded_tokens": 38685.0,
+      "predicted_saving": 0.3205,
+      "steps_covered": 0,
+      "steps_total": 22,
+      "decision_replayable": 0.0,
+      "passed_efficiency": true,
+      "passed_evidence": false,
+      "passed_gate": false,
+      "path": "online",
+      "changed_fields": [
+        "include_initial_tests"
+      ],
+      "reasons": [
+        "predicted saving 32.0% vs required 15%",
+        "decisions replayed 0% vs required 50%",
+        "path: online",
+        "changes the trajectory: include_initial_tests",
+        "5/5 steps diverge: the model's decisions there are NOT replayable (abstain)",
+        "6/6 steps diverge: the model's decisions there are NOT replayable (abstain)"
+      ]
+    },
+    {
+      "policy": "no_initial_tests_window9_deploy",
+      "predicted_tokens": 26287.1,
+      "recorded_tokens": 38685.0,
+      "predicted_saving": 0.3205,
+      "steps_covered": 0,
+      "steps_total": 22,
+      "decision_replayable": 0.0,
+      "passed_efficiency": true,
+      "passed_evidence": false,
+      "passed_gate": false,
+      "path": "online",
+      "changed_fields": [
+        "context_mode",
+        "window_steps",
+        "include_initial_tests"
+      ],
+      "reasons": [
+        "predicted saving 32.0% vs required 15%",
+        "decisions replayed 0% vs required 50%",
+        "path: online",
+        "changes the trajectory: context_mode, window_steps, include_initial_tests",
+        "5/5 steps diverge: the model's decisions there are NOT replayable (abstain)",
+        "6/6 steps diverge: the model's decisions there are NOT replayable (abstain)"
+      ]
+    },
+    {
+      "policy": "no_initial_tests_obs1500_deploy",
+      "predicted_tokens": 26287.1,
+      "recorded_tokens": 38685.0,
+      "predicted_saving": 0.3205,
+      "steps_covered": 0,
+      "steps_total": 22,
+      "decision_replayable": 0.0,
+      "passed_efficiency": true,
+      "passed_evidence": false,
+      "passed_gate": false,
+      "path": "online",
+      "changed_fields": [
+        "observation_chars",
+        "include_initial_tests"
+      ],
+      "reasons": [
+        "predicted saving 32.0% vs required 15%",
+        "decisions replayed 0% vs required 50%",
+        "path: online",
+        "changes the trajectory: observation_chars, include_initial_tests",
+        "5/5 steps diverge: the model's decisions there are NOT replayable (abstain)",
+        "6/6 steps diverge: the model's decisions there are NOT replayable (abstain)"
+      ]
+    }
+  ],
+  "evidence": "online measurement: the judge could not replay this candidate's decisions, so its efficiency is what running it actually cost",
+  "proposer_model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+  "agent_model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+  "deployed": {
+    "policy": {
+      "name": "no_initial_tests_deploy",
+      "include_file_list": true,
+      "include_initial_tests": false,
+      "context_mode": "full",
+      "window_steps": 10,
+      "observation_chars": 2000,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    },
+    "online_search": {
+      "tasks": 4,
+      "measured": 4,
+      "unmeasured": 0,
+      "solved": 4,
+      "prompt_tokens": 37351,
+      "mean_wall_seconds": 21.7
+    },
+    "online_held_out": {
+      "tasks": 2,
+      "measured": 2,
+      "unmeasured": 0,
+      "solved": 1,
+      "prompt_tokens": 12481,
+      "mean_wall_seconds": 14.2
+    },
+    "results_search": [
+      {
+        "task": "t01-start-total",
+        "solved": true,
+        "steps": 5,
+        "tool_calls": 3,
+        "prompt_tokens": 6095,
+        "total_tokens": 6635,
+        "wall_seconds": 10.54,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t01-start-total-rsi-r9-online-search-no_initial_tests_deploy-20260920-023501-74tj"
+      },
+      {
+        "task": "t02-clamp-bounds",
+        "solved": true,
+        "steps": 6,
+        "tool_calls": 4,
+        "prompt_tokens": 8315,
+        "total_tokens": 9163,
+        "wall_seconds": 12.0,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t02-clamp-bounds-rsi-r9-online-search-no_initial_tests_deploy-20260920-023514-4mqk"
+      },
+      {
+        "task": "t03-parse-duration",
+        "solved": true,
+        "steps": 7,
+        "tool_calls": 5,
+        "prompt_tokens": 12086,
+        "total_tokens": 12953,
+        "wall_seconds": 31.44,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t03-parse-duration-rsi-r9-online-search-no_initial_tests_deploy-20260920-023529-m4h6"
+      },
+      {
+        "task": "t05-retry-backoff",
+        "solved": true,
+        "steps": 6,
+        "tool_calls": 4,
+        "prompt_tokens": 10855,
+        "total_tokens": 12433,
+        "wall_seconds": 32.74,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t05-retry-backoff-rsi-r9-online-search-no_initial_tests_deploy-20260920-023603-z0ca"
+      }
+    ],
+    "results_held_out": [
+      {
+        "task": "t04-dedupe-order",
+        "solved": false,
+        "steps": 5,
+        "tool_calls": 3,
+        "prompt_tokens": 6323,
+        "total_tokens": 6915,
+        "wall_seconds": 18.59,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t04-dedupe-order-rsi-r9-heldout-no_initial_tests_deploy-20260920-023639-mtnd"
+      },
+      {
+        "task": "t06-csv-column-total",
+        "solved": true,
+        "steps": 5,
+        "tool_calls": 3,
+        "prompt_tokens": 6158,
+        "total_tokens": 6714,
+        "wall_seconds": 9.73,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t06-csv-column-total-rsi-r9-heldout-no_initial_tests_deploy-20260920-023700-bpa1"
+      }
+    ],
+    "comparison": {
+      "search": {
+        "tasks": 4,
+        "unmeasured_tasks": [],
+        "token_scope_tasks": [
+          "t01-start-total",
+          "t02-clamp-bounds",
+          "t03-parse-duration",
+          "t05-retry-backoff"
+        ],
+        "unsolved_in_both": [],
+        "solved_before": 4,
+        "solved_after": 4,
+        "tasks_lost": 0,
+        "tasks_gained": 0,
+        "prompt_tokens_before": 38685,
+        "prompt_tokens_after": 37351,
+        "token_delta": -0.03448364999353755
+      },
+      "held_out": {
+        "tasks": 2,
+        "unmeasured_tasks": [],
+        "token_scope_tasks": [
+          "t06-csv-column-total"
+        ],
+        "unsolved_in_both": [
+          "t04-dedupe-order"
+        ],
+        "solved_before": 1,
+        "solved_after": 1,
+        "tasks_lost": 0,
+        "tasks_gained": 0,
+        "prompt_tokens_before": 9115,
+        "prompt_tokens_after": 6158,
+        "token_delta": -0.32441031267142073
+      }
+    }
+  },
+  "online_ab": {
+    "results_search": [
+      {
+        "task": "t01-start-total",
+        "solved": true,
+        "steps": 5,
+        "tool_calls": 3,
+        "prompt_tokens": 6095,
+        "total_tokens": 6635,
+        "wall_seconds": 10.54,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t01-start-total-rsi-r9-online-search-no_initial_tests_deploy-20260920-023501-74tj"
+      },
+      {
+        "task": "t02-clamp-bounds",
+        "solved": true,
+        "steps": 6,
+        "tool_calls": 4,
+        "prompt_tokens": 8315,
+        "total_tokens": 9163,
+        "wall_seconds": 12.0,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t02-clamp-bounds-rsi-r9-online-search-no_initial_tests_deploy-20260920-023514-4mqk"
+      },
+      {
+        "task": "t03-parse-duration",
+        "solved": true,
+        "steps": 7,
+        "tool_calls": 5,
+        "prompt_tokens": 12086,
+        "total_tokens": 12953,
+        "wall_seconds": 31.44,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t03-parse-duration-rsi-r9-online-search-no_initial_tests_deploy-20260920-023529-m4h6"
+      },
+      {
+        "task": "t05-retry-backoff",
+        "solved": true,
+        "steps": 6,
+        "tool_calls": 4,
+        "prompt_tokens": 10855,
+        "total_tokens": 12433,
+        "wall_seconds": 32.74,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t05-retry-backoff-rsi-r9-online-search-no_initial_tests_deploy-20260920-023603-z0ca"
+      }
+    ],
+    "comparison": {
+      "tasks": 4,
+      "unmeasured_tasks": [],
+      "token_scope_tasks": [
+        "t01-start-total",
+        "t02-clamp-bounds",
+        "t03-parse-duration",
+        "t05-retry-backoff"
+      ],
+      "unsolved_in_both": [],
+      "solved_before": 4,
+      "solved_after": 4,
+      "tasks_lost": 0,
+      "tasks_gained": 0,
+      "prompt_tokens_before": 38685,
+      "prompt_tokens_after": 37351,
+      "token_delta": -0.03448364999353755
+    }
+  },
+  "generalisation": {
+    "search_token_delta": -0.03448364999353755,
+    "held_out_token_delta": -0.32441031267142073,
+    "search_solved_delta": 0,
+    "held_out_solved_delta": 0,
+    "transferred": true
+  },
+  "outcome": "deployed and within capability tolerance; deployed on its online measurement, not on a judged estimate",
+  "repeat_check": {
+    "round": 9,
+    "policy": "no_initial_tests_deploy",
+    "samples_per_task": 3,
+    "totals": {
+      "baseline_tokens": 47800,
+      "mean_tokens": 49733.3,
+      "worst_sample_tokens": 58494,
+      "best_sample_tokens": 43509,
+      "delta_mean": 0.0404
+    },
+    "rows": [
+      {
+        "task": "t01-start-total",
+        "in_search_set": true,
+        "comparable": true,
+        "baseline_tokens": 7489,
+        "samples": [
+          6095,
+          6098,
+          6097
+        ],
+        "mean": 6096.7,
+        "delta_mean": -0.1859,
+        "delta_best": -0.1861,
+        "delta_worst": -0.1857,
+        "spread": 0.0004
+      },
+      {
+        "task": "t02-clamp-bounds",
+        "in_search_set": true,
+        "comparable": true,
+        "baseline_tokens": 9072,
+        "samples": [
+          8315,
+          8389,
+          8243
+        ],
+        "mean": 8315.7,
+        "delta_mean": -0.0834,
+        "delta_best": -0.0914,
+        "delta_worst": -0.0753,
+        "spread": 0.0161
+      },
+      {
+        "task": "t03-parse-duration",
+        "in_search_set": true,
+        "comparable": true,
+        "baseline_tokens": 8824,
+        "samples": [
+          12086,
+          12126,
+          15083
+        ],
+        "mean": 13098.3,
+        "delta_mean": 0.4844,
+        "delta_best": 0.3697,
+        "delta_worst": 0.7093,
+        "spread": 0.3396
+      },
+      {
+        "task": "t05-retry-backoff",
+        "in_search_set": true,
+        "comparable": true,
+        "baseline_tokens": 13300,
+        "samples": [
+          10855,
+          14433,
+          22929
+        ],
+        "mean": 16072.3,
+        "delta_mean": 0.2084,
+        "delta_best": -0.1838,
+        "delta_worst": 0.724,
+        "spread": 0.9078
+      },
+      {
+        "task": "t06-csv-column-total",
+        "in_search_set": false,
+        "comparable": true,
+        "baseline_tokens": 9115,
+        "samples": [
+          6158,
+          6151,
+          6142
+        ],
+        "mean": 6150.3,
+        "delta_mean": -0.3253,
+        "delta_best": -0.3262,
+        "delta_worst": -0.3244,
+        "spread": 0.0018
+      }
+    ],
+    "verdict": "no saving once repeats are counted",
+    "reason": "a saving is a claim about a distribution: one run per task cannot separate it from variance, and the spread across runs of one policy reached 90% of the baseline here. Tasks that neither side solved are excluded"
+  }
+}

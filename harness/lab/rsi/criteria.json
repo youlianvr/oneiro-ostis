@@ -1,6 +1,6 @@
 {
-  "frozen_at": "2026-09-20T02:19:25",
-  "version": 4,
+  "frozen_at": "2026-09-20T02:46:00",
+  "version": 5,
   "search_tasks": [
     "t01-start-total",
     "t02-clamp-bounds",
@@ -21,14 +21,14 @@
     "note": "online on the search set, a deployed candidate may lose at most one task against the incumbent; the judge cannot settle capability and does not pretend to"
   },
   "budget": {
-    "online_runs_per_round": 8,
-    "note": "measured runs per round, search plus held-out"
+    "online_runs_per_round": 18,
+    "note": "three runs per search task, three per held-out task, when a round deploys"
   },
   "revision": {
-    "from_version": 3,
-    "reason": "replay coverage measures how many of the recorded steps a candidate would have sent, not how many steps it would then take. Measured: a windowed candidate at 62% coverage was predicted to save 15% and cost 20% more, because the agent, with less history, took more steps on five of six tasks (t02: 6 to 9 steps, t06: 6 to 10)",
-    "evidence": "reference measurement stored under the label reference-window3; the per-task step counts are in the recorded runs",
-    "unchanged": "min_predicted_saving 0.15, max_tasks_lost 1, min_decision_replayable 0.5"
+    "from_version": 4,
+    "reason": "version 4 accepted a deployment on one run per task, and the first policy deployed under it did not survive repeats",
+    "evidence": "round 9 read -3.4% on the search set from single runs; with three runs per task the same policy reads +4.0% overall and no transfer, with per-task spreads of 34% and 91% of the baseline",
+    "unchanged": "min_predicted_saving 0.15, max_tasks_lost 1, min_decision_replayable 0.5, the online path, the trajectory rule"
   },
   "evidence": {
     "unjudgeable_path": {
@@ -51,6 +51,10 @@
       ],
       "note": "a policy that changes what the agent is shown or how long it may run does not just change a prompt, it changes the trajectory. Replay covers aligned steps, and a candidate like that produces fewer aligned steps in reality than the estimate assumed, so the estimate is an estimate about a trajectory that no longer exists",
       "requirement": "such a candidate is measured online on the search set before it may be deployed, whatever its replay coverage"
+    },
+    "repeats": {
+      "min_runs_per_task": 3,
+      "note": "a saving is a claim about a distribution. One run per task cannot separate a three percent saving from variance, and the spread across runs of one policy reached 90% of the baseline here, so every online claim is averaged over at least this many runs per task"
     }
   }
 }
