@@ -1,0 +1,27 @@
+{
+  "frozen_at": "2026-09-20T00:50:47",
+  "version": 1,
+  "search_tasks": [
+    "t01-start-total",
+    "t02-clamp-bounds",
+    "t03-parse-duration",
+    "t05-retry-backoff"
+  ],
+  "held_out_tasks": [
+    "t04-dedupe-order",
+    "t06-csv-column-total"
+  ],
+  "efficiency": {
+    "min_predicted_saving": 0.15,
+    "note": "a candidate must be predicted to save at least 15% of prompt tokens"
+  },
+  "capability": {
+    "max_tasks_lost": 1,
+    "min_covered_steps": 0,
+    "note": "online on the search set, a deployed candidate may lose at most one task against the incumbent; the judge cannot settle capability and does not pretend to"
+  },
+  "budget": {
+    "online_runs_per_round": 8,
+    "note": "measured runs per round, search plus held-out"
+  }
+}

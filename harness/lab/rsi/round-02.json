@@ -1,0 +1,267 @@
+{
+  "round": 2,
+  "criteria_version": 1,
+  "replay_verification": [
+    {
+      "steps": 5,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        1902,
+        2410,
+        2500,
+        3260,
+        4350
+      ]
+    },
+    {
+      "steps": 10,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        1193,
+        1766,
+        2262,
+        3139,
+        4856,
+        6124,
+        7250,
+        8538,
+        12581,
+        19353
+      ]
+    },
+    {
+      "steps": 5,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        2171,
+        3061,
+        3274,
+        4047,
+        5044
+      ]
+    },
+    {
+      "steps": 6,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        2736,
+        3958,
+        3992,
+        5321,
+        6567,
+        7492
+      ]
+    }
+  ],
+  "proposed": [
+    {
+      "name": "clip_to_800",
+      "include_file_list": true,
+      "include_initial_tests": true,
+      "context_mode": "full",
+      "window_steps": 10,
+      "observation_chars": 800,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    },
+    {
+      "name": "no_initial_tests",
+      "include_file_list": true,
+      "include_initial_tests": false,
+      "context_mode": "full",
+      "window_steps": 10,
+      "observation_chars": 2000,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    },
+    {
+      "name": "window6_obs1500",
+      "include_file_list": true,
+      "include_initial_tests": true,
+      "context_mode": "window",
+      "window_steps": 6,
+      "observation_chars": 1500,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    }
+  ],
+  "notes": [],
+  "verdicts": [
+    {
+      "policy": "no_initial_tests",
+      "predicted_tokens": 44944.9,
+      "recorded_tokens": 57977.0,
+      "predicted_saving": 0.2248,
+      "steps_covered": 0,
+      "steps_total": 26,
+      "decision_replayable": 0.0,
+      "passed_efficiency": true,
+      "reasons": [
+        "predicted saving 22.5% vs required 15%",
+        "5/5 steps diverge: the model's decisions there are NOT replayable (abstain)",
+        "10/10 steps diverge: the model's decisions there are NOT replayable (abstain)"
+      ]
+    },
+    {
+      "policy": "window6_obs1500",
+      "predicted_tokens": 55893.3,
+      "recorded_tokens": 57977.0,
+      "predicted_saving": 0.0359,
+      "steps_covered": 23,
+      "steps_total": 26,
+      "decision_replayable": 0.885,
+      "passed_efficiency": false,
+      "reasons": [
+        "predicted saving 3.6% vs required 15%",
+        "12 observations would be dropped by windowing",
+        "3/10 steps diverge: the model's decisions there are NOT replayable (abstain)"
+      ]
+    },
+    {
+      "policy": "clip_to_800",
+      "predicted_tokens": 57977.0,
+      "recorded_tokens": 57977.0,
+      "predicted_saving": 0.0,
+      "steps_covered": 26,
+      "steps_total": 26,
+      "decision_replayable": 1.0,
+      "passed_efficiency": false,
+      "reasons": [
+        "predicted saving 0.0% vs required 15%"
+      ]
+    }
+  ],
+  "deployed": {
+    "policy": {
+      "name": "no_initial_tests",
+      "include_file_list": true,
+      "include_initial_tests": false,
+      "context_mode": "full",
+      "window_steps": 10,
+      "observation_chars": 2000,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    },
+    "online_search": {
+      "tasks": 4,
+      "solved": 4,
+      "prompt_tokens": 49111,
+      "mean_wall_seconds": 28.0
+    },
+    "online_held_out": {
+      "tasks": 2,
+      "solved": 1,
+      "prompt_tokens": 12530,
+      "mean_wall_seconds": 15.7
+    },
+    "results_search": [
+      {
+        "task": "t01-start-total",
+        "solved": true,
+        "steps": 5,
+        "tool_calls": 3,
+        "prompt_tokens": 5992,
+        "total_tokens": 6494,
+        "wall_seconds": 23.52,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t01-start-total-rsi-r2-search-no_initial_tests-20260920-005337-tbg2"
+      },
+      {
+        "task": "t02-clamp-bounds",
+        "solved": true,
+        "steps": 6,
+        "tool_calls": 4,
+        "prompt_tokens": 7867,
+        "total_tokens": 8551,
+        "wall_seconds": 24.28,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t02-clamp-bounds-rsi-r2-search-no_initial_tests-20260920-005404-xcft"
+      },
+      {
+        "task": "t03-parse-duration",
+        "solved": true,
+        "steps": 8,
+        "tool_calls": 6,
+        "prompt_tokens": 15279,
+        "total_tokens": 16295,
+        "wall_seconds": 20.79,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t03-parse-duration-rsi-r2-search-no_initial_tests-20260920-005432-b7t0"
+      },
+      {
+        "task": "t05-retry-backoff",
+        "solved": true,
+        "steps": 8,
+        "tool_calls": 6,
+        "prompt_tokens": 19973,
+        "total_tokens": 22418,
+        "wall_seconds": 43.49,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t05-retry-backoff-rsi-r2-search-no_initial_tests-20260920-005457-kfqv"
+      }
+    ],
+    "results_held_out": [
+      {
+        "task": "t04-dedupe-order",
+        "solved": false,
+        "steps": 5,
+        "tool_calls": 3,
+        "prompt_tokens": 6375,
+        "total_tokens": 7088,
+        "wall_seconds": 18.64,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t04-dedupe-order-rsi-r2-heldout-no_initial_tests-20260920-005543-ysqu"
+      },
+      {
+        "task": "t06-csv-column-total",
+        "solved": true,
+        "steps": 5,
+        "tool_calls": 3,
+        "prompt_tokens": 6155,
+        "total_tokens": 6692,
+        "wall_seconds": 12.71,
+        "stop_reason": "finished",
+        "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t06-csv-column-total-rsi-r2-heldout-no_initial_tests-20260920-005605-i9fo"
+      }
+    ],
+    "comparison": {
+      "search": {
+        "tasks": 4,
+        "solved_before": 4,
+        "solved_after": 4,
+        "tasks_lost": 0,
+        "tasks_gained": 0,
+        "prompt_tokens_before": 57977,
+        "prompt_tokens_after": 49111,
+        "token_delta": -0.15292271073011712
+      },
+      "held_out": {
+        "tasks": 2,
+        "solved_before": 1,
+        "solved_after": 1,
+        "tasks_lost": 0,
+        "tasks_gained": 0,
+        "prompt_tokens_before": 9995,
+        "prompt_tokens_after": 12530,
+        "token_delta": 0.25362681340670334
+      }
+    }
+  },
+  "outcome": "deployed and within capability tolerance"
+}

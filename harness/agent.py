@@ -32,8 +32,15 @@ from policy import HarnessPolicy, get_policy
 #   zai-org/GLM-5.3-Flash               (slow, chatty about tool calls)
 DEFAULT_MODEL = "deepseek-ai/DeepSeek-V4-Flash-0731"
 BASE_URL = os.environ.get("ONEIRO_BASE_URL", "https://inference.dahl.global/v1")
-REQUEST_TIMEOUT = 180.0
+REQUEST_TIMEOUT = 120.0
 MAX_PLACEHOLDER_RETRIES = 8
+MAX_REQUEST_ATTEMPTS = 4
+
+# Provider hiccups (timeouts, connection resets, 5xx, truncated JSON) are normal
+# on a shared inference endpoint and must not end an episode: one lost request
+# would otherwise be recorded as a failed task and poison the results table.
+RETRYABLE_ERRORS = (urllib.error.URLError, TimeoutError, ConnectionError,
+                    json.JSONDecodeError, KeyError)
 
 # The provider answers instantly with this text while it boots a cold model;
 # it is not a model answer and must never enter the trajectory.
@@ -127,42 +134,57 @@ class Provider:
         self.temperature = temperature
         self.base_url = base_url.rstrip("/")
 
+    def _post(self, payload: dict) -> dict:
+        request = urllib.request.Request(
+            f"{self.base_url}/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json",
+                     "Authorization": f"Bearer {self.api_key}"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
+            return json.loads(response.read().decode("utf-8"))
+
     def chat(self, messages: list[dict], tools: list[dict] | None = None) -> tuple[dict, dict]:
-        """Return (message, usage); retries while the provider is booting."""
+        """Return (message, usage), retrying transient provider failures."""
         payload: dict = {"model": self.model, "messages": messages,
                          "temperature": self.temperature}
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
 
-        for attempt in range(MAX_PLACEHOLDER_RETRIES):
-            request = urllib.request.Request(
-                f"{self.base_url}/chat/completions",
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json",
-                         "Authorization": f"Bearer {self.api_key}"},
-                method="POST",
-            )
+        placeholder_wait = 0
+        last_error: Exception | None = None
+        for attempt in range(MAX_REQUEST_ATTEMPTS):
             try:
-                with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
-                    body = json.loads(response.read().decode("utf-8"))
+                body = self._post(payload)
+                choice = body["choices"][0]
+                message = choice["message"]
             except urllib.error.HTTPError as exc:
+                if exc.code >= 500 or exc.code == 429:
+                    last_error = exc
+                    time.sleep(2 ** attempt)
+                    continue
                 detail = exc.read().decode("utf-8", errors="replace")[:300]
                 raise RuntimeError(f"HTTP {exc.code} from provider: {detail}") from exc
+            except RETRYABLE_ERRORS as exc:
+                last_error = exc
+                time.sleep(2 ** attempt)
+                continue
 
-            choice = body["choices"][0]
-            message = choice["message"]
             usage = body.get("usage") or {}
             content = message.get("content") or ""
             if PLACEHOLDER_MARKER in content and not message.get("tool_calls"):
+                if placeholder_wait >= MAX_PLACEHOLDER_RETRIES:
+                    raise RuntimeError(f"{self.model} is not warm: still booting after "
+                                       f"{placeholder_wait} checks")
+                placeholder_wait += 1
                 time.sleep(15)
                 continue
             return message, usage
 
-        raise RuntimeError(
-            f"provider kept answering with the cold-start placeholder after "
-            f"{MAX_PLACEHOLDER_RETRIES} tries ({self.model} is not warm)"
-        )
+        raise RuntimeError(f"provider failed after {MAX_REQUEST_ATTEMPTS} attempts: "
+                           f"{last_error!r}")
 
 
 # ---------- tools ----------
@@ -318,30 +340,38 @@ def run_task(task_id: str, model: str = DEFAULT_MODEL, label: str = "ours",
     initial_tests = toolbox.run_tests() if policy.include_initial_tests else None
     toolbox.actions.clear()  # the setup probes are not part of the trajectory
 
-    messages: list[dict] = [
-        {"role": "system", "content": system_prompt(policy, file_list, initial_tests)},
+    system_text = system_prompt(policy, file_list, initial_tests)
+    head: list[dict] = [
+        {"role": "system", "content": system_text},
         {"role": "user", "content": task["prompt"]},
     ]
-    turns: list[list[dict]] = []          # history in unit-sized chunks
+    # History as whole blocks (an assistant turn with its tool results, a nudge,
+    # ...). A step records how many blocks existed when it was sent, so the
+    # replay judge can rebuild that exact context instead of guessing an offset.
+    blocks: list[list[dict]] = []
     steps: list[dict] = []
     tokens = {"input": 0, "output": 0, "reasoning": 0, "cache_read": 0,
               "cache_write": 0, "total": 0}
     nudges = 0
+    pending_nudge = False
     started = time.time()
     stop_reason = "max_steps"
     error = None
+
+    def context() -> list[dict]:
+        """The messages this policy would send right now."""
+        if policy.context_mode == "window":
+            kept = [m for block in blocks[-max(1, policy.window_steps):] for m in block]
+        else:
+            kept = [m for block in blocks for m in block]
+        return head + kept
 
     try:
         for index in range(max(1, policy.max_steps)):
             if time.time() - started > timeout:
                 stop_reason = "timeout"
                 break
-            request_messages = list(messages)
-            if policy.context_mode == "window":
-                keep = policy.window_steps
-                flat = [m for turn in turns[-keep:] for m in turn]
-                request_messages = messages[:2] + flat
-
+            request_messages = context()
             call_started = time.time()
             message, usage = provider.chat(request_messages, TOOLS)
             latency = round(time.time() - call_started, 2)
@@ -350,14 +380,22 @@ def run_task(task_id: str, model: str = DEFAULT_MODEL, label: str = "ours",
                 tokens[key] += step_tokens[key]
 
             calls = message.get("tool_calls") or []
-            turn: list[dict] = [message]
-            step = {"index": len(steps), "latency": latency, "tokens": step_tokens}
+            block: list[dict] = [message]
+            step = {
+                "index": len(steps),
+                "kind": "tool" if calls else "text",
+                "history_len": len(blocks),
+                "prompt_chars": sum(len(m.get("content") or "") for m in request_messages),
+                "latency": latency,
+                "tokens": step_tokens,
+            }
             if calls:
-                step["kind"] = "tool"
                 step["tools"] = [c["function"]["name"] for c in calls]
             else:
-                step["kind"] = "text"
                 step["text"] = (message.get("content") or "")[:400]
+            if pending_nudge:
+                step["nudged"] = True
+                pending_nudge = False
 
             for call in calls:
                 name = call["function"]["name"]
@@ -366,13 +404,12 @@ def run_task(task_id: str, model: str = DEFAULT_MODEL, label: str = "ours",
                 except json.JSONDecodeError:
                     args = {}
                 observation = toolbox.execute(name, args)
-                turn.append({"role": "tool", "tool_call_id": call.get("id"),
-                             "content": observation})
+                block.append({"role": "tool", "tool_call_id": call.get("id"),
+                              "content": observation})
                 step.setdefault("observations", []).append(observation[:400])
 
             steps.append(step)
-            turns.append(turn)
-            messages.extend(turn)
+            blocks.append(block)
 
             if not calls:
                 tail = toolbox.run_tests()
@@ -380,10 +417,8 @@ def run_task(task_id: str, model: str = DEFAULT_MODEL, label: str = "ours",
                     nudges += 1
                     nudge = ("The tests still fail. Here is the current output:\n"
                              f"{toolbox._clip(tail)}\nContinue until they pass.")
-                    steps.append({"index": len(steps), "kind": "nudge",
-                                  "text": "verify_before_finish", "tokens": {}})
-                    turns.append([{"role": "user", "content": nudge}])
-                    messages.append({"role": "user", "content": nudge})
+                    blocks.append([{"role": "user", "content": nudge}])
+                    pending_nudge = True
                     continue
                 stop_reason = "finished"
                 break
@@ -415,8 +450,15 @@ def run_task(task_id: str, model: str = DEFAULT_MODEL, label: str = "ours",
         "tool_calls": len([s for s in steps if s.get("kind") == "tool"]),
         "tokens": tokens,
         "steps": steps,
+        # Raw material for the replay judge: the prompts as assembled, every
+        # message verbatim, and the unclipped tool observations. Without these
+        # a candidate policy could only be guessed at, never recomputed.
+        "system_prompt": system_text,
+        "user_prompt": task["prompt"],
+        "setup": {"file_list": file_list, "initial_tests": initial_tests},
+        "blocks": blocks,
         "trajectory": [
-            {"tool": a["tool"], "args": a["args"], "observation": a["observation"][:400]}
+            {"tool": a["tool"], "args": a["args"], "observation": a["observation"]}
             for a in toolbox.actions
         ],
         "scratch": str(scratch),

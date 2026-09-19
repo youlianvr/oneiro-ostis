@@ -1,0 +1,149 @@
+{
+  "round": 1,
+  "criteria_version": 1,
+  "replay_verification": [
+    {
+      "steps": 5,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        1902,
+        2410,
+        2500,
+        3260,
+        4350
+      ]
+    },
+    {
+      "steps": 10,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        1193,
+        1766,
+        2262,
+        3139,
+        4856,
+        6124,
+        7250,
+        8538,
+        12581,
+        19353
+      ]
+    },
+    {
+      "steps": 5,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        2171,
+        3061,
+        3274,
+        4047,
+        5044
+      ]
+    },
+    {
+      "steps": 6,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        2736,
+        3958,
+        3992,
+        5321,
+        6567,
+        7492
+      ]
+    }
+  ],
+  "proposed": [
+    {
+      "name": "clip_warnings_obs",
+      "include_file_list": true,
+      "include_initial_tests": true,
+      "context_mode": "full",
+      "window_steps": 10,
+      "observation_chars": 400,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    },
+    {
+      "name": "no_repeat_tests",
+      "include_file_list": true,
+      "include_initial_tests": true,
+      "context_mode": "full",
+      "window_steps": 10,
+      "observation_chars": 2000,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 0,
+      "temperature": 0.2
+    },
+    {
+      "name": "window_trim",
+      "include_file_list": true,
+      "include_initial_tests": true,
+      "context_mode": "window",
+      "window_steps": 4,
+      "observation_chars": 2000,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    }
+  ],
+  "notes": [],
+  "verdicts": [
+    {
+      "policy": "window_trim",
+      "predicted_tokens": 51417.7,
+      "recorded_tokens": 57977.0,
+      "predicted_saving": 0.1131,
+      "steps_covered": 17,
+      "steps_total": 26,
+      "decision_replayable": 0.654,
+      "passed_efficiency": false,
+      "reasons": [
+        "predicted saving 11.3% vs required 15%",
+        "2 observations would be dropped by windowing",
+        "1/5 steps diverge: the model's decisions there are NOT replayable (abstain)"
+      ]
+    },
+    {
+      "policy": "clip_warnings_obs",
+      "predicted_tokens": 54747.1,
+      "recorded_tokens": 57977.0,
+      "predicted_saving": 0.0557,
+      "steps_covered": 8,
+      "steps_total": 26,
+      "decision_replayable": 0.308,
+      "passed_efficiency": false,
+      "reasons": [
+        "predicted saving 5.6% vs required 15%",
+        "420 characters clipped from observations",
+        "2/5 steps diverge: the model's decisions there are NOT replayable (abstain)"
+      ]
+    },
+    {
+      "policy": "no_repeat_tests",
+      "predicted_tokens": 57977.0,
+      "recorded_tokens": 57977.0,
+      "predicted_saving": 0.0,
+      "steps_covered": 26,
+      "steps_total": 26,
+      "decision_replayable": 1.0,
+      "passed_efficiency": false,
+      "reasons": [
+        "predicted saving 0.0% vs required 15%"
+      ]
+    }
+  ],
+  "deployed": null,
+  "outcome": "no candidate passed the efficiency gate; nothing deployed"
+}
