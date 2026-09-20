@@ -48,6 +48,14 @@ concept_session
     [agent life session]
     (* <- lang_en;; *);;
 
+concept_organization_record <- sc_node_class;;
+concept_organization_record
+<= nrel_inclusion: concept_experience_event;;
+concept_organization_record
+=> nrel_main_idtf:
+    [organization lifecycle record]
+    (* <- lang_en;; *);;
+
 /* ---------- outcome constants ---------- */
 
 concept_success <- concept_outcome;;
@@ -122,6 +130,12 @@ nrel_session_record <- sc_node_non_role_relation;;
 nrel_session_record
 => nrel_main_idtf:
     [append-only record of agent life session*]
+    (* <- lang_en;; *);;
+
+nrel_organization_record <- sc_node_non_role_relation;;
+nrel_organization_record
+=> nrel_main_idtf:
+    [append-only organization lifecycle record*]
     (* <- lang_en;; *);;
 
 /* ---------- trajectory relations: what the dream cycle replays ---------- */

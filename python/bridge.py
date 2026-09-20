@@ -79,6 +79,7 @@ NREL_NOTE = "nrel_note"
 NREL_ORIGIN = "nrel_origin"
 NREL_CONFIDENCE = "nrel_confidence"
 NREL_SESSION_RECORD = "nrel_session_record"
+NREL_ORGANIZATION_RECORD = "nrel_organization_record"
 NREL_STRATEGY_DESCRIPTOR = "nrel_strategy_descriptor"
 NREL_STRATEGY_REPLAY_SCORE = "nrel_strategy_replay_score"
 NREL_STRATEGY_ONLINE_SCORE = "nrel_strategy_online_score"
@@ -88,7 +89,9 @@ NREL_DREAM_ROUND = "nrel_dream_round"
 CONCEPT_STRATEGY = "concept_strategy"
 CONCEPT_EXPERIENCE_EVENT = "concept_experience_event"
 CONCEPT_SESSION = "concept_session"
+CONCEPT_ORGANIZATION_RECORD = "concept_organization_record"
 SESSION_PREFIX = "session_"
+ORGANIZATION_PREFIX = "organization_"
 
 # Harness policies: the search tree of the RSI loop (a different species of
 # strategy — it is a program about what the agent is shown, not a behaviour).
@@ -177,6 +180,34 @@ class LifeSession:
             "goals": self.goals,
             "self_state": self.self_state,
             "events": self.events,
+            "revision": self.revision,
+        }
+
+
+@dataclass
+class OrganizationRecord:
+    """One append-only event in the persistent agent organization."""
+
+    record_id: str
+    session_id: str
+    role: str
+    kind: str
+    payload: dict = field(default_factory=dict)
+    origin: str = "model"
+    verified: bool = False
+    recorded_at: int = 0
+    revision: int = 0
+
+    def as_payload(self) -> dict:
+        return {
+            "record_id": self.record_id,
+            "session_id": self.session_id,
+            "role": self.role,
+            "kind": self.kind,
+            "payload": self.payload,
+            "origin": self.origin,
+            "verified": self.verified,
+            "recorded_at": self.recorded_at,
             "revision": self.revision,
         }
 
@@ -472,6 +503,82 @@ class OneiroBridge:
         """Return the newest session snapshot, or None for a fresh graph."""
         sessions = self.load_life_sessions()
         return sessions[-1] if sessions else None
+
+    # ---------- persistent organization protocol ----------
+
+    def record_organization_event(
+        self,
+        *,
+        session_id: str,
+        role: str,
+        kind: str,
+        payload: Optional[dict] = None,
+        origin: str = "model",
+        verified: bool = False,
+        record_id: Optional[str] = None,
+    ) -> OrganizationRecord:
+        """Append one role, coordination, escalation, or PR event to OSTIS."""
+        if not session_id or not role or not kind:
+            raise ValueError("organization events require session_id, role, and kind")
+        if not origin:
+            raise ValueError("organization events require an origin")
+        record = OrganizationRecord(
+            record_id=record_id or f"{kind}_{int(time.time() * 1000)}",
+            session_id=session_id,
+            role=role,
+            kind=kind,
+            payload=dict(payload or {}),
+            origin=origin,
+            verified=bool(verified),
+            recorded_at=int(time.time()),
+        )
+        node = self.resolve_entity(ORGANIZATION_PREFIX + record.record_id)
+        construction = ScConstruction()
+        construction.generate_connector(
+            sc_type.CONST_PERM_POS_ARC,
+            self.keynode(CONCEPT_ORGANIZATION_RECORD),
+            node,
+            "organization_class_arc",
+        )
+        self._add_json_relation(
+            construction,
+            node,
+            NREL_ORGANIZATION_RECORD,
+            record.as_payload(),
+        )
+        generate_elements(construction)
+        return record
+
+    def load_organization_events(self, session_id: Optional[str] = None) -> list[OrganizationRecord]:
+        """Read organization events from the graph in recorded order."""
+        template = ScTemplate()
+        template.triple(
+            self.keynode(CONCEPT_ORGANIZATION_RECORD),
+            sc_type.VAR_PERM_POS_ARC,
+            sc_type.VAR_NODE,
+        )
+        records: list[OrganizationRecord] = []
+        for item in search_by_template(template):
+            payload = self._json_relation(item.get(2), NREL_ORGANIZATION_RECORD)
+            if not isinstance(payload, dict):
+                continue
+            if session_id is not None and payload.get("session_id") != session_id:
+                continue
+            try:
+                records.append(OrganizationRecord(
+                    record_id=str(payload["record_id"]),
+                    session_id=str(payload["session_id"]),
+                    role=str(payload["role"]),
+                    kind=str(payload["kind"]),
+                    payload=dict(payload.get("payload", {})),
+                    origin=str(payload.get("origin", "model")),
+                    verified=bool(payload.get("verified", False)),
+                    recorded_at=int(payload.get("recorded_at", 0)),
+                    revision=int(payload.get("revision", 0)),
+                ))
+            except (KeyError, TypeError, ValueError):
+                continue
+        return sorted(records, key=lambda row: (row.recorded_at, row.record_id))
 
     # ---------- strategy store ----------
 

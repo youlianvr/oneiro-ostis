@@ -79,5 +79,27 @@ def test_life_session_survives_bridge_restart(bridge):
         assert recovered.self_state["last_action"] == "write test"
         assert recovered.events[-1]["origin"] == "model"
         assert recovered.events[-1]["verified"] is False
+
+        manager = fresh.record_organization_event(
+            session_id=session_id,
+            role="manager",
+            kind="proposal_decision",
+            payload={"decision": "send_to_worker", "reason": "testable change"},
+            origin="rule",
+            verified=True,
+            record_id=f"decision_{uuid.uuid4().hex}",
+        )
+        worker = fresh.record_organization_event(
+            session_id=session_id,
+            role="worker",
+            kind="pr_packet",
+            payload={"branch": "agent/test", "tests": ["core loop"]},
+            origin="worker",
+            record_id=f"pr_{uuid.uuid4().hex}",
+        )
+        records = fresh.load_organization_events(session_id)
+        assert [record.role for record in records[-2:]] == ["manager", "worker"]
+        assert manager.verified is True
+        assert worker.payload["branch"] == "agent/test"
     finally:
         fresh.close()
