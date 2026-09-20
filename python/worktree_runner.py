@@ -84,11 +84,15 @@ class WorktreeRunner:
             raise WorktreeError("PR evidence requires id and summary")
         if not checks or not all(check.passed for check in checks):
             raise WorktreeError("all declared checks must pass before a PR packet")
-        names = self._run(
-            ["git", "-C", str(worktree.root), "diff", "--name-only", "HEAD"],
+        status = self._run(
+            ["git", "-C", str(worktree.root), "status", "--porcelain"],
             cwd=worktree.root,
         ).stdout
-        changed_paths = tuple(line.strip() for line in names.splitlines() if line.strip())
+        changed_paths = tuple(
+            line[3:].strip()
+            for line in status.splitlines()
+            if len(line) >= 4 and line[:2].strip() != ""
+        )
         if not changed_paths:
             raise WorktreeError("PR packet cannot be empty")
         return PRPacket(

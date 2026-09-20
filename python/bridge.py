@@ -28,6 +28,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Optional
@@ -114,6 +115,12 @@ RRELS = ["rrel_1", "rrel_2", "rrel_3", "rrel_4", "rrel_5"]
 
 POLL_INTERVAL = 0.05
 POLL_TIMEOUT = 15.0
+
+
+def _safe_graph_identifier(value: str) -> str:
+    """Map external ids to valid OSTIS system identifiers without losing payload ids."""
+    safe = re.sub(r"[^A-Za-z0-9_]", "_", str(value))
+    return safe if safe and safe[0].isalpha() else f"id_{safe}"
 
 
 @dataclass
@@ -451,7 +458,7 @@ class OneiroBridge:
     def persist_life_session(self, session: LifeSession) -> None:
         """Write one immutable, graph-native session snapshot."""
         node = self.resolve_entity(
-            f"{SESSION_PREFIX}{session.session_id}_v{session.revision}"
+            f"{SESSION_PREFIX}{_safe_graph_identifier(session.session_id)}_v{session.revision}"
         )
         construction = ScConstruction()
         construction.generate_connector(
@@ -532,7 +539,7 @@ class OneiroBridge:
             verified=bool(verified),
             recorded_at=int(time.time()),
         )
-        node = self.resolve_entity(ORGANIZATION_PREFIX + record.record_id)
+        node = self.resolve_entity(ORGANIZATION_PREFIX + _safe_graph_identifier(record.record_id))
         construction = ScConstruction()
         construction.generate_connector(
             sc_type.CONST_PERM_POS_ARC,
