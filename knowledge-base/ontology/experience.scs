@@ -40,6 +40,14 @@ concept_action_kind
     [action kind]
     (* <- lang_en;; *);;
 
+concept_session <- sc_node_class;;
+concept_session
+<= nrel_inclusion: concept_experience_event;;
+concept_session
+=> nrel_main_idtf:
+    [agent life session]
+    (* <- lang_en;; *);;
+
 /* ---------- outcome constants ---------- */
 
 concept_success <- concept_outcome;;
@@ -110,6 +118,12 @@ nrel_score
     [numeric score of attempt*]
     (* <- lang_en;; *);;
 
+nrel_session_record <- sc_node_non_role_relation;;
+nrel_session_record
+=> nrel_main_idtf:
+    [append-only record of agent life session*]
+    (* <- lang_en;; *);;
+
 /* ---------- trajectory relations: what the dream cycle replays ---------- */
 
 nrel_episode <- sc_node_non_role_relation;;
@@ -146,6 +160,18 @@ nrel_note <- sc_node_non_role_relation;;
 nrel_note
 => nrel_main_idtf:
     [note of attempt*]
+    (* <- lang_en;; *);;
+
+nrel_origin <- sc_node_non_role_relation;;
+nrel_origin
+=> nrel_main_idtf:
+    [origin of agent record*]
+    (* <- lang_en;; *);;
+
+nrel_confidence <- sc_node_non_role_relation;;
+nrel_confidence
+=> nrel_main_idtf:
+    [confidence of agent record*]
     (* <- lang_en;; *);;
 
 /* ---------- strategy and dream-cycle relations ---------- */

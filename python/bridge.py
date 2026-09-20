@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from sc_client.client import (
@@ -76,6 +76,9 @@ NREL_STATE = "nrel_state"
 NREL_LEGAL = "nrel_legal"
 NREL_STRATEGY = "nrel_strategy"
 NREL_NOTE = "nrel_note"
+NREL_ORIGIN = "nrel_origin"
+NREL_CONFIDENCE = "nrel_confidence"
+NREL_SESSION_RECORD = "nrel_session_record"
 NREL_STRATEGY_DESCRIPTOR = "nrel_strategy_descriptor"
 NREL_STRATEGY_REPLAY_SCORE = "nrel_strategy_replay_score"
 NREL_STRATEGY_ONLINE_SCORE = "nrel_strategy_online_score"
@@ -84,6 +87,8 @@ NREL_DREAM_ROUND = "nrel_dream_round"
 
 CONCEPT_STRATEGY = "concept_strategy"
 CONCEPT_EXPERIENCE_EVENT = "concept_experience_event"
+CONCEPT_SESSION = "concept_session"
+SESSION_PREFIX = "session_"
 
 # Harness policies: the search tree of the RSI loop (a different species of
 # strategy — it is a program about what the agent is shown, not a behaviour).
@@ -145,6 +150,35 @@ class AttemptRecord:
             self.kind or "",
             self.score,
         )
+
+
+@dataclass
+class LifeSession:
+    """Append-only snapshot of one autonomous agent run.
+
+    Events may be model-authored, but every event carries its origin and
+    verification state in the payload. Snapshots are immutable graph nodes;
+    a later revision never overwrites an earlier one.
+    """
+
+    session_id: str
+    created_at: int
+    status: str = "running"
+    goals: list[dict] = field(default_factory=list)
+    self_state: dict = field(default_factory=dict)
+    events: list[dict] = field(default_factory=list)
+    revision: int = 0
+
+    def payload(self) -> dict:
+        return {
+            "session_id": self.session_id,
+            "created_at": self.created_at,
+            "status": self.status,
+            "goals": self.goals,
+            "self_state": self.self_state,
+            "events": self.events,
+            "revision": self.revision,
+        }
 
 
 class OneiroBridge:
@@ -323,6 +357,121 @@ class OneiroBridge:
     def retrieve_scores(self, subject: str) -> list[Optional[float]]:
         """Scores aligned with retrieve_attempts order."""
         return [r.score for r in self.retrieve_attempts(subject)]
+
+    # ---------- autonomous life sessions ----------
+
+    def start_life_session(
+        self,
+        session_id: str,
+        *,
+        goals: Optional[list[dict]] = None,
+        self_state: Optional[dict] = None,
+    ) -> LifeSession:
+        """Create and persist the first immutable snapshot of a life session."""
+        session = LifeSession(
+            session_id=session_id,
+            created_at=int(time.time()),
+            goals=list(goals or []),
+            self_state=dict(self_state or {}),
+        )
+        self.persist_life_session(session)
+        return session
+
+    def record_life_event(
+        self,
+        session: LifeSession,
+        event: dict,
+        *,
+        origin: str,
+        verified: bool = False,
+    ) -> LifeSession:
+        """Append one event and persist a new snapshot.
+
+        `origin` is mandatory so model-authored observations cannot be
+        mistaken for human-confirmed facts. The earlier snapshot remains in
+        the graph and can be audited after a later correction.
+        """
+        if not origin:
+            raise ValueError("life events require an origin")
+        stored = dict(event)
+        stored["origin"] = origin
+        stored["verified"] = bool(verified)
+        stored["recorded_at"] = int(time.time())
+        session.events.append(stored)
+        session.revision += 1
+        self.persist_life_session(session)
+        return session
+
+    def finish_life_session(
+        self,
+        session: LifeSession,
+        *,
+        self_state: Optional[dict] = None,
+        status: str = "finished",
+    ) -> LifeSession:
+        """Persist the terminal snapshot without rewriting earlier history."""
+        session.status = status
+        if self_state is not None:
+            session.self_state = dict(self_state)
+        session.revision += 1
+        self.persist_life_session(session)
+        return session
+
+    def persist_life_session(self, session: LifeSession) -> None:
+        """Write one immutable, graph-native session snapshot."""
+        node = self.resolve_entity(
+            f"{SESSION_PREFIX}{session.session_id}_v{session.revision}"
+        )
+        construction = ScConstruction()
+        construction.generate_connector(
+            sc_type.CONST_PERM_POS_ARC,
+            self.keynode(CONCEPT_SESSION),
+            node,
+            "session_class_arc",
+        )
+        self._add_json_relation(
+            construction,
+            node,
+            NREL_SESSION_RECORD,
+            session.payload(),
+        )
+        generate_elements(construction)
+
+    def load_life_sessions(self) -> list[LifeSession]:
+        """Load the newest snapshot for each session id from OSTIS."""
+        template = ScTemplate()
+        template.triple(
+            self.keynode(CONCEPT_SESSION),
+            sc_type.VAR_PERM_POS_ARC,
+            sc_type.VAR_NODE,
+        )
+        latest: dict[str, LifeSession] = {}
+        for item in search_by_template(template):
+            node = item.get(2)
+            payload = self._json_relation(node, NREL_SESSION_RECORD)
+            if not isinstance(payload, dict) or not payload.get("session_id"):
+                continue
+            try:
+                candidate = LifeSession(
+                    session_id=str(payload["session_id"]),
+                    created_at=int(payload.get("created_at", 0)),
+                    status=str(payload.get("status", "running")),
+                    goals=list(payload.get("goals", [])),
+                    self_state=dict(payload.get("self_state", {})),
+                    events=list(payload.get("events", [])),
+                    revision=int(payload.get("revision", 0)),
+                )
+            except (TypeError, ValueError):
+                continue
+            previous = latest.get(candidate.session_id)
+            if previous is None or candidate.revision > previous.revision:
+                latest[candidate.session_id] = candidate
+        return sorted(latest.values(), key=lambda row: (row.created_at, row.session_id))
+
+    def load_latest_life_session(self) -> Optional[LifeSession]:
+        """Return the newest session snapshot, or None for a fresh graph."""
+        sessions = self.load_life_sessions()
+        return sessions[-1] if sessions else None
 
     # ---------- strategy store ----------
 

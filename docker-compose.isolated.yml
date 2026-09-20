@@ -1,0 +1,7 @@
+services:
+  web:
+    ports: !override
+      - "18000:8000"
+  machine:
+    ports: !override
+      - "18090:8090"

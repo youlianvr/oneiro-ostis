@@ -46,3 +46,38 @@ def test_record_link_prev_attempt(bridge):
     second = bridge.record_attempt(subject, "scan", "corridor2", "concept_success")
     assert first.addr is not None and second.addr is not None
     assert first.addr != second.addr
+
+
+def test_life_session_survives_bridge_restart(bridge):
+    """The latest self-state is recovered from OSTIS after reconnecting."""
+    import uuid
+
+    session_id = f"restart_{uuid.uuid4().hex}"
+    session = bridge.start_life_session(
+        session_id,
+        goals=[{"text": "inspect the memory adapter", "origin": "human"}],
+        self_state={"confidence": {"memory": 0.2}},
+    )
+    bridge.record_life_event(
+        session,
+        {"kind": "observation", "text": "the adapter has no restart test"},
+        origin="model",
+    )
+    bridge.finish_life_session(
+        session,
+        self_state={"confidence": {"memory": 0.4}, "last_action": "write test"},
+    )
+
+    bridge.close()
+    fresh = OneiroBridge(HOST, PORT)
+    fresh.connect()
+    try:
+        recovered = fresh.load_latest_life_session()
+        assert recovered is not None
+        assert recovered.session_id == session_id
+        assert recovered.status == "finished"
+        assert recovered.self_state["last_action"] == "write test"
+        assert recovered.events[-1]["origin"] == "model"
+        assert recovered.events[-1]["verified"] is False
+    finally:
+        fresh.close()
