@@ -1,0 +1,244 @@
+{
+  "round": 10,
+  "criteria_version": 5,
+  "criteria": {
+    "frozen_at": "2026-09-20T02:46:00",
+    "version": 5,
+    "search_tasks": [
+      "t01-start-total",
+      "t02-clamp-bounds",
+      "t03-parse-duration",
+      "t05-retry-backoff"
+    ],
+    "held_out_tasks": [
+      "t04-dedupe-order",
+      "t06-csv-column-total"
+    ],
+    "efficiency": {
+      "min_predicted_saving": 0.15,
+      "note": "a candidate must be predicted to save at least 15% of prompt tokens"
+    },
+    "capability": {
+      "max_tasks_lost": 1,
+      "min_decision_replayable": 0.5,
+      "note": "online on the search set, a deployed candidate may lose at most one task against the incumbent; the judge cannot settle capability and does not pretend to"
+    },
+    "budget": {
+      "online_runs_per_round": 18,
+      "note": "three runs per search task, three per held-out task, when a round deploys"
+    },
+    "revision": {
+      "from_version": 4,
+      "reason": "version 4 accepted a deployment on one run per task, and the first policy deployed under it did not survive repeats",
+      "evidence": "round 9 read -3.4% on the search set from single runs; with three runs per task the same policy reads +4.0% overall and no transfer, with per-task spreads of 34% and 91% of the baseline",
+      "unchanged": "min_predicted_saving 0.15, max_tasks_lost 1, min_decision_replayable 0.5, the online path, the trajectory rule"
+    },
+    "evidence": {
+      "unjudgeable_path": {
+        "enabled": true,
+        "max_online_runs": 4,
+        "note": "when the judge cannot replay a candidate's decisions, the candidate may be measured online on the search set inside the round budget; its efficiency claim then rests on that measurement and is labelled as such, never on a replay estimate"
+      },
+      "note": "a replay verdict needs the judge to have replayed at least half of the candidate's decisions; below that the judge abstains and the online path decides instead",
+      "trajectory_changes": {
+        "fields": [
+          "context_mode",
+          "window_steps",
+          "observation_chars",
+          "read_lines",
+          "include_initial_tests",
+          "include_file_list",
+          "max_steps",
+          "verify_before_finish",
+          "max_verify_nudges"
+        ],
+        "note": "a policy that changes what the agent is shown or how long it may run does not just change a prompt, it changes the trajectory. Replay covers aligned steps, and a candidate like that produces fewer aligned steps in reality than the estimate assumed, so the estimate is an estimate about a trajectory that no longer exists",
+        "requirement": "such a candidate is measured online on the search set before it may be deployed, whatever its replay coverage"
+      },
+      "repeats": {
+        "min_runs_per_task": 3,
+        "note": "a saving is a claim about a distribution. One run per task cannot separate a three percent saving from variance, and the spread across runs of one policy reached 90% of the baseline here, so every online claim is averaged over at least this many runs per task"
+      }
+    }
+  },
+  "replay_verification": [
+    {
+      "steps": 5,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        1902,
+        2410,
+        2500,
+        3260,
+        4350
+      ]
+    },
+    {
+      "steps": 6,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        1193,
+        1766,
+        1945,
+        2698,
+        3845,
+        4450
+      ]
+    },
+    {
+      "steps": 5,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        2171,
+        3061,
+        3274,
+        4047,
+        5044
+      ]
+    },
+    {
+      "steps": 6,
+      "chars_match": true,
+      "first_mismatch": null,
+      "rebuilt": [
+        2736,
+        3958,
+        3992,
+        5321,
+        6567,
+        7492
+      ]
+    }
+  ],
+  "proposed": [
+    {
+      "name": "window5_obs1500",
+      "include_file_list": true,
+      "include_initial_tests": true,
+      "context_mode": "window",
+      "window_steps": 5,
+      "observation_chars": 1500,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    },
+    {
+      "name": "window6_obs1200",
+      "include_file_list": true,
+      "include_initial_tests": true,
+      "context_mode": "window",
+      "window_steps": 6,
+      "observation_chars": 1200,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    },
+    {
+      "name": "window4_obs1000",
+      "include_file_list": true,
+      "include_initial_tests": true,
+      "context_mode": "window",
+      "window_steps": 4,
+      "observation_chars": 1000,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    }
+  ],
+  "notes": [
+    "proposer returned unparseable JSON: Expecting value: line 1 column 1 (char 0)",
+    "zai-org/GLM-5.3-Flash: returned no valid candidate"
+  ],
+  "verdicts": [
+    {
+      "policy": "window4_obs1000",
+      "predicted_tokens": 36729.4,
+      "recorded_tokens": 38685.0,
+      "predicted_saving": 0.0506,
+      "steps_covered": 16,
+      "steps_total": 22,
+      "decision_replayable": 0.727,
+      "passed_efficiency": false,
+      "passed_evidence": true,
+      "passed_gate": false,
+      "path": "refused",
+      "changed_fields": [
+        "context_mode",
+        "window_steps",
+        "observation_chars"
+      ],
+      "reasons": [
+        "predicted saving 5.1% vs required 15%",
+        "decisions replayed 73% vs required 50%",
+        "path: refused",
+        "changes the trajectory: context_mode, window_steps, observation_chars",
+        "2 observations would be dropped by windowing",
+        "1/5 steps diverge: the model's decisions there are NOT replayable (abstain)"
+      ]
+    },
+    {
+      "policy": "window5_obs1500",
+      "predicted_tokens": 38025.1,
+      "recorded_tokens": 38685.0,
+      "predicted_saving": 0.0171,
+      "steps_covered": 20,
+      "steps_total": 22,
+      "decision_replayable": 0.909,
+      "passed_efficiency": false,
+      "passed_evidence": true,
+      "passed_gate": false,
+      "path": "refused",
+      "changed_fields": [
+        "context_mode",
+        "window_steps",
+        "observation_chars"
+      ],
+      "reasons": [
+        "predicted saving 1.7% vs required 15%",
+        "decisions replayed 91% vs required 50%",
+        "path: refused",
+        "changes the trajectory: context_mode, window_steps, observation_chars",
+        "2 observations would be dropped by windowing",
+        "1/6 steps diverge: the model's decisions there are NOT replayable (abstain)"
+      ]
+    },
+    {
+      "policy": "window6_obs1200",
+      "predicted_tokens": 38685.0,
+      "recorded_tokens": 38685.0,
+      "predicted_saving": 0.0,
+      "steps_covered": 22,
+      "steps_total": 22,
+      "decision_replayable": 1.0,
+      "passed_efficiency": false,
+      "passed_evidence": true,
+      "passed_gate": false,
+      "path": "refused",
+      "changed_fields": [
+        "context_mode",
+        "window_steps",
+        "observation_chars"
+      ],
+      "reasons": [
+        "predicted saving 0.0% vs required 15%",
+        "decisions replayed 100% vs required 50%",
+        "path: refused",
+        "changes the trajectory: context_mode, window_steps, observation_chars"
+      ]
+    }
+  ],
+  "evidence": "no candidate the judge could judge",
+  "proposer_model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+  "agent_model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+  "deployed": null,
+  "outcome": "no candidate passed the efficiency gate; nothing deployed"
+}

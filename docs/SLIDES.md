@@ -35,20 +35,40 @@
     transitions in 9.1 s; day 2 +114.9 (+84 %); 0 conflicts.
     *(shot: `shots/03-dream-table.png` — every dream verdict with bars;
     `shots/04-episodes.png` — the recorded experience the judge replays)*
-11. **Honesty** — truncation conservatism; float32; LLM adapter unwired in
-    these numbers; single-world family comparison (two domains, eight seeds);
-    judge overestimates replay relative to measured online — both reported.
-12. **Related work** — Dreamer-style "learning by dreaming" (executes a
+11. **The same cycle over a real coding agent** — our own loop, six tasks with
+    hidden tests (4 search / 2 held out), `DeepSeek-V4-Flash-0731`; judge over
+    ten rounds: 6/6 episodes rebuilt exactly, token model 5.9% error, **19 of 28
+    candidates refused with no run spent**, 22 runs spent against 112 for a
+    sweep; **all three deployments refuted** (+22.5→+27.0%, +26.1→+21.1% and a
+    task lost, -3.4% single-run → +4.0% repeated); the `window3` control:
+    +7.6% predicted, +12.4% measured, +81.8% held out. Five rule revisions.
+    *(shot: the dashboard's harness panel — the round table and the verdict
+    badges, `lab/rsi/round-*.json` behind it)*
+12. **Honesty** — truncation conservatism; float32; single-world family
+    comparison (two domains, eight seeds); judge overestimates replay relative
+    to measured online; the harness is six tasks, one model, one provider, with
+    run-to-run spread up to 90.8% of the baseline, and **no measured saving
+    survives**; the loop's value so far is its refusals, not its deploys.
+13. **Related work** — Dreamer-style "learning by dreaming" (executes a
     learned model); graph-memory agents (logs, not replay-optimizers); OSTIS
-    ecosystem (semantic technology; NIKA as in-ecosystem prior art). Bounded
-    search 2026-09-19 found no prior OSTIS + exact-replay self-improvement
-    combination.
-13. **Reproduce** — `docker compose up -d --build`; `pytest tests/ -q`;
+    ecosystem (semantic technology; NIKA as in-ecosystem prior art). Three
+    contemporary works frame the harness: Dream-RSI (arXiv 2609.14858,
+    recorded history as the simulator), Meta-Harness (arXiv 2603.28052, the
+    harness is the object worth searching; full traces beat summaries),
+    SoL-Pi (arXiv 2609.20519, criteria frozen before the search, held-out kept
+    out of it). Bounded search 2026-09-19 found no prior OSTIS + exact-replay
+    self-improvement combination.
+14. **Reproduce** — `docker compose up -d --build`; `pytest tests/ -q`;
     `PYTHONPATH=python python -m metrics.build_table > docs/results.md`;
     `PYTHONPATH=python ONEIRO_ROUNDS=5 python -m loop > docs/rounds.md`;
     `python demo/run_demo.py`; then
     `PYTHONPATH=python python python/viz.py <subject> --out docs/dream-tree.html`
     and show the page live — hover any node, click any episode.
+    Harness: `python harness/run.py --task t01-start-total --policy baseline`;
+    `python harness/rsi.py --round 11` (one search round, deploys under the
+    frozen criteria); `python harness/rsi.py --show --ledger` (the ten recorded
+    rounds and the run ledger); `python harness/publish.py` writes the tree into
+    the graph.
 
 ## Screenshots (generated, in `docs/shots/`)
 

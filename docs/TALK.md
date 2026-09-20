@@ -51,7 +51,7 @@ not dashboard toggles."
 - Proof of "no execution": tests patch `ExpeditionWorld.step` to raise and
   replay still gives identical numbers.
 
-## 4:00–5:00 — Results
+## 4:00–4:50 — Results (the island)
 
 - Recursive loop (`docs/rounds.md`): round 1 weak_wander 137.5 →
   dream → cand_alpha_d4 → rounds 2–5 stable at 252.4 — the value of the best
@@ -60,16 +60,41 @@ not dashboard toggles."
   transitions judged in 9.1 s; day 2 measured **+114.9 points (+84 %)**;
   0 recording conflicts.
 
-## 5:00–5:40 — Honesty corner
+## 4:50–5:50 — Why it is not a toy: the same cycle over a real coding agent
+
+- The island is a world we wrote, so it proves the machinery, not the use.
+  Take the same loop and point it at a coding agent instead: our own loop
+  (`harness/agent.py`), six tasks with hidden tests, four in the search set and
+  two held out, model `DeepSeek-V4-Flash-0731` on a host but not a model of ours.
+- The judge, ten rounds: 6 of 6 recorded episodes rebuilt character for
+  character, token model 5.9% mean error, **19 of 28 candidates refused on
+  recordings alone, no run spent**; 22 runs spent against 112 for a sweep.
+- Now the honest half, and this is the part I would trust us on: **all three
+deployments failed their own promise** (+22.5% predicted → +27.0% measured;
+  +26.1% → +21.1% and a task lost; –3.4% on single runs → +4.0% once repeated).
+  Every fix to the acceptance rules came from one of those failures: a coverage
+  floor, then an online path, then the rule that a policy changing the agent's
+  context may never be deployed on a replay estimate (the `window3` control:
+  +7.6% predicted, **+12.4% measured**, held-out **+81.8%**), then three runs
+  per task before any number is quoted.
+- Line: "The judge cannot tell you what the agent will do next, only what it
+did. That is a narrow guarantee, and it is exactly as wide as we can defend."
+- The tree lives in the same graph as the island's strategies:
+  `concept_harness` nodes carry policy, estimate, verdict and the online
+  comparison; the dashboard shows all ten rounds and the ledger.
+
+## 5:50–6:30 — Honesty corner
 
 - Judge is conservative: under-covered candidates get truncated, so the dream
   prefers paths it has seen — coverage column is in every table.
 - Scores are float32 in the KB; exactness tests use a 1e-4 tolerance.
-- LLM adapter implemented but not exercised without a provider.
 - Improvement is a controlled single-world comparison, not a statistical
-  claim.
+  claim; the harness is six tasks, one model, one provider, and its run-to-run
+  spread reaches 90.8% of the baseline on one task.
+- **No measured saving survives anywhere.** The harness loop's value so far is
+  its refusals, not its deploys, and we report it that way.
 
-## 5:40–6:40 — Live demo (if time and stack allow)
+## 6:30–7:30 — Live demo (if time and stack allow)
 
 ```bash
 python demo/run_demo.py
@@ -91,3 +116,11 @@ the dream's verdict table with coverage 1.00, day 2 score. Open sc-web on
 - **"What breaks it?"** Stochastic environments (conflicting recordings —
   the tree's consistency checker is the alarm) and large state spaces
   (signature collapse).
+- **"Did the harness save anything?"** No, and we measure it instead of
+  claiming it: three deployments, three refutations, ten rounds, five rule
+  revisions. What is measured is the cost side: 22 agent runs spent where a
+  sweep costs 112.
+- **"Why trust the estimates at all?"** Because they are labelled as estimates
+  and bounded: a saving claim needs at least half the candidate's decisions
+  replayed, and any policy that changes the agent's context goes online before
+  deployment whatever its coverage.

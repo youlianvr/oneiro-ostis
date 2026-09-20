@@ -187,6 +187,47 @@ of the method on these worlds is the island seed `oneiro-1`: +14.7 (1.12x).
 - measured improvement: **+114.9 (+84 %)**, judged only from recordings,
   proven in the world.
 
+### 6.5 RSI harness: the same cycle over a real coding agent — `docs/harness.md`
+
+The island searches strategies in a world we wrote. The harness (stage 6)
+searches the thing that surrounds a real agent: what it is shown, what it keeps,
+when it stops. Subject: our own coding loop (`harness/agent.py`), six small
+tasks with hidden tests, four of them the search set and two held out, model
+`DeepSeek-V4-Flash-0731` through a host but not a model of ours.
+
+What the replay judge does at this scale, over ten rounds: 6 of 6 recorded
+episodes rebuilt character for character (33 steps), token model cross-validated
+at 5.9% mean relative error (17.3% worst), 19 of 28 proposed candidates refused
+on recordings alone with no agent run spent, 22 online runs against the 112 a
+sweep of the same candidates costs.
+
+What the loop cannot do, measured rather than assumed. Five revisions of the
+frozen acceptance rules, each forced by a measurement:
+
+| revision | what it added | what forced it |
+|---|---|---|
+| v2 | coverage floor: a saving claim needs its decisions replayed | rounds 2 and 3 deployed at **0 of 26** replayed decisions; both then cost **more** online (+27.0%, +21.1%) |
+| v3 | an online path for candidates replay cannot judge | three candidates at +22.5..26.6% predicted with no replayed decision at all and no way to decide them |
+| v4 | a trajectory-changing policy is measured online before deployment, whatever its coverage | the `window3` control: +7.6% predicted at 72.7% coverage, measured **+12.4%** over three runs per task, held-out **+81.8%** |
+| v5 | three runs per task before any online number is quoted | round 9: **-3.4%** from one run per task, **+4.0%** net from three, per-task spreads up to 90.8% of the baseline |
+
+Result, stated the way this project has to state it: **the harness loop has not
+saved a token it can defend.** All three deployments failed their own promise:
+round 2 (+22.5% predicted, +27.0% measured), round 3 (+26.1% predicted, +21.1%
+measured and one search task lost), round 9 (-3.4% on single runs, +4.0% once
+repeated). What holds is the discipline: the judge decides most candidates for
+free, every claim is either measured online or labelled an estimate, and the
+loop's own refutations sit in the same record as its claims. The round 9 policy,
+measured three times per task, is genuinely cheaper on three tasks (`t01` -18.6%
+at 0.04% spread, `t02` -8.3%, `t06` -32.5% held out) and gives it all back on two
+(`t03` +48.4%, `t05` +20.8%): a per-task harness would take it, one harness for
+six tasks cannot, and no measured net saving survives anywhere.
+
+The harness tree is published into the same OSTIS graph as the island's
+strategies: `concept_harness` nodes carry the policy, the judge's estimate, the
+gate verdict and the online comparison, `concept_harness_round` nodes carry the
+frozen criteria that applied.
+
 ## 7. Honest limitations
 
 - The judge is conservative: a candidate whose decisions were never recorded
@@ -209,6 +250,15 @@ of the method on these worlds is the island seed `oneiro-1`: +14.7 (1.12x).
 - "Improvement" means the measured online score with the same world seed and
   budget: the series covers eight world instances over two domains — a
   controlled comparison, not a claim about arbitrary task families.
+- The harness (§6.5) is six tasks, one model and one provider, and the agent's
+  own run-to-run spread reaches 90.8% of the baseline on one task. Every saving it
+  produced was falsified by the next measurement; the loop's value so far is its
+  refusals, not its deploys. It also runs with a corpus far too small for the
+  capability gate to mean anything: the gate's tolerance (at most one task lost)
+  is one sixth of the corpus.
+- The harness proposer never found the efficient region: everything that cleared
+  the gate was hand-written or a variation of one family. On a corpus this small
+  that is a statement about proposer quality, and it is not flattering.
 
 ## 8. Related work and novelty (bounded search)
 
@@ -237,6 +287,21 @@ trajectory of an agent natively in an OSTIS sc-graph and (b) improves the
 agent by *exact replay over its own recordings* with (c) the deployed winner
 measured online and (d) replay/online evidence stored back into the graph.
 This is a bounded-search statement, not a certified novelty review.
+
+Three contemporary works read in full and used as the frame for §6.5:
+**Dream-RSI** (Google/DeepMind/UMD, arXiv 2609.14858) makes recorded history the
+simulator for policy search; **Meta-Harness** (arXiv 2603.28052) shows a
+proposer fed full trajectories beats one fed summaries, and that the harness is
+the object worth searching; **SoL-Pi** (arXiv 2609.20519) freezes acceptance
+criteria before the search and keeps a held-out set out of it. Those three
+supply the method this project uses. The addition this work makes is not a new
+loop but an account of where the loop lies: replayability as a first-class
+number (what is rebuilt exactly, what is extrapolated, what cannot be judged at
+all), and the rule that a trajectory-changing policy may not be deployed on a
+replay estimate however high its coverage, because coverage counts aligned
+prompts and not the steps the agent will then take. Our measured refutations
+(the `window3` control, round 9's repeats) are the evidence for that rule, and
+we have not found them stated in the three works themselves.
 
 The closest thing the authors themselves must not hide: a team could get the
 same behaviour with any relational store. The specific contribution here is
