@@ -56,8 +56,9 @@
     recorded history as the simulator), Meta-Harness (arXiv 2603.28052, the
     harness is the object worth searching; full traces beat summaries),
     SoL-Pi (arXiv 2609.20519, criteria frozen before the search, held-out kept
-    out of it). Bounded search 2026-09-19 found no prior OSTIS + exact-replay
-    self-improvement combination.
+    out of it), GAVEL (arXiv 2609.19315, symbolic model repairs what it can
+    itself: 1 LLM query beats 3.4). Bounded search 2026-09-19 found no prior
+    OSTIS + exact-replay self-improvement combination.
 14. **Reproduce** — `docker compose up -d --build`; `pytest tests/ -q`;
     `PYTHONPATH=python python -m metrics.build_table > docs/results.md`;
     `PYTHONPATH=python ONEIRO_ROUNDS=5 python -m loop > docs/rounds.md`;

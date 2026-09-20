@@ -288,12 +288,17 @@ agent by *exact replay over its own recordings* with (c) the deployed winner
 measured online and (d) replay/online evidence stored back into the graph.
 This is a bounded-search statement, not a certified novelty review.
 
-Three contemporary works read in full and used as the frame for §6.5:
+Four contemporary works read in full and used as the frame for §6.5:
 **Dream-RSI** (Google/DeepMind/UMD, arXiv 2609.14858) makes recorded history the
 simulator for policy search; **Meta-Harness** (arXiv 2603.28052) shows a
 proposer fed full trajectories beats one fed summaries, and that the harness is
 the object worth searching; **SoL-Pi** (arXiv 2609.20519) freezes acceptance
-criteria before the search and keeps a held-out set out of it. Those three
+criteria before the search and keeps a held-out set out of it; **GAVEL**
+(arXiv 2609.19315) shows in robotics that an explicit symbolic model which
+repairs model-derivable failures itself (one LLM query) beats a
+validate-and-requery loop (3.4 queries), which is the same division of
+responsibility this project uses between the free replay judge and the paid
+online path. Those four
 supply the method this project uses. The addition this work makes is not a new
 loop but an account of where the loop lies: replayability as a first-class
 number (what is rebuilt exactly, what is extrapolated, what cannot be judged at
@@ -301,7 +306,7 @@ all), and the rule that a trajectory-changing policy may not be deployed on a
 replay estimate however high its coverage, because coverage counts aligned
 prompts and not the steps the agent will then take. Our measured refutations
 (the `window3` control, round 9's repeats) are the evidence for that rule, and
-we have not found them stated in the three works themselves.
+we have not found them stated in the four works themselves.
 
 The closest thing the authors themselves must not hide: a team could get the
 same behaviour with any relational store. The specific contribution here is

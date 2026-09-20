@@ -7,12 +7,20 @@ what it keeps, when it stops. The subject is our own agent loop
 (decide from the recording, not by running the world), and the proposer is a
 language model that reads full trajectories.
 
-Three papers set the frame. Dream-RSI (arXiv 2609.14858) makes history the
+Four papers set the frame. Dream-RSI (arXiv 2609.14858) makes history the
 simulator. SoL-Pi freezes the acceptance rules before the search and keeps a
 held-out set out of it. Meta-Harness shows that a proposer given full
-trajectories beats one given summaries. All three are implemented here, and this
-document is mostly about where they break: four criteria revisions, and every
-saving this loop has claimed being killed by the next honest measurement.
+trajectories beats one given summaries. GAVEL (arXiv 2609.19315) is robotics,
+not agent harnesses, but its division of responsibility is ours: an explicit
+symbolic model decides everything it can decide for free (it repairs plans whose
+corrections follow from action semantics), and the expensive, error-prone path
+(asking the LLM again) is reserved for what the model cannot decide. Their
+measured result is the same argument ours makes: graph repair alone with one
+query beat a feedback loop with 3.4 queries. Here the symbolic model is the
+replay judge and the expensive path is online measurement. All four are
+implemented here, and this document is mostly about where they break: four
+criteria revisions, and every saving this loop has claimed being killed by the
+next honest measurement.
 
 ## What is searched
 
@@ -79,6 +87,49 @@ What the judge still cannot do, and the measurements that proved it:
 **coverage counts aligned prompts, not the steps the agent will then take**, and
 **a predicted saving is not a measured one, however careful the model.** Both are
 now acceptance rules rather than footnotes.
+
+### Judge calibration: every hand-written policy, judged and then measured
+
+The full control experiment: all reference policies estimated by the judge from
+recordings alone, then measured online with 3 runs per task (17 to 32 runs
+each; every label on disk counts). `bias = judge prediction − online measured`.
+
+| policy | judge | replayable | online search | online held-out | bias |
+|---|---|---|---|---|---|
+| baseline | +0.0% | 100% | +20.6% | +10.4% | −20.6% (the noise floor) |
+| windowed | +0.0% | 100% | +1.3% | +9.9% | −1.3% |
+| window3 | +7.5% | 73% | +12.4% | +81.8% | −4.8% |
+| window2 | +15.1% | 55% | **−10.8%** | +0.0% | +25.9% |
+| terse | +32.6% | 0% | +19.7% | +47.3% | +12.9% |
+| blind | +33.7% | 0% | +62.9% | +58.1% | −29.3% |
+| cautious | +0.0% | 100% | +43.0% | +21.5% | −43.0% |
+
+Readings, in the order they matter:
+
+1. **The noise floor is ±20%.** Rerunning the baseline itself moved its own
+   tokens by +20.6% (search) and +10.4% (held-out). Any single-run comparison
+   smaller than that is indistinguishable from nothing, which is why three runs
+   per task are the minimum before a number is quoted.
+2. **The judge can be wrong in both directions.** `terse` was judged a 32.6%
+   saving and measured 19.7%; `window2` was judged a 15.1% *cost* and measured
+   a 10.8% *saving* — the only policy that actually saved tokens. An
+   extrapolation with 55% coverage is not a mild correction of the truth, it is
+   a different experiment.
+3. **The two candidates with 0% replayable coverage were the two worst
+   online.** `blind` (+62.9%) and `terse` (+19.7%, held-out +47.3%): the judge
+   said save, the world said spend. A 0%-coverage estimate is noise dressed as
+   a number.
+4. **Cautious's 43% increase would have passed a capability-only gate.** It
+   solves everything and replays perfectly; it is just expensive. The
+   efficiency gate is what catches it, and only the online measurement sees
+   the size.
+5. **window2 saved on the search set and did not transfer** (held-out +0.0%):
+   even the one real saving is a search-set phenomenon, exactly the failure
+   mode the held-out rule exists to expose.
+
+The calibration set is shown to the proposer as facts about the world, and it
+is the reason the loop's later criteria revisions were written before the next
+search rather than after the next disappointment.
 
 ## The loop
 
