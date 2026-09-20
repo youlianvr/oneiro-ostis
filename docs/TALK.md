@@ -66,17 +66,27 @@ not dashboard toggles."
   Take the same loop and point it at a coding agent instead: our own loop
   (`harness/agent.py`), six tasks with hidden tests, four in the search set and
   two held out, model `DeepSeek-V4-Flash-0731` on a host but not a model of ours.
-- The judge, ten rounds: 6 of 6 recorded episodes rebuilt character for
-  character, token model 5.9% mean error, **19 of 28 candidates refused on
-  recordings alone, no run spent**; 22 runs spent against 112 for a sweep.
-- Now the honest half, and this is the part I would trust us on: **all three
-deployments failed their own promise** (+22.5% predicted → +27.0% measured;
+- The judge, eleven rounds: 6 of 6 recorded episodes rebuilt character for
+  character, token model 5.9% mean error, **19 of 29 candidates refused on
+  recordings alone, no run spent**; 26 runs spent against 116 for a sweep.
+  Seven hand-written control policies were judged and then measured online:
+  the judge's bias spans −43% to +26%, and the provider's noise floor alone is
+  ±20%.
+- Now the honest half, and this is the part I would trust us on: **ten rounds
+  produced no saving at all.** The first three deployments failed their own
+  promise (+22.5% predicted → +27.0% measured;
   +26.1% → +21.1% and a task lost; –3.4% on single runs → +4.0% once repeated).
   Every fix to the acceptance rules came from one of those failures: a coverage
   floor, then an online path, then the rule that a policy changing the agent's
   context may never be deployed on a replay estimate (the `window3` control:
   +7.6% predicted, **+12.4% measured**, held-out **+81.8%**), then three runs
   per task before any number is quoted.
+- Round 11, the payoff, and note what it cost to get here: the judge abstained
+  completely, the online path measured it with three runs per task, and the
+  saving held on the search set (**−13.3%**) and on the held-out set the search
+  never saw (**−28.5%**), with no task lost. The policy is two fields, and
+  neither field alone works: round 2's single field cost **+27%**. The saving is
+  in the combination, and only an online measurement could have found that.
 - Line: "The judge cannot tell you what the agent will do next, only what it
 did. That is a narrow guarantee, and it is exactly as wide as we can defend."
 - The tree lives in the same graph as the island's strategies:
@@ -116,10 +126,10 @@ the dream's verdict table with coverage 1.00, day 2 score. Open sc-web on
 - **"What breaks it?"** Stochastic environments (conflicting recordings —
   the tree's consistency checker is the alarm) and large state spaces
   (signature collapse).
-- **"Did the harness save anything?"** No, and we measure it instead of
-  claiming it: three deployments, three refutations, ten rounds, five rule
-  revisions. What is measured is the cost side: 22 agent runs spent where a
-  sweep costs 112.
+- **"Did the harness save anything?"** One policy out of eleven rounds, and we
+  can defend exactly that one: round 11, −13.3% search, −28.5% held-out, three
+  runs per task. The honest account: three refuted deployments, ten barren
+  rounds, five rule revisions, 26 agent runs spent where a sweep costs 116.
 - **"Why trust the estimates at all?"** Because they are labelled as estimates
   and bounded: a saving claim needs at least half the candidate's decisions
   replayed, and any policy that changes the agent's context goes online before

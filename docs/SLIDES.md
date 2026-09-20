@@ -37,18 +37,22 @@
     `shots/04-episodes.png` — the recorded experience the judge replays)*
 11. **The same cycle over a real coding agent** — our own loop, six tasks with
     hidden tests (4 search / 2 held out), `DeepSeek-V4-Flash-0731`; judge over
-    ten rounds: 6/6 episodes rebuilt exactly, token model 5.9% error, **19 of 28
-    candidates refused with no run spent**, 22 runs spent against 112 for a
-    sweep; **all three deployments refuted** (+22.5→+27.0%, +26.1→+21.1% and a
-    task lost, -3.4% single-run → +4.0% repeated); the `window3` control:
-    +7.6% predicted, +12.4% measured, +81.8% held out. Five rule revisions.
+    eleven rounds: 6/6 episodes rebuilt exactly, token model 5.9% error, **19 of
+    29 candidates refused with no run spent**, 26 runs spent against 116 for a
+    sweep; ten barren rounds (+22.5→+27.0%, +26.1→+21.1% and a task lost, -3.4%
+    single-run → +4.0% repeated; the `window3` control: +7.6% predicted, +12.4%
+    measured, +81.8% held out) — then round 11, the first survivor: judge
+    abstained, online measurement, **−13.3% search / −28.5% held-out, no task
+    lost**. Five rule revisions made the path honest before the payoff existed.
     *(shot: the dashboard's harness panel — the round table and the verdict
     badges, `lab/rsi/round-*.json` behind it)*
 12. **Honesty** — truncation conservatism; float32; single-world family
     comparison (two domains, eight seeds); judge overestimates replay relative
     to measured online; the harness is six tasks, one model, one provider, with
-    run-to-run spread up to 90.8% of the baseline, and **no measured saving
-    survives**; the loop's value so far is its refusals, not its deploys.
+    run-to-run spread up to 90.8% of the baseline. Ten rounds produced nothing
+    defensible; round 11 is the one measured saving, defended by three runs per
+    task and a held-out transfer. The loop's value is its refusals *and* the
+    one number that survived them.
 13. **Related work** — Dreamer-style "learning by dreaming" (executes a
     learned model); graph-memory agents (logs, not replay-optimizers); OSTIS
     ecosystem (semantic technology; NIKA as in-ecosystem prior art). Three

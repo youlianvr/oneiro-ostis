@@ -195,11 +195,13 @@ when it stops. Subject: our own coding loop (`harness/agent.py`), six small
 tasks with hidden tests, four of them the search set and two held out, model
 `DeepSeek-V4-Flash-0731` through a host but not a model of ours.
 
-What the replay judge does at this scale, over ten rounds: 6 of 6 recorded
+What the replay judge does at this scale, over eleven rounds: 6 of 6 recorded
 episodes rebuilt character for character (33 steps), token model cross-validated
-at 5.9% mean relative error (17.3% worst), 19 of 28 proposed candidates refused
-on recordings alone with no agent run spent, 22 online runs against the 112 a
-sweep of the same candidates costs.
+at 5.9% mean relative error (17.3% worst), 19 of 29 proposed candidates refused
+on recordings alone with no agent run spent, 26 online runs against the 116 a
+sweep of the same candidates costs, and a calibration set of seven hand-written
+policies measured online whose judge bias spans −43% to +26% against a provider
+noise floor of about ±20%.
 
 What the loop cannot do, measured rather than assumed. Five revisions of the
 frozen acceptance rules, each forced by a measurement:
@@ -211,17 +213,20 @@ frozen acceptance rules, each forced by a measurement:
 | v4 | a trajectory-changing policy is measured online before deployment, whatever its coverage | the `window3` control: +7.6% predicted at 72.7% coverage, measured **+12.4%** over three runs per task, held-out **+81.8%** |
 | v5 | three runs per task before any online number is quoted | round 9: **-3.4%** from one run per task, **+4.0%** net from three, per-task spreads up to 90.8% of the baseline |
 
-Result, stated the way this project has to state it: **the harness loop has not
-saved a token it can defend.** All three deployments failed their own promise:
-round 2 (+22.5% predicted, +27.0% measured), round 3 (+26.1% predicted, +21.1%
-measured and one search task lost), round 9 (-3.4% on single runs, +4.0% once
-repeated). What holds is the discipline: the judge decides most candidates for
-free, every claim is either measured online or labelled an estimate, and the
-loop's own refutations sit in the same record as its claims. The round 9 policy,
-measured three times per task, is genuinely cheaper on three tasks (`t01` -18.6%
-at 0.04% spread, `t02` -8.3%, `t06` -32.5% held out) and gives it all back on two
-(`t03` +48.4%, `t05` +20.8%): a per-task harness would take it, one harness for
-six tasks cannot, and no measured net saving survives anywhere.
+Result, stated the way this project has to state it: **the harness loop saved
+nothing for ten rounds, and one policy for the eleventh.** The first three
+deployments failed their own promise: round 2 (+22.5% predicted, +27.0%
+measured), round 3 (+26.1% predicted, +21.1% measured and one search task lost),
+round 9 (−3.4% on single runs, +4.0% once repeated). Round 11 is the first
+survivor: the judge abstained on it entirely, the online path measured it with
+three runs per task, and the measurement held on both the search set (−13.3%)
+and the held-out set (−28.5%) with no task lost. The policy is two fields — no
+initial test output in the first prompt, and longer tool observations — and
+neither field alone works (round 2's single field cost +27%), so the saving is
+in the combination, a fact only an online measurement could produce. What holds
+throughout is the discipline: the judge decides most candidates for free, every
+claim is either measured online or labelled an estimate, and the loop's own
+refutations sit in the same record as its claims.
 
 The harness tree is published into the same OSTIS graph as the island's
 strategies: `concept_harness` nodes carry the policy, the judge's estimate, the

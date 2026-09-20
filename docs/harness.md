@@ -176,7 +176,8 @@ Incumbent (the recorded baseline, averaged over normal runs, solved runs preferr
 | search | 4 | 4/4 | 38,685 |
 | held out | 2 | 1/2 | 16,967 |
 
-Nine rounds, 25 candidates, three deployments, and not one of them survived:
+Eleven rounds, 29 candidates, four deployments, and for ten rounds not one
+survived:
 
 | round | criteria | candidates | deployed | measured online | after repeats |
 |---|---|---|---|---|---|
@@ -189,11 +190,24 @@ Nine rounds, 25 candidates, three deployments, and not one of them survived:
 | 7 | v3 | 2 | none (nothing cleared the saving threshold) | — | — |
 | 8 | v4 | 3 | none (measured and refused) | predicted +32.0%, measured **+1.5%** | — |
 | 9 | v4 | 3 | `no_initial_tests_deploy` | predicted +32.0%, measured **-3.4%**, transferred | **+4.0%, no saving** |
+| 10 | v5 | 3 | none (nothing cleared the saving threshold) | — | — |
+| 11 | v5 | 1 | `no_initial_tests_obs1500` | search **−13.3%**, held-out **−28.5%**, 4/4 + 1/2 solved, **transferred** | this is the measurement |
 
-The headline is negative and that is the result: **this loop has not saved a
-single token it can defend.** The two v1 deployments cost more; round 8's refusal
-was correct; round 9's deployment was real under the rules of the time and did
-not survive three runs per task.
+Round 11 is the first deployment the whole apparatus is built for: the judge
+abstained (0% replayed decisions), the online path measured it with three runs
+per task, capability held on every comparable task, and the saving appeared on
+both the search set and the held-out set the search never saw. The policy is
+two fields: no initial test output in the first prompt, and longer tool
+observations (1500 instead of 1000 characters). The second field is the
+interesting one: round 2 (`no_initial_tests` alone) cost +27%, and the
+round-11 pair saves, so the *combination*, not either field, is what works.
+That is a fact only an online measurement could have produced, and exactly the
+kind the replay judge cannot see.
+
+The headline is no longer purely negative, but its history is: ten rounds
+produced nothing defensible, and the first defensible saving arrived only after
+four criteria revisions had shut every dishonest path. The negative results are
+not the cost of the method, they are the method working.
 
 ### Round 9 in detail, because it is the whole argument
 
@@ -217,31 +231,25 @@ both sides, is excluded: its cost is not comparable work.
 
 ### The control experiment
 
-Hand-written policies, judged offline (free), then measured online, three runs
-per task:
-
-| policy | judge: predicted saving | decisions replayed | measured: search | measured: held-out | held-out solved |
-|---|---|---|---|---|---|
-| `window3` | +7.5% | 73% | **+12.4%** | **+81.8%** | 1/2 (unchanged) |
-
-Trimming the agent's history is not a saving. The agent, with less context,
-re-reads and re-checks: tool calls rise from 4 to 7 on `t02-clamp-bounds` and
-from 4 to 8 on `t06-csv-column-total`, and the extra steps cost more than the
-trimmed prompt saves. The judge could not see this, because it replays a fixed
-set of recorded steps while the policy changes how many steps happen.
+All hand-written policies, judged offline (free), then measured online, three
+runs per task. Full table and readings in the calibration section above; the
+short form: the judge's bias spans −43% to +26%, the provider's noise floor is
+about ±20%, and `window2` (judged +15.1% cost) turned out to save 10.8% —
+an extrapolation is not a mild correction of the truth, it is a different
+experiment.
 
 ### What it saved against judging online
 
 | quantity | value |
 |---|---|
-| candidates proposed | 25 |
-| refused on recordings alone | 16 |
-| decided online | 6 |
-| deployed | 3 |
-| deployed without replayed evidence | 3 |
-| online runs spent | 22 |
-| online runs if every candidate were measured | 100 |
-| runs saved | 78 (**4.5x**) |
+| candidates proposed | 29 |
+| refused on recordings alone | 19 |
+| decided online | 7 |
+| deployed | 4 |
+| deployed without replayed evidence | 4 |
+| online runs spent | 26 |
+| online runs if every candidate were measured | 116 |
+| runs saved | 90 (**4.5x**) |
 
 The counterfactual is the plain one: one online run per candidate per search
 task. It compares against the same decision made without recordings, not against

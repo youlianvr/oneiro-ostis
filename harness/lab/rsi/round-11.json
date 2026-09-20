@@ -1,0 +1,190 @@
+{
+  "round": 11,
+  "criteria_version": 5,
+  "criteria": {
+    "frozen_at": "2026-09-20T02:46:00",
+    "version": 5,
+    "search_tasks": [
+      "t01-start-total",
+      "t02-clamp-bounds",
+      "t03-parse-duration",
+      "t05-retry-backoff"
+    ],
+    "held_out_tasks": [
+      "t04-dedupe-order",
+      "t06-csv-column-total"
+    ],
+    "efficiency": {
+      "min_predicted_saving": 0.15,
+      "note": "a candidate must be predicted to save at least 15% of prompt tokens"
+    },
+    "capability": {
+      "max_tasks_lost": 1,
+      "min_decision_replayable": 0.5,
+      "note": "online on the search set, a deployed candidate may lose at most one task against the incumbent; the judge cannot settle capability and does not pretend to"
+    },
+    "budget": {
+      "online_runs_per_round": 18,
+      "note": "three runs per search task, three per held-out task, when a round deploys"
+    },
+    "revision": {
+      "from_version": 4,
+      "reason": "version 4 accepted a deployment on one run per task, and the first policy deployed under it did not survive repeats",
+      "evidence": "round 9 read -3.4% on the search set from single runs; with three runs per task the same policy reads +4.0% overall and no transfer, with per-task spreads of 34% and 91% of the baseline",
+      "unchanged": "min_predicted_saving 0.15, max_tasks_lost 1, min_decision_replayable 0.5, the online path, the trajectory rule"
+    },
+    "evidence": {
+      "unjudgeable_path": {
+        "enabled": true,
+        "max_online_runs": 4,
+        "note": "when the judge cannot replay a candidate's decisions, the candidate may be measured online on the search set inside the round budget; its efficiency claim then rests on that measurement and is labelled as such, never on a replay estimate"
+      },
+      "note": "a replay verdict needs the judge to have replayed at least half of the candidate's decisions; below that the judge abstains and the online path decides instead",
+      "trajectory_changes": {
+        "fields": [
+          "context_mode",
+          "window_steps",
+          "observation_chars",
+          "read_lines",
+          "include_initial_tests",
+          "include_file_list",
+          "max_steps",
+          "verify_before_finish",
+          "max_verify_nudges"
+        ],
+        "note": "a policy that changes what the agent is shown or how long it may run does not just change a prompt, it changes the trajectory. Replay covers aligned steps, and a candidate like that produces fewer aligned steps in reality than the estimate assumed, so the estimate is an estimate about a trajectory that no longer exists",
+        "requirement": "such a candidate is measured online on the search set before it may be deployed, whatever its replay coverage"
+      },
+      "repeats": {
+        "min_runs_per_task": 3,
+        "note": "a saving is a claim about a distribution. One run per task cannot separate a three percent saving from variance, and the spread across runs of one policy reached 90% of the baseline here, so every online claim is averaged over at least this many runs per task"
+      }
+    }
+  },
+  "proposed": [
+    {
+      "name": "no_initial_tests_obs1500",
+      "include_file_list": true,
+      "include_initial_tests": false,
+      "context_mode": "full",
+      "window_steps": 10,
+      "observation_chars": 1500,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    }
+  ],
+  "verdicts": [
+    {
+      "policy": "no_initial_tests_obs1500",
+      "predicted_tokens": 39285.1,
+      "recorded_tokens": 55652.0,
+      "predicted_saving": 0.2941,
+      "steps_covered": 0,
+      "steps_total": 33,
+      "decision_replayable": 0.0,
+      "passed_efficiency": true,
+      "passed_evidence": false,
+      "passed_gate": false,
+      "path": "online",
+      "changed_fields": [
+        "observation_chars",
+        "include_initial_tests"
+      ],
+      "reasons": [
+        "predicted saving 29.4% vs required 15%",
+        "decisions replayed 0% vs required 50%",
+        "path: online",
+        "changes the trajectory: observation_chars, include_initial_tests",
+        "5/5 steps diverge: the model's decisions there are NOT replayable (abstain)",
+        "6/6 steps diverge: the model's decisions there are NOT replayable (abstain)"
+      ]
+    }
+  ],
+  "evidence": "online measurement: the judge could not replay this candidate's decisions, so its efficiency is what running it actually cost",
+  "proposer_model": "recovered-from-runs",
+  "agent_model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+  "recovered": "the original round-11 run was killed by a command timeout after the online measurement was paid for; this record is rebuilt from the recorded runs, and the verdict's estimate was recomputed",
+  "online_ab": {
+    "comparison": {
+      "tasks": 4,
+      "unmeasured_tasks": [],
+      "token_scope_tasks": [
+        "t01-start-total",
+        "t02-clamp-bounds",
+        "t03-parse-duration",
+        "t05-retry-backoff"
+      ],
+      "unsolved_in_both": [],
+      "solved_before": 4,
+      "solved_after": 4,
+      "tasks_lost": 0,
+      "tasks_gained": 0,
+      "prompt_tokens_before": 38685,
+      "prompt_tokens_after": 33535.7,
+      "token_delta": -0.13310843996381033
+    }
+  },
+  "deployed": {
+    "policy": {
+      "name": "no_initial_tests_obs1500",
+      "include_file_list": true,
+      "include_initial_tests": false,
+      "context_mode": "full",
+      "window_steps": 10,
+      "observation_chars": 1500,
+      "read_lines": 120,
+      "max_steps": 14,
+      "verify_before_finish": true,
+      "max_verify_nudges": 1,
+      "temperature": 0.2
+    },
+    "comparison": {
+      "search": {
+        "tasks": 4,
+        "unmeasured_tasks": [],
+        "token_scope_tasks": [
+          "t01-start-total",
+          "t02-clamp-bounds",
+          "t03-parse-duration",
+          "t05-retry-backoff"
+        ],
+        "unsolved_in_both": [],
+        "solved_before": 4,
+        "solved_after": 4,
+        "tasks_lost": 0,
+        "tasks_gained": 0,
+        "prompt_tokens_before": 38685,
+        "prompt_tokens_after": 33535.7,
+        "token_delta": -0.13310843996381033
+      },
+      "held_out": {
+        "tasks": 2,
+        "unmeasured_tasks": [],
+        "token_scope_tasks": [
+          "t06-csv-column-total"
+        ],
+        "unsolved_in_both": [
+          "t04-dedupe-order"
+        ],
+        "solved_before": 1,
+        "solved_after": 1,
+        "tasks_lost": 0,
+        "tasks_gained": 0,
+        "prompt_tokens_before": 9115,
+        "prompt_tokens_after": 6519.7,
+        "token_delta": -0.2847284695556775
+      }
+    }
+  },
+  "generalisation": {
+    "search_token_delta": -0.13310843996381033,
+    "held_out_token_delta": -0.2847284695556775,
+    "search_solved_delta": 0,
+    "held_out_solved_delta": 0,
+    "transferred": true
+  },
+  "outcome": "deployed and within capability tolerance; deployed on its online measurement, not on a judged estimate"
+}

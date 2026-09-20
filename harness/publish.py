@@ -102,6 +102,32 @@ def publish(bridge: OneiroBridge) -> dict:
         bridge.save_harness(INCUMBENT, get_policy(INCUMBENT).descriptor(), round_index=0)
         published.append(INCUMBENT)
 
+    # The hand-written reference policies and their online calibration
+    # measurements: they are the control experiment, so they belong in the same
+    # graph as the searched candidates, not in a spreadsheet somewhere.
+    for row in rsi.reference_measurements():
+        name = f"reference_{row['policy']}"
+        if name in existing:
+            continue
+        descriptor = get_policy(row["policy"]).descriptor()
+        descriptor["name"] = name
+        online = None
+        if row["runs"]:
+            online = {"search_token_delta": row["search_token_delta"],
+                      "held_out_token_delta": row["held_out_token_delta"],
+                      "runs": row["runs"], "label": row["label"]}
+        bridge.save_harness(
+            name,
+            descriptor,
+            replay_saving=row["predicted_saving"],
+            gate=("judge bias: predicted vs measured" if row["predicted_saving"] is not None else None),
+            online_result=online,
+            derived_from=INCUMBENT,
+            round_index=0,
+        )
+        existing.add(name)
+        published.append(name)
+
     round_names: list[str] = []
     for payload in rounds:
         index = payload["round"]

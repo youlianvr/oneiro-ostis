@@ -936,8 +936,16 @@ def ledger() -> dict:
                 unbacked += 1
         if payload.get("deployed"):
             deployed += 1
-            online_runs += (payload["deployed"]["online_search"]["tasks"]
-                            + payload["deployed"]["online_held_out"]["tasks"])
+            summary = payload["deployed"]
+            if "online_search" in summary:
+                online_runs += (summary["online_search"]["tasks"]
+                                + summary["online_held_out"]["tasks"])
+            elif payload.get("online_ab"):
+                # a recovered round: only the search measurement was paid for
+                # before the record was rebuilt from its runs
+                online_runs += len(payload["online_ab"]["comparison"]["token_scope_tasks"]) \
+                    if "token_scope_tasks" in payload["online_ab"].get("comparison", {}) \
+                    else payload["online_ab"].get("comparison", {}).get("tasks", 0)
         elif payload.get("online_ab"):
             # measured online and refused: the runs were still spent
             online_runs += payload["online_ab"]["comparison"]["tasks"]

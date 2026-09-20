@@ -1,0 +1,388 @@
+{
+  "schema": 1,
+  "task": "t03-parse-duration",
+  "title": "parse_duration drops the minute component",
+  "kind": "bugfix",
+  "label": "reference-blind-r1",
+  "agent": "ours",
+  "policy": {
+    "name": "blind",
+    "include_file_list": false,
+    "include_initial_tests": false,
+    "context_mode": "full",
+    "window_steps": 10,
+    "observation_chars": 2000,
+    "read_lines": 120,
+    "max_steps": 14,
+    "verify_before_finish": true,
+    "max_verify_nudges": 1,
+    "temperature": 0.2
+  },
+  "model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+  "prompt": "parse_duration in duration.py should convert strings like '1h30m' into seconds, but it ignores minutes. Fix it and make test_duration.py pass. Run python -m pytest -q.",
+  "wall_seconds": 19.03,
+  "stop_reason": "finished",
+  "error": null,
+  "solved": true,
+  "tests": {
+    "visible": {
+      "exit": 0,
+      "tail": [
+        "3 passed, 1 warning in 0.12s"
+      ]
+    },
+    "hidden": {
+      "exit": 0,
+      "tail": [
+        "5 passed, 1 warning in 0.14s"
+      ]
+    },
+    "counts": {
+      "passed": 8,
+      "failed": 0
+    },
+    "solved": true
+  },
+  "tools": {
+    "list_files": 1,
+    "run_command": 3,
+    "read_file": 2,
+    "edit_file": 1
+  },
+  "tool_calls": 4,
+  "tokens": {
+    "input": 10415,
+    "output": 731,
+    "reasoning": 0,
+    "cache_read": 0,
+    "cache_write": 0,
+    "total": 11146
+  },
+  "steps": [
+    {
+      "index": 0,
+      "kind": "tool",
+      "history_len": 0,
+      "prompt_chars": 394,
+      "latency": 1.2,
+      "tokens": {
+        "input": 669,
+        "output": 83,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "total": 752
+      },
+      "tools": [
+        "list_files",
+        "run_command"
+      ],
+      "observations": [
+        "duration.py (452 bytes)\ntest_duration.py (237 bytes)",
+        "..F                                                                      [100%]\n================================== FAILURES ===================================\n___________________________ test_hours_and_minutes ____________________________\n\n    def test_hours_and_minutes():\n>       assert parse_duration(\"1h30m\") == 5400\n               ^^^^^^^^^^^^^^^^^^^^^^^\n\ntest_duration.py:13: \n_ _ _ _ _ _ _ _ "
+      ]
+    },
+    {
+      "index": 1,
+      "kind": "tool",
+      "history_len": 1,
+      "prompt_chars": 2119,
+      "latency": 0.64,
+      "tokens": {
+        "input": 1207,
+        "output": 78,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "total": 1285
+      },
+      "tools": [
+        "read_file",
+        "read_file"
+      ],
+      "observations": [
+        "   1 | \"\"\"Parse short duration strings such as '1h30m' or '45s'.\"\"\"\n   2 | \n   3 | import re\n   4 | \n   5 | UNITS = {\"h\": 3600, \"m\": 60, \"s\": 1}\n   6 | \n   7 | \n   8 | def parse_duration(text):\n   9 |     \"\"\"Return the number of seconds described by `text`.\"\"\"\n  10 |     hours = re.match(r\"^(\\d+)h$\", text)\n  11 |     if hours:\n  12 |         return int(hours.group(1)) * UNITS[\"h\"]\n  13 |     secon",
+        "   1 | from duration import parse_duration\n   2 | \n   3 | \n   4 | def test_seconds():\n   5 |     assert parse_duration(\"45s\") == 45\n   6 | \n   7 | \n   8 | def test_hours_only():\n   9 |     assert parse_duration(\"2h\") == 7200\n  10 | \n  11 | \n  12 | def test_hours_and_minutes():\n  13 |     assert parse_duration(\"1h30m\") == 5400"
+      ]
+    },
+    {
+      "index": 2,
+      "kind": "tool",
+      "history_len": 2,
+      "prompt_chars": 3009,
+      "latency": 1.94,
+      "tokens": {
+        "input": 1611,
+        "output": 293,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "total": 1904
+      },
+      "tools": [
+        "edit_file"
+      ],
+      "observations": [
+        "[edited duration.py]"
+      ]
+    },
+    {
+      "index": 3,
+      "kind": "tool",
+      "history_len": 3,
+      "prompt_chars": 3116,
+      "latency": 1.28,
+      "tokens": {
+        "input": 1919,
+        "output": 104,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "total": 2023
+      },
+      "tools": [
+        "run_command",
+        "run_command"
+      ],
+      "observations": [
+        "...                                                                      [100%]\n============================== warnings summary ===============================\nprojects/ostis/oneiro-ostis/harness/lab/runs/t03-parse-duration-reference-blind-r1-blind-20260920-161520-fw5x/repo/test_duration.py::test_seconds\n  C:\\Users\\pc\\AppData\\Roaming\\Python\\Python314\\site-packages\\pytest_asyncio\\plugin.py:1216: De",
+        "...                                                                      [100%]\n============================== warnings summary ===============================\nprojects/ostis/oneiro-ostis/harness/lab/runs/t03-parse-duration-reference-blind-r1-blind-20260920-161520-fw5x/repo/test_duration.py::test_seconds\n  C:\\Users\\pc\\AppData\\Roaming\\Python\\Python314\\site-packages\\pytest_asyncio\\plugin.py:1216: De"
+      ]
+    },
+    {
+      "index": 4,
+      "kind": "text",
+      "history_len": 4,
+      "prompt_chars": 4429,
+      "latency": 0.95,
+      "tokens": {
+        "input": 2370,
+        "output": 78,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "total": 2448
+      },
+      "text": "All 3 tests pass now. The fix updates `parse_duration` to use a regex that finds all hour/minute/second components in the string (e.g., `1h30m`) and sums their contributions to seconds, rather than only matching single-unit strings. This handles combined formats like `1h30m` while still supporting `45s` and `2h`."
+    },
+    {
+      "index": 5,
+      "kind": "text",
+      "history_len": 6,
+      "prompt_chars": 5465,
+      "latency": 1.79,
+      "tokens": {
+        "input": 2639,
+        "output": 95,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "total": 2734
+      },
+      "text": "The tests are already passing (3 passed). The output you're seeing shows all tests passing successfully. There's nothing more to fix - the task is complete.\n\nThe fix I made to `duration.py` updated `parse_duration` to use `re.finditer` to extract all hour/minute/second components from the string and sum them, which correctly handles `1h30m` \u2192 5400 seconds while still supporting `45s` and `2h`.",
+      "nudged": true
+    }
+  ],
+  "system_prompt": "You are a coding agent working in a small repository.\n\nFix the task by editing files with the tools; then run the tests and make them pass.\n\nWork in the repository root; paths are relative to it. Keep edits minimal and correct.",
+  "user_prompt": "parse_duration in duration.py should convert strings like '1h30m' into seconds, but it ignores minutes. Fix it and make test_duration.py pass. Run python -m pytest -q.",
+  "setup": {
+    "file_list": null,
+    "initial_tests": null
+  },
+  "blocks": [
+    [
+      {
+        "content": null,
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "function": {
+              "arguments": "{}",
+              "name": "list_files"
+            },
+            "id": "chatcmpl-tool-a390532c07476f6c",
+            "type": "function"
+          },
+          {
+            "function": {
+              "arguments": "{\"command\": \"python -m pytest -q 2>&1 | head -50\"}",
+              "name": "run_command"
+            },
+            "id": "chatcmpl-tool-82abcbae958fab1e",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "chatcmpl-tool-a390532c07476f6c",
+        "content": "duration.py (452 bytes)\ntest_duration.py (237 bytes)"
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "chatcmpl-tool-82abcbae958fab1e",
+        "content": "..F                                                                      [100%]\n================================== FAILURES ===================================\n___________________________ test_hours_and_minutes ____________________________\n\n    def test_hours_and_minutes():\n>       assert parse_duration(\"1h30m\") == 5400\n               ^^^^^^^^^^^^^^^^^^^^^^^\n\ntest_duration.py:13: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _\n\ntext = '1h30m'\n\n    def parse_duration(text):\n        \"\"\"Return the number of seconds described by `text`.\"\"\"\n        hours = re.match(r\"^(\\d+)h$\", text)\n        if hours:\n            return int(hours.group(1)) * UNITS[\"h\"]\n        seconds = re.match(r\"^(\\d+)s$\", text)\n        if seconds:\n            return int(seconds.group(1))\n>       raise ValueError(f\"cannot parse duration: {text!r}\")\nE       ValueError: cannot parse duration: '1h30m'\n\nduration.py:16: ValueError\n============================== warnings summary ===============================\nprojects/ostis/oneiro-ostis/harness/lab/runs/t03-parse-duration-reference-blind-r1-blind-20260920-161520-fw5x/repo/test_duration.py::test_seconds\n  C:\\Users\\pc\\AppData\\Roaming\\Python\\Python314\\site-packages\\pytest_asyncio\\plugin.py:1216: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16\n    return asyncio.get_event_loop_policy()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ===========================\nFAILED test_duration.py::test_hours_and_minutes - ValueError: cannot parse du...\n1 failed, 2 passed, 1 warning in 0.22s"
+      }
+    ],
+    [
+      {
+        "content": null,
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "function": {
+              "arguments": "{\"path\": \"duration.py\"}",
+              "name": "read_file"
+            },
+            "id": "chatcmpl-tool-9370187cc66228e0",
+            "type": "function"
+          },
+          {
+            "function": {
+              "arguments": "{\"path\": \"test_duration.py\"}",
+              "name": "read_file"
+            },
+            "id": "chatcmpl-tool-973c726b084e3282",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "chatcmpl-tool-9370187cc66228e0",
+        "content": "   1 | \"\"\"Parse short duration strings such as '1h30m' or '45s'.\"\"\"\n   2 | \n   3 | import re\n   4 | \n   5 | UNITS = {\"h\": 3600, \"m\": 60, \"s\": 1}\n   6 | \n   7 | \n   8 | def parse_duration(text):\n   9 |     \"\"\"Return the number of seconds described by `text`.\"\"\"\n  10 |     hours = re.match(r\"^(\\d+)h$\", text)\n  11 |     if hours:\n  12 |         return int(hours.group(1)) * UNITS[\"h\"]\n  13 |     seconds = re.match(r\"^(\\d+)s$\", text)\n  14 |     if seconds:\n  15 |         return int(seconds.group(1))\n  16 |     raise ValueError(f\"cannot parse duration: {text!r}\")"
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "chatcmpl-tool-973c726b084e3282",
+        "content": "   1 | from duration import parse_duration\n   2 | \n   3 | \n   4 | def test_seconds():\n   5 |     assert parse_duration(\"45s\") == 45\n   6 | \n   7 | \n   8 | def test_hours_only():\n   9 |     assert parse_duration(\"2h\") == 7200\n  10 | \n  11 | \n  12 | def test_hours_and_minutes():\n  13 |     assert parse_duration(\"1h30m\") == 5400"
+      }
+    ],
+    [
+      {
+        "content": "I'll fix the `parse_duration` function to handle combined hour/minute/second strings.\n\n",
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "function": {
+              "arguments": "{\"path\": \"duration.py\", \"old_string\": \"def parse_duration(text):\\n    \\\"\\\"\\\"Return the number of seconds described by `text`.\\\"\\\"\\\"\\n    hours = re.match(r\\\"^(\\\\d+)h$\\\", text)\\n    if hours:\\n        return int(hours.group(1)) * UNITS[\\\"h\\\"]\\n    seconds = re.match(r\\\"^(\\\\d+)s$\\\", text)\\n    if seconds:\\n        return int(seconds.group(1))\\n    raise ValueError(f\\\"cannot parse duration: {text!r}\\\")\", \"new_string\": \"def parse_duration(text):\\n    \\\"\\\"\\\"Return the number of seconds described by `text`.\\\"\\\"\\\"\\n    total = 0\\n    for match in re.finditer(r\\\"(\\\\d+)([hms])\\\", text):\\n        total += int(match.group(1)) * UNITS[match.group(2)]\\n    if total or re.match(r\\\"^\\\\d+[hms]$\\\", text):\\n        return total\\n    raise ValueError(f\\\"cannot parse duration: {text!r}\\\")\"}",
+              "name": "edit_file"
+            },
+            "id": "chatcmpl-tool-91d277237a1b029f",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "chatcmpl-tool-91d277237a1b029f",
+        "content": "[edited duration.py]"
+      }
+    ],
+    [
+      {
+        "content": "</\uff5cDSML\uff5ctool_calls>\n\n",
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "function": {
+              "arguments": "{\"command\": \"python -m pytest -q\"}",
+              "name": "run_command"
+            },
+            "id": "chatcmpl-tool-9e62983ff7e56c36",
+            "type": "function"
+          },
+          {
+            "function": {
+              "arguments": "{\"command\": \"python -m pytest -q\"}",
+              "name": "run_command"
+            },
+            "id": "chatcmpl-tool-965107a931a291ca",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "chatcmpl-tool-9e62983ff7e56c36",
+        "content": "...                                                                      [100%]\n============================== warnings summary ===============================\nprojects/ostis/oneiro-ostis/harness/lab/runs/t03-parse-duration-reference-blind-r1-blind-20260920-161520-fw5x/repo/test_duration.py::test_seconds\n  C:\\Users\\pc\\AppData\\Roaming\\Python\\Python314\\site-packages\\pytest_asyncio\\plugin.py:1216: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16\n    return asyncio.get_event_loop_policy()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n3 passed, 1 warning in 0.13s"
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "chatcmpl-tool-965107a931a291ca",
+        "content": "...                                                                      [100%]\n============================== warnings summary ===============================\nprojects/ostis/oneiro-ostis/harness/lab/runs/t03-parse-duration-reference-blind-r1-blind-20260920-161520-fw5x/repo/test_duration.py::test_seconds\n  C:\\Users\\pc\\AppData\\Roaming\\Python\\Python314\\site-packages\\pytest_asyncio\\plugin.py:1216: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16\n    return asyncio.get_event_loop_policy()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n3 passed, 1 warning in 0.12s"
+      }
+    ],
+    [
+      {
+        "content": "All 3 tests pass now. The fix updates `parse_duration` to use a regex that finds all hour/minute/second components in the string (e.g., `1h30m`) and sums their contributions to seconds, rather than only matching single-unit strings. This handles combined formats like `1h30m` while still supporting `45s` and `2h`.",
+        "role": "assistant"
+      }
+    ],
+    [
+      {
+        "role": "user",
+        "content": "The tests still fail. Here is the current output:\n...                                                                      [100%]\n============================== warnings summary ===============================\nprojects/ostis/oneiro-ostis/harness/lab/runs/t03-parse-duration-reference-blind-r1-blind-20260920-161520-fw5x/repo/test_duration.py::test_seconds\n  C:\\Users\\pc\\AppData\\Roaming\\Python\\Python314\\site-packages\\pytest_asyncio\\plugin.py:1216: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16\n    return asyncio.get_event_loop_policy()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n3 passed, 1 warning in 0.13s\nContinue until they pass."
+      }
+    ],
+    [
+      {
+        "content": "The tests are already passing (3 passed). The output you're seeing shows all tests passing successfully. There's nothing more to fix - the task is complete.\n\nThe fix I made to `duration.py` updated `parse_duration` to use `re.finditer` to extract all hour/minute/second components from the string and sum them, which correctly handles `1h30m` \u2192 5400 seconds while still supporting `45s` and `2h`.",
+        "role": "assistant"
+      }
+    ]
+  ],
+  "trajectory": [
+    {
+      "tool": "list_files",
+      "args": {},
+      "observation": "duration.py (452 bytes)\ntest_duration.py (237 bytes)"
+    },
+    {
+      "tool": "run_command",
+      "args": {
+        "command": "python -m pytest -q 2>&1 | head -50"
+      },
+      "observation": "..F                                                                      [100%]\n================================== FAILURES ===================================\n___________________________ test_hours_and_minutes ____________________________\n\n    def test_hours_and_minutes():\n>       assert parse_duration(\"1h30m\") == 5400\n               ^^^^^^^^^^^^^^^^^^^^^^^\n\ntest_duration.py:13: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _\n\ntext = '1h30m'\n\n    def parse_duration(text):\n        \"\"\"Return the number of seconds described by `text`.\"\"\"\n        hours = re.match(r\"^(\\d+)h$\", text)\n        if hours:\n            return int(hours.group(1)) * UNITS[\"h\"]\n        seconds = re.match(r\"^(\\d+)s$\", text)\n        if seconds:\n            return int(seconds.group(1))\n>       raise ValueError(f\"cannot parse duration: {text!r}\")\nE       ValueError: cannot parse duration: '1h30m'\n\nduration.py:16: ValueError\n============================== warnings summary ===============================\nprojects/ostis/oneiro-ostis/harness/lab/runs/t03-parse-duration-reference-blind-r1-blind-20260920-161520-fw5x/repo/test_duration.py::test_seconds\n  C:\\Users\\pc\\AppData\\Roaming\\Python\\Python314\\site-packages\\pytest_asyncio\\plugin.py:1216: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16\n    return asyncio.get_event_loop_policy()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ===========================\nFAILED test_duration.py::test_hours_and_minutes - ValueError: cannot parse du...\n1 failed, 2 passed, 1 warning in 0.22s"
+    },
+    {
+      "tool": "read_file",
+      "args": {
+        "path": "duration.py"
+      },
+      "observation": "   1 | \"\"\"Parse short duration strings such as '1h30m' or '45s'.\"\"\"\n   2 | \n   3 | import re\n   4 | \n   5 | UNITS = {\"h\": 3600, \"m\": 60, \"s\": 1}\n   6 | \n   7 | \n   8 | def parse_duration(text):\n   9 |     \"\"\"Return the number of seconds described by `text`.\"\"\"\n  10 |     hours = re.match(r\"^(\\d+)h$\", text)\n  11 |     if hours:\n  12 |         return int(hours.group(1)) * UNITS[\"h\"]\n  13 |     seconds = re.match(r\"^(\\d+)s$\", text)\n  14 |     if seconds:\n  15 |         return int(seconds.group(1))\n  16 |     raise ValueError(f\"cannot parse duration: {text!r}\")"
+    },
+    {
+      "tool": "read_file",
+      "args": {
+        "path": "test_duration.py"
+      },
+      "observation": "   1 | from duration import parse_duration\n   2 | \n   3 | \n   4 | def test_seconds():\n   5 |     assert parse_duration(\"45s\") == 45\n   6 | \n   7 | \n   8 | def test_hours_only():\n   9 |     assert parse_duration(\"2h\") == 7200\n  10 | \n  11 | \n  12 | def test_hours_and_minutes():\n  13 |     assert parse_duration(\"1h30m\") == 5400"
+    },
+    {
+      "tool": "edit_file",
+      "args": {
+        "path": "duration.py",
+        "old_string": "def parse_duration(text):\n    \"\"\"Return the number of seconds described by `text`.\"\"\"\n    hours = re.match(r\"^(\\d+)h$\", text)\n    if hours:\n        return int(hours.group(1)) * UNITS[\"h\"]\n    seconds = re.match(r\"^(\\d+)s$\", text)\n    if seconds:\n        return int(seconds.group(1))\n    raise ValueError(f\"cannot parse duration: {text!r}\")",
+        "new_string": "def parse_duration(text):\n    \"\"\"Return the number of seconds described by `text`.\"\"\"\n    total = 0\n    for match in re.finditer(r\"(\\d+)([hms])\", text):\n        total += int(match.group(1)) * UNITS[match.group(2)]\n    if total or re.match(r\"^\\d+[hms]$\", text):\n        return total\n    raise ValueError(f\"cannot parse duration: {text!r}\")"
+      },
+      "observation": "[edited duration.py]"
+    },
+    {
+      "tool": "run_command",
+      "args": {
+        "command": "python -m pytest -q"
+      },
+      "observation": "...                                                                      [100%]\n============================== warnings summary ===============================\nprojects/ostis/oneiro-ostis/harness/lab/runs/t03-parse-duration-reference-blind-r1-blind-20260920-161520-fw5x/repo/test_duration.py::test_seconds\n  C:\\Users\\pc\\AppData\\Roaming\\Python\\Python314\\site-packages\\pytest_asyncio\\plugin.py:1216: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16\n    return asyncio.get_event_loop_policy()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n3 passed, 1 warning in 0.13s"
+    },
+    {
+      "tool": "run_command",
+      "args": {
+        "command": "python -m pytest -q"
+      },
+      "observation": "...                                                                      [100%]\n============================== warnings summary ===============================\nprojects/ostis/oneiro-ostis/harness/lab/runs/t03-parse-duration-reference-blind-r1-blind-20260920-161520-fw5x/repo/test_duration.py::test_seconds\n  C:\\Users\\pc\\AppData\\Roaming\\Python\\Python314\\site-packages\\pytest_asyncio\\plugin.py:1216: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16\n    return asyncio.get_event_loop_policy()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n3 passed, 1 warning in 0.12s"
+    }
+  ],
+  "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t03-parse-duration-reference-blind-r1-blind-20260920-161520-fw5x",
+  "final_text": "The tests are already passing (3 passed). The output you're seeing shows all tests passing successfully. There's nothing more to fix - the task is complete.\n\nThe fix I made to `duration.py` updated `parse_duration` to use `re.finditer` to extract all hour/minute/second components from the string and sum them, which correctly handles `1h30m` \u2192 5400 seconds while still supporting `45s` and `2h`."
+}
