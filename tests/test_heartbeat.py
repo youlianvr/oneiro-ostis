@@ -119,3 +119,52 @@ def test_heartbeat_can_finish_without_worktree_when_manager_stops():
     assert result.cycle.stopped_reason == "manager action: external_review"
     assert fake_worktree.calls == []
     assert result.session.status == "finished"
+
+
+def test_heartbeat_restart_continues_the_same_biography():
+    """A restarted heartbeat must continue the same OSTIS biography.
+
+    The loop owns the session (as life_loop does) and hands it to each
+    heartbeat. A second heartbeat run after a restart must write into that
+    same session instead of starting a fresh one, so the session id is not
+    reset and events accumulate on one biography.
+    """
+    bridge = FakeBridge()
+    session = bridge.start_life_session("hb-session", goals=[], self_state={})
+
+    def make_runner(pr_id):
+        runner = HeartbeatRunner(
+            bridge,
+            repository=Path("/repo"),
+            worktree_path=Path("/outside/worktree"),
+            branch="agent/heartbeat",
+            check_command=("python", "-m", "pytest", "tests/generated.py"),
+            pr_id=pr_id,
+            worker_edit=lambda proposal, worktree: None,
+        )
+        runner.worktree_runner = FakeWorktreeRunner()
+        return runner
+
+    first = make_runner("pr-hb-1").run(
+        session_id="hb-session",
+        researcher=make_proposal,
+        manager=lambda options: ManagerDecision("assign_worker", "small and testable"),
+        session=session,
+    )
+    events_after_first = len(session.events)
+
+    # Second run simulates a restart: same shared bridge/storage, same session.
+    second = make_runner("pr-hb-2").run(
+        session_id="hb-session",
+        researcher=make_proposal,
+        manager=lambda options: ManagerDecision("assign_worker", "small and testable"),
+        session=session,
+    )
+
+    # The biography is continued, not reset: same session object and id.
+    assert second.session is session
+    assert second.session.session_id == "hb-session"
+    # Events accumulate on the same biography across the restart.
+    assert len(second.session.events) > events_after_first
+    # The loop-owned session is never finished by the heartbeat.
+    assert second.session.status == "running"
