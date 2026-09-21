@@ -6,44 +6,47 @@
  *   - a service that records its own start and stop;
  *   - two gateway lifecycle hooks (gateway_start, gateway_stop).
  *
- * Records go over loopback HTTP to the project's dashboard, which owns the
- * bridge; the graph itself is only ever written by Python. The plugin spawns
- * no processes on purpose: OpenClaw's install scan blocks that pattern, and
- * the life process belongs to the host's scheduler, not to a plugin.
+ * Records are written by Python, as everywhere else in the project: the plugin
+ * runs the recorder sitting next to this file through execFile with an
+ * argument array, never a shell string. Installing a plugin that spawns
+ * processes needs the host's own acknowledgment flag:
+ *
+ *   openclaw plugins install --dangerously-force-unsafe-install <path>
  */
+import { execFile } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
+import { buildRecordCommand } from "./command.js";
 
-const RECORD_TIMEOUT_MS = 15_000;
+const RECORD_TIMEOUT_MS = 20_000;
+const RECORDER_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "record.py");
 
 const DEFAULTS = {
-  dashboardUrl: "http://127.0.0.1:8130",
+  pythonPath: "python",
   sessionId: "oneiro-gateway",
+  ostisPort: 8090,
 };
 
 function settings(api) {
-  return { ...DEFAULTS, ...(api.pluginConfig ?? {}) };
+  return { ...DEFAULTS, ...(api.pluginConfig ?? {}), recorderPath: RECORDER_PATH };
 }
 
-/** One record into OSTIS through the dashboard seam; never throws. */
-async function recordIntoOstis(cfg, api, kind, payload, role = "gateway") {
-  const url = `${cfg.dashboardUrl.replace(/\/$/, "")}/api/gateway-record`;
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ kind, role, session: cfg.sessionId, payload: payload ?? {} }),
-      signal: AbortSignal.timeout(RECORD_TIMEOUT_MS),
-    });
-    if (!response.ok) {
-      const detail = (await response.text()).slice(0, 200);
-      api.logger.warn(`oneiro-life: record ${kind} refused (${response.status}): ${detail}`);
-      return false;
-    }
-    return true;
-  } catch (error) {
-    api.logger.warn(`oneiro-life: record ${kind} failed: ${error.message}`);
-    return false;
-  }
+/** One record into OSTIS through the recorder; never throws. */
+function recordIntoOstis(cfg, api, kind, payload) {
+  const { command, args } = buildRecordCommand(cfg, kind, payload ?? {});
+  return new Promise((resolve) => {
+    execFile(command, args, { timeout: RECORD_TIMEOUT_MS, windowsHide: true },
+      (error, stdout, stderr) => {
+        if (error) {
+          const detail = String(stderr || error.message).trim().slice(0, 200);
+          api.logger.warn(`oneiro-life: record ${kind} failed: ${detail}`);
+          resolve(false);
+          return;
+        }
+        resolve(true);
+      });
+  });
 }
 
 export default definePluginEntry({
@@ -60,7 +63,7 @@ export default definePluginEntry({
           state_dir: ctx.stateDir,
           project_dir: ctx.workspaceDir ?? null,
         });
-        api.logger.info(`oneiro-life ready; records go to ${cfg.dashboardUrl}`);
+        api.logger.info(`oneiro-life ready; records go through ${cfg.pythonPath}`);
       },
       async stop(ctx) {
         await recordIntoOstis(cfg, api, "gateway_service_stop", { state_dir: ctx.stateDir });
@@ -75,6 +78,6 @@ export default definePluginEntry({
       await recordIntoOstis(cfg, api, "gateway_stop", { reason: event.reason ?? null });
     });
 
-    api.logger.info(`oneiro-life registered: dashboard=${cfg.dashboardUrl}`);
+    api.logger.info(`oneiro-life registered: recorder=${RECORDER_PATH}`);
   },
 });

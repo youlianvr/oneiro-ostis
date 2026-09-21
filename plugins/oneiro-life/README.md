@@ -7,36 +7,35 @@ inside it. This plugin gives the gateway two things and nothing else:
 - two **gateway lifecycle hooks** (`gateway_start`, `gateway_stop`) that
   record the gateway's own life into OSTIS.
 
-## Why it records over HTTP instead of spawning Python
+## How it records, and why installing needs a flag
 
-The first version of this plugin spawned the life process and shelled out to a
-Python recorder. OpenClaw's install scan refused it:
+Records are written by Python, as everywhere else in the project. The plugin
+runs the recorder next to this file (`record.py`) through `execFile` with an
+argument array, never a shell string; a test asserts the exact argv.
+
+OpenClaw's install scan flags any plugin that spawns processes:
 
 ```
 WARNING: Plugin "oneiro-life" contains dangerous code patterns:
 Shell command execution detected (child_process)
-Plugin "oneiro-life" installation blocked: dangerous code patterns detected
 ```
 
-That guardrail is the host's, and it is a good one, so the design moved to the
-host's terms:
+That guardrail is the host's and stays intact. The host also ships the
+acknowledgment for it, so the plugin installs with:
 
-- the plugin posts records over **loopback HTTP** to the project dashboard
-  (`POST http://127.0.0.1:8130/api/gateway-record`), which owns the bridge;
-- the graph is still written by Python only;
-- the plugin spawns nothing, so it installs without an acknowledgment;
-- the endpoint accepts an allowlist of lifecycle kinds and a small JSON body,
-  and the dashboard listens on loopback only.
+```bash
+openclaw --dev plugins install --link --dangerously-force-unsafe-install \
+  projects/ostis/oneiro-ostis/plugins/oneiro-life
+```
 
-Running the life process is therefore the host's job, not the plugin's: start
-it manually, from a scheduler, or from OpenClaw's own cron once that wiring is
-chosen. Supervision inside the plugin is deliberately out until the host
-offers a blessed process surface.
+The flag covers this one install; nothing in OpenClaw's own code is patched
+and no other code runs with that permission.
 
 ## Enable it (isolated dev profile only)
 
 ```bash
-openclaw --dev plugins install --link projects/ostis/oneiro-ostis/plugins/oneiro-life
+openclaw --dev plugins install --link --dangerously-force-unsafe-install \
+  projects/ostis/oneiro-ostis/plugins/oneiro-life
 openclaw --dev plugins enable oneiro-life
 openclaw --dev plugins inspect oneiro-life --runtime --json
 ```
@@ -47,26 +46,25 @@ The owner's live installation is never touched: `--dev` keeps state in
 ## Configuration
 
 Settings live under `plugins.entries.oneiro-life.config` in the dev profile's
-`openclaw.json`. Both keys have working defaults.
+`openclaw.json`. All keys have working defaults.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `dashboardUrl` | `http://127.0.0.1:8130` | The dashboard that owns the bridge. |
+| `pythonPath` | `python` | Interpreter that runs the recorder. |
 | `sessionId` | `oneiro-gateway` | Session id the gateway's own records carry. |
+| `ostisPort` | `8090` | Port of the sc-machine the recorder connects to. |
 
 ## What lands in OSTIS
 
 Each entry is one organization record with `origin=rule` and `verified=true`,
 so a reader can tell machine-enforced facts from model-authored ones:
-
-`gateway_start`, `gateway_stop`, `gateway_service_start`, `gateway_service_stop`
-(and the `life_process_*` kinds the endpoint also accepts, for whoever runs
-the loop).
+`gateway_start`, `gateway_stop`, `gateway_service_start`,
+`gateway_service_stop`.
 
 ## Manual recorder
 
 `record.py` writes one record straight through the bridge, for use from a
-shell when the dashboard is not running:
+shell:
 
 ```bash
 python plugins/oneiro-life/record.py --kind gateway_start --payload '{"port": 19001}'

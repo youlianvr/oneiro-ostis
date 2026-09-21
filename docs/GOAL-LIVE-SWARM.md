@@ -133,10 +133,10 @@ or re-rank an option whose subject an earlier PR packet already delivered),
 not only an instruction in the dossier. That guard is the next step, and it
 is a design choice the owner should shape.
 
-### The OpenClaw host: one deviation, recorded
+### The OpenClaw host: the block and the host's own key
 
-The approved plan had the plugin's service spawning and supervising the life
-process. OpenClaw's install scan refused it:
+The approved plan had the plugin's service spawning the recorder process.
+OpenClaw's install scan refused it:
 
 ```
 WARNING: Plugin "oneiro-life" contains dangerous code patterns:
@@ -144,19 +144,32 @@ Shell command execution detected (child_process)
 Plugin "oneiro-life" installation blocked: dangerous code patterns detected
 ```
 
-Deviation, with the reason: the plugin now records over loopback HTTP to the
-project dashboard (`POST /api/gateway-record`, allowlisted kinds, small
-bodies); the graph stays written by Python only and the plugin spawns
-nothing. Verified live: `openclaw --dev plugins inspect oneiro-life` shows
-`Status: loaded`, typed hooks `gateway_start` and `gateway_stop`, service
-`oneiro-life`; the gateway boot left `gateway_service_start` and
-`gateway_start` (port 19001) records in OSTIS with `origin=rule`.
+Night fallback: records went over loopback HTTP to the project dashboard
+(`POST /api/gateway-record`) and the plugin spawned nothing.
+
+Morning verdict (owner): do not live with the limitation, and do not patch
+OpenClaw; use the acknowledgment the host itself ships:
+
+```
+openclaw plugins install --dangerously-force-unsafe-install <path>
+```
+
+The plan's shape is back and the fallback is gone: the plugin runs `record.py`
+through `execFile` with an argument array (never a shell string), Python stays
+the only writer of the graph, and the dashboard endpoint was removed. The
+host's own code is untouched: the flag covers this one install.
+
+Verified live: `plugins list` shows `Oneiro Life / oneiro-life / loaded` with
+the recorder path, the dev gateway boot left `gateway_service_start` (state
+dir, project dir) and `gateway_start` (port 19001) records in OSTIS with
+`origin=rule, verified=true`, and `tests/test_gateway_plugin.py` asserts the
+exact argv through node.
 
 Still open: graceful-stop records. Stopping an unmanaged gateway kills the
 process before its shutdown path runs, so no `gateway_stop` or
-`gateway_service_stop` record appeared. Verifying that needs the gateway
-installed as a managed service (`openclaw gateway install` creates a Windows
-scheduled task), which is the owner's decision, not the agent's.
+`gateway_service_stop` record appeared. That needs the gateway installed as a
+managed service (`openclaw gateway install` creates a Windows scheduled task),
+which is the owner's decision.
 
 ### Exit criteria, checked
 
@@ -187,6 +200,10 @@ scheduled task), which is the owner's decision, not the agent's.
 
 Three decisions settled at the start of the day; the rest stay open.
 
+- **Two live packets merged.** The restart-continuity test and the named
+  marker list came onto master by cherry-pick (`ae52fe869`, `70572d02e`); the
+  offline suite is 84 passing. The draft marker fix, the broken stub and the
+  interrupted attempt stay unmerged branches.
 - **Packets live as branches, working copies are gone.** Every uncommitted
   change in the eight run worktrees was committed into its own branch first
   (`agent/heartbeat-20260921014748`, `agent/heartbeat-proof-20260921020147`,
@@ -202,8 +219,9 @@ Three decisions settled at the start of the day; the rest stay open.
 - **The swarm keeps running by hand.** No schedule, no service, no plugin
   supervision for now; a run starts on the owner's word.
 
-Still open for the owner: the merge verdict on the live packets, the record
-path for the OpenClaw plugin, and the next stage's target.
+Still open for the owner: the next stage's target. Settled later the same
+morning: the two live packets were merged (see below) and the OpenClaw plugin
+came back to spawning the recorder (see "the host's own key").
 
 ## Evidence trail
 

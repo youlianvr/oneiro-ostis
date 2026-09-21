@@ -10,15 +10,20 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "dashboardUrl": {
+      "pythonPath": {
         "type": "string",
-        "description": "Loopback URL of the project dashboard that owns the OSTIS bridge.",
-        "default": "http://127.0.0.1:8130"
+        "description": "Python interpreter that runs the recorder which writes to OSTIS.",
+        "default": "python"
       },
       "sessionId": {
         "type": "string",
         "description": "Session id the gateway's own records carry in the graph.",
         "default": "oneiro-gateway"
+      },
+      "ostisPort": {
+        "type": "integer",
+        "description": "Port of the sc-machine the recorder connects to.",
+        "default": 8090
       }
     }
   }
