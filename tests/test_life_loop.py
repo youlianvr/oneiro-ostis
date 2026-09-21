@@ -5,8 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from bridge import LifeSession
-from life_loop import LoopConfig, attempt_names, build_dossier, locate_paths, run_loop
+from bridge import LifeSession, OrganizationRecord
+from life_loop import (LoopConfig, attempt_names, build_dossier, journal_lines,
+                       locate_paths, run_loop)
 from llm import BudgetExhausted, ModelReply, ProviderDown
 
 
@@ -32,6 +33,15 @@ class FakeBridge:
 
     def record_organization_event(self, **event):
         self.org_events.append(event)
+
+    def load_organization_events(self, session_id=None):
+        return [OrganizationRecord(
+            record_id=event.get("record_id", "r"), session_id=event["session_id"],
+            role=event["role"], kind=event["kind"], payload=event.get("payload") or {},
+            origin=event.get("origin", "model"), verified=event.get("verified", False),
+            recorded_at=event.get("recorded_at", 0),
+        ) for event in self.org_events
+            if session_id is None or event["session_id"] == session_id]
 
     def finish_life_session(self, session, *, self_state=None, status="finished"):
         session.status = status
@@ -141,6 +151,37 @@ def test_dossier_names_the_checks_and_modules(tmp_path):
     assert "## python modules" in dossier
     assert "unit-tests" in dossier
     assert "python/roles.py" in dossier
+
+
+def test_journal_lines_summarize_what_earlier_cycles_did():
+    records = [
+        OrganizationRecord("r1", "s", "researcher", "research_proposal",
+                           {"title": "Починить детектор маркеров", "proposal_id": "p1"},
+                           "researcher", False, 1),
+        OrganizationRecord("r2", "s", "manager", "manager_decision",
+                           {"action": "assign_worker", "chosen": "p1"}, "manager", False, 2),
+        OrganizationRecord("r3", "s", "worker", "pr_packet",
+                           {"pr_id": "pr-1", "changed_paths": ["python/life_loop.py"]},
+                           "worker", False, 3),
+        OrganizationRecord("r4", "s", "manager", "cycle_finished",
+                           {"cycle": "c1", "worker": {"status": "done", "steps": 9}},
+                           "rule", True, 4),
+    ]
+
+    lines = journal_lines(records)
+
+    assert any("Починить детектор маркеров" in line and "p1" in line for line in lines)
+    assert any("manager decided: assign_worker" in line and "p1" in line for line in lines)
+    assert any("pr-1" in line and "python/life_loop.py" in line for line in lines)
+    assert any("worker done after 9 steps" in line for line in lines)
+
+
+def test_dossier_carries_the_journal_when_given_one(tmp_path):
+    dossier = build_dossier(make_config(tmp_path), ["proposed: Починить детектор маркеров"])
+
+    assert "## what earlier cycles already did" in dossier
+    assert "proposed: Починить детектор маркеров" in dossier
+    assert "Do not propose again" in dossier
 
 
 def test_attempt_names_do_not_collide_across_restarts(tmp_path):

@@ -105,7 +105,41 @@ def locate_paths() -> tuple[Path, Path]:
     raise SystemExit("no .git above this file: run inside the workspace checkout")
 
 
-def build_dossier(config: LoopConfig) -> str:
+def journal_lines(records, limit: int = 14) -> list[str]:
+    """What earlier cycles already proposed and produced, newest last.
+
+    This is the graph doing the job the whole project is about: a long-lived
+    organization reads its own journal before it proposes again. Without it
+    every cycle rediscovers the same weakness, which is exactly what the
+    first live run did.
+    """
+    lines: list[str] = []
+    for record in records:
+        payload = record.payload or {}
+        if record.kind == "research_proposal":
+            lines.append(f"proposed: {str(payload.get('title', ''))[:110]}"
+                         f" (id {payload.get('proposal_id', '?')})")
+        elif record.kind == "manager_decision":
+            chosen = payload.get("chosen")
+            lines.append(f"manager decided: {payload.get('action')}"
+                         + (f" (chose {chosen})" if chosen else ""))
+        elif record.kind == "pr_packet":
+            paths = ", ".join(payload.get("changed_paths") or []) or "no paths"
+            lines.append(f"PR packet delivered and not merged: {payload.get('pr_id')}"
+                         f" touching {paths}")
+        elif record.kind == "cycle_finished":
+            worker = payload.get("worker") or {}
+            lines.append(f"cycle {payload.get('cycle')} closed, worker {worker.get('status')}"
+                         f" after {worker.get('steps')} steps")
+        elif record.kind in ("loop_frozen", "cycle_failed", "cycle_schema_error"):
+            detail = payload.get("reason") or payload.get("error") or ""
+            lines.append(f"{record.kind}: {str(detail)[:110]}")
+        elif record.kind == "gateway_start":
+            lines.append("the OpenClaw gateway started")
+    return lines[-limit:]
+
+
+def build_dossier(config: LoopConfig, journal: Optional[list[str]] = None) -> str:
     """Real project material for the researcher: files, markers, open items."""
     parts: list[str] = []
     python_dir = config.project_root / "python"
@@ -145,6 +179,15 @@ def build_dossier(config: LoopConfig) -> str:
     checks = "\n".join(f"- {cid}: {argv[1] if len(argv) > 1 else ''} ({desc})"
                        for cid, (argv, desc) in config.checks.items())
     parts.append("## offered check ids\n" + checks)
+
+    if journal:
+        parts.append(
+            "## what earlier cycles already did (read before proposing)\n"
+            + "\n".join(f"- {line}" for line in journal)
+            + "\nDo not propose again what this journal shows as already proposed or "
+              "delivered; propose the next real weakness, or a better version of an "
+              "earlier proposal that the journal shows was not delivered."
+        )
 
     parts.append(
         "## how this cycle works\n"
@@ -229,12 +272,15 @@ def run_loop(
                 _freeze(bridge, session, outcome, "provider_key", str(exc), echo, config)
                 return outcome
 
-        dossier = build_dossier(config)
-
         for index in range(1, config.cycles + 1):
             cycle_tag = f"c{index}"
             budget = CallBudget(config.model_calls_per_cycle)
-            echo(f"[loop] cycle {index}/{config.cycles} ({cycle_tag})")
+            # The journal is read per cycle, so cycle two sees what cycle one
+            # already proposed. The graph is the memory here, not this process.
+            journal = journal_lines(bridge.load_organization_events(session.session_id))
+            dossier = build_dossier(config, journal)
+            echo(f"[loop] cycle {index}/{config.cycles} ({cycle_tag})"
+                 f" with {len(journal)} journal line(s)")
 
             try:
                 proposals = researcher_role(
