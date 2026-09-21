@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,6 +31,11 @@ from worker import WorkerSession
 
 PROJECT_SUBDIR = "projects/ostis/oneiro-ostis"
 RUNNING_STATUSES = {"running", "interrupted"}
+
+# A TODO/FIXME marker only counts when it sits at the start of a comment
+# (right after ``#``), as most tooling expects. Words in code, strings, or
+# docstrings are not markers.
+_MARKER_RE = re.compile(r"#\s*(TODO|FIXME)\b")
 
 # The only commands a worker (or a manager's choice) may reach. They are
 # fixed here, on purpose: model output selects an id, never a shell string.
@@ -159,7 +165,7 @@ def build_dossier(config: LoopConfig, journal: Optional[list[str]] = None) -> st
         for index, line in enumerate(
             path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1
         ):
-            if "TODO" in line or "FIXME" in line:
+            if _MARKER_RE.search(line):
                 markers.append(
                     f"{path.relative_to(config.repo_root).as_posix()}:{index} — {line.strip()[:110]}"
                 )
