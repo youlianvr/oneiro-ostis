@@ -539,6 +539,67 @@ def swarm():
     return jsonify(payload)
 
 
+MEMORY_BENCH_CACHE_SECONDS = 20
+_memory_bench_cache: dict = {}
+
+
+@app.get("/api/memory-bench")
+def memory_bench():
+    """The LongMemEval ledger: every cell is a graph record, nothing is a summary.
+
+    Runs are grouped by run tag; each arm reports how many cells it has, how
+    many the judge passed, and what recall@k the retrieval arms reached.
+    """
+    now = time.time()
+    with _state_lock:
+        cached = _memory_bench_cache.get("data")
+        if cached and now - cached[0] < MEMORY_BENCH_CACHE_SECONDS:
+            return jsonify(cached[1])
+
+    with _lock:
+        rows = _bridge().load_memory_bench_results()
+
+    grouped: dict[str, list[dict]] = {}
+    for row in rows:
+        grouped.setdefault(str(row.get("run_tag") or "?"), []).append(row)
+
+    def summarize(cells: list[dict]) -> list[dict]:
+        arms: dict[str, dict] = {}
+        for cell in cells:
+            key = str(cell.get("arm") or "?")
+            bucket = arms.setdefault(key, {"arm": key, "cells": 0, "passed": 0, "recalls": []})
+            bucket["cells"] += 1
+            if cell.get("status") == "ok" and cell.get("judge_passed"):
+                bucket["passed"] += 1
+            if cell.get("recall_at_k") is not None:
+                bucket["recalls"].append(cell["recall_at_k"])
+        out = []
+        for bucket in sorted(arms.values(), key=lambda item: item["arm"]):
+            recalls = bucket.pop("recalls")
+            bucket["accuracy"] = round(bucket["passed"] / bucket["cells"], 4) if bucket["cells"] else None
+            bucket["mean_recall_at_k"] = (round(sum(recalls) / len(recalls), 4) if recalls else None)
+            out.append(bucket)
+        return out
+
+    payload = {
+        "runs": [
+            {
+                "run_tag": tag,
+                "stage": cells[0].get("stage"),
+                "cells": len(cells),
+                "arms": summarize(cells),
+                "last_ts": max(int(cell.get("ts") or 0) for cell in cells),
+            }
+            for tag, cells in sorted(grouped.items(),
+                                    key=lambda item: max(int(c.get("ts") or 0) for c in item[1]))
+        ],
+        "records_total": len(rows),
+    }
+    with _state_lock:
+        _memory_bench_cache["data"] = (now, payload)
+    return jsonify(payload)
+
+
 @app.get("/api/events")
 def events():
     """Server-Sent Events stream of job progress lines."""

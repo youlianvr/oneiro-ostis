@@ -118,10 +118,13 @@ class ChatClient:
         with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
             return json.loads(response.read().decode("utf-8"))
 
-    def chat(self, messages: list[dict], tools: list[dict] | None = None) -> tuple[dict, dict]:
+    def chat(self, messages: list[dict], tools: list[dict] | None = None,
+             max_tokens: int | None = None) -> tuple[dict, dict]:
         """Return (message, usage), retrying transient provider failures."""
         payload: dict = {"model": self.model, "messages": messages,
                          "temperature": self.temperature}
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"

@@ -23,6 +23,8 @@ Usage:
     attempts = bridge.retrieve_attempts("agent1")       # chronological order
     bridge.save_strategy("greedy_cove", descriptor, replay_score=42.0)
     strategies = bridge.load_strategies()
+    bridge.save_memory_sessions("lme_q1", sessions)
+    sessions = bridge.load_memory_sessions("lme_q1")
 """
 
 from __future__ import annotations
@@ -107,6 +109,21 @@ NREL_HARNESS_ROUND_RECORD = "nrel_harness_round_record"
 CONCEPT_HARNESS = "concept_harness"
 CONCEPT_HARNESS_ROUND = "concept_harness_round"
 
+# Memory benchmark (LongMemEval): the corpus under test and the answer ledger.
+# A session is a typed record: its date is a numeric relation (so a time window
+# is a graph query, not a substring search), its body a JSON payload, and it
+# belongs to one corpus node. A bench result is one record per question / arm /
+# run, so every number in the report can be walked back to the graph.
+NREL_MEMORY_CORPUS = "nrel_memory_corpus"
+NREL_MEMORY_SESSION_PAYLOAD = "nrel_memory_session_payload"
+NREL_MEMORY_SESSION_DATE = "nrel_memory_session_date"
+NREL_MEMORY_BENCH_RESULT = "nrel_memory_bench_result"
+CONCEPT_MEMORY_CORPUS = "concept_memory_corpus"
+CONCEPT_MEMORY_SESSION = "concept_memory_session"
+CONCEPT_MEMORY_BENCH_RESULT = "concept_memory_bench_result"
+MEMORY_CORPUS_PREFIX = "memory_corpus_"
+MEMORY_BENCH_RESULT_PREFIX = "memory_bench_result_"
+
 # Vocabulary that appeared after the first live graph was built. A running
 # sc-machine cannot be reloaded without clearing its accumulated graph, so the
 # bridge resolves these identifiers and creates the missing ones as named
@@ -119,6 +136,13 @@ RUNTIME_VOCABULARY = (
     NREL_ORGANIZATION_RECORD,
     NREL_ORIGIN,
     NREL_CONFIDENCE,
+    CONCEPT_MEMORY_CORPUS,
+    CONCEPT_MEMORY_SESSION,
+    CONCEPT_MEMORY_BENCH_RESULT,
+    NREL_MEMORY_CORPUS,
+    NREL_MEMORY_SESSION_PAYLOAD,
+    NREL_MEMORY_SESSION_DATE,
+    NREL_MEMORY_BENCH_RESULT,
 )
 
 EPISODE_PREFIX = "episode_"
@@ -797,6 +821,125 @@ class OneiroBridge:
             rows.setdefault(index, {"round": index,
                                     "record": self._json_relation(node, NREL_HARNESS_ROUND_RECORD)})
         return sorted(rows.values(), key=lambda row: str(row["round"]))
+
+    # ---------- memory benchmark (LongMemEval corpus and ledger) ----------
+
+    def save_memory_sessions(self, corpus: str, sessions: list[dict], batch: int = 25) -> int:
+        """Write benchmark sessions as typed records belonging to `corpus`.
+
+        One node per session: class concept_memory_session, linked to the
+        corpus node through nrel_memory_corpus, the session date as a numeric
+        relation and the body (session_id, date, turns) as a JSON payload.
+        `batch` sessions share one construction, which is what makes a
+        500-session haystack affordable; the caller gets the number written.
+        """
+        corpus_node = self.resolve_entity(MEMORY_CORPUS_PREFIX + corpus)
+        constr = ScConstruction()
+        constr.generate_connector(
+            sc_type.CONST_PERM_POS_ARC, self.keynode(CONCEPT_MEMORY_CORPUS), corpus_node, "corpus_class_arc"
+        )
+        generate_elements(constr)
+
+        written = 0
+        for start in range(0, len(sessions), batch):
+            chunk = sessions[start:start + batch]
+            constr = ScConstruction()
+            for i, session in enumerate(chunk):
+                node_alias = f"session_{i}"
+                constr.generate_node(sc_type.CONST_NODE, node_alias)
+                constr.generate_connector(
+                    sc_type.CONST_PERM_POS_ARC, self.keynode(CONCEPT_MEMORY_SESSION), node_alias, f"class_arc_{i}"
+                )
+                constr.generate_connector(
+                    sc_type.CONST_COMMON_ARC, node_alias, corpus_node, f"corpus_arc_{i}"
+                )
+                constr.generate_connector(
+                    sc_type.CONST_PERM_POS_ARC, self.keynode(NREL_MEMORY_CORPUS), f"corpus_arc_{i}"
+                )
+                constr.generate_link(
+                    sc_type.CONST_NODE_LINK,
+                    ScLinkContent(json.dumps(session, sort_keys=True), ScLinkContentType.STRING),
+                    f"payload_link_{i}",
+                )
+                constr.generate_connector(sc_type.CONST_COMMON_ARC, node_alias, f"payload_link_{i}", f"payload_arc_{i}")
+                constr.generate_connector(
+                    sc_type.CONST_PERM_POS_ARC, self.keynode(NREL_MEMORY_SESSION_PAYLOAD), f"payload_arc_{i}"
+                )
+                date_link = f"date_link_{i}"
+                constr.generate_link(
+                    sc_type.CONST_NODE_LINK,
+                    ScLinkContent(int(session.get("date_epoch") or 0), ScLinkContentType.INT),
+                    date_link,
+                )
+                constr.generate_connector(sc_type.CONST_COMMON_ARC, node_alias, date_link, f"date_arc_{i}")
+                constr.generate_connector(
+                    sc_type.CONST_PERM_POS_ARC, self.keynode(NREL_MEMORY_SESSION_DATE), f"date_arc_{i}"
+                )
+            generate_elements(constr)
+            written += len(chunk)
+        return written
+
+    def memory_corpus_node(self, corpus: str) -> Optional[ScAddr]:
+        """Find a corpus node by name without creating anything."""
+        template = ScTemplate()
+        template.triple(self.keynode(CONCEPT_MEMORY_CORPUS), sc_type.VAR_PERM_POS_ARC, sc_type.VAR_NODE)
+        wanted = MEMORY_CORPUS_PREFIX + corpus
+        for item in search_by_template(template):
+            node = item.get(2)
+            if self.idtf_of(node) == wanted:
+                return node
+        return None
+
+    def load_memory_sessions(self, corpus: str) -> list[dict]:
+        """Every session stored in `corpus`, deduplicated by session id.
+
+        One template walks the corpus relation directly, so a read costs what
+        the corpus holds, not what the whole graph holds; that matters once
+        several haystacks have accumulated. The body is read from the payload
+        relation, so a caller gets back exactly what was written.
+        """
+        corpus_node = self.memory_corpus_node(corpus)
+        if corpus_node is None:
+            return []
+        template = ScTemplate()
+        template.triple_with_relation(
+            sc_type.VAR_NODE,
+            sc_type.VAR_COMMON_ARC,
+            corpus_node,
+            self.keynode(NREL_MEMORY_CORPUS),
+            sc_type.VAR_PERM_POS_ARC,
+        )
+        rows: dict[str, dict] = {}
+        for item in search_by_template(template):
+            node = item.get(0)
+            payload = self._json_relation(node, NREL_MEMORY_SESSION_PAYLOAD)
+            if payload and payload.get("session_id"):
+                rows.setdefault(str(payload["session_id"]), payload)
+        return list(rows.values())
+
+    def save_memory_bench_result(self, name: str, payload: dict) -> str:
+        """Store one benchmark verdict (question, arm, run) as a graph record."""
+        node = self.resolve_entity(_safe_graph_identifier(name))
+        constr = ScConstruction()
+        constr.generate_connector(
+            sc_type.CONST_PERM_POS_ARC, self.keynode(CONCEPT_MEMORY_BENCH_RESULT), node, "class_arc"
+        )
+        self._add_json_relation(constr, node, NREL_MEMORY_BENCH_RESULT, payload)
+        generate_elements(constr)
+        return name
+
+    def load_memory_bench_results(self) -> list[dict]:
+        """Every stored benchmark verdict, in graph order, deduplicated by name."""
+        template = ScTemplate()
+        template.triple(self.keynode(CONCEPT_MEMORY_BENCH_RESULT), sc_type.VAR_PERM_POS_ARC, sc_type.VAR_NODE)
+        rows: dict[str, dict] = {}
+        for item in search_by_template(template):
+            node = item.get(2)
+            idtf = self.idtf_of(node) or ""
+            payload = self._json_relation(node, NREL_MEMORY_BENCH_RESULT)
+            if payload:
+                rows[idtf] = payload
+        return list(rows.values())
 
     def _json_relation(self, node: ScAddr, relation_idtf: str):
         """Read a JSON string link hanging off `node` through `relation_idtf`."""
