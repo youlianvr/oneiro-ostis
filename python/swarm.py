@@ -14,7 +14,7 @@ review, or owner escalation without pretending that work happened.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, Literal, Optional
+from typing import Callable, Literal, Optional, Sequence
 
 Role = Literal["researcher", "manager", "worker"]
 ManagerAction = Literal["reject", "external_review", "escalate", "assign_worker"]
@@ -30,6 +30,7 @@ class Proposal:
     rationale: str
     acceptance: tuple[str, ...]
     evidence: tuple[str, ...] = ()
+    check_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,7 @@ class ManagerDecision:
     action: ManagerAction
     reason: str
     evidence: tuple[str, ...] = ()
+    chosen: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -91,44 +93,59 @@ class SwarmCoordinator:
 
     def run_cycle(
         self,
-        researcher: Callable[[], Proposal],
-        manager: Callable[[Proposal], ManagerDecision],
+        researcher: Callable[[], "Proposal | Sequence[Proposal]"],
+        manager: Callable[[Sequence[Proposal]], ManagerDecision],
         worker: Optional[Callable[[Proposal], PRPacket]] = None,
     ) -> CycleResult:
         """Execute exactly one proposal-to-PR cycle.
 
-        No worker is called unless the manager explicitly returns
-        ``assign_worker``. External review and owner escalation are terminal
-        for this cycle; they create records but do not silently continue.
+        The researcher may offer several options; the manager receives the
+        whole sequence and picks exactly one (``chosen``) or stops the cycle
+        with ``reject``, ``external_review``, or ``escalate``. No worker is
+        called unless the manager returned ``assign_worker`` with a valid
+        choice; external review and escalation are terminal for the cycle.
         """
-        proposal = researcher()
-        self._validate_proposal(proposal)
+        offered = researcher()
+        options: tuple[Proposal, ...] = (
+            (offered,) if isinstance(offered, Proposal) else tuple(offered)
+        )
+        if not options:
+            raise SwarmProtocolError("researcher returned no proposals")
+        for option in options:
+            self._validate_proposal(option)
         events: list[dict] = []
-        self._emit(events, "research_proposal", "researcher", proposal.__dict__)
+        self._emit(events, "research_options", "researcher", {
+            "options": [
+                {"proposal_id": p.proposal_id, "title": p.title, "check_id": p.check_id}
+                for p in options
+            ],
+        })
 
-        decision = manager(proposal)
-        self._validate_decision(decision)
+        decision = manager(options)
+        self._validate_decision(decision, options)
+        chosen = self._chosen_proposal(decision, options)
         self._emit(events, "manager_decision", "manager", {
-            "proposal_id": proposal.proposal_id,
+            "proposal_id": chosen.proposal_id if chosen else None,
             "action": decision.action,
             "reason": decision.reason,
             "evidence": list(decision.evidence),
         })
 
-        if decision.action != "assign_worker":
+        if decision.action != "assign_worker" or chosen is None:
             reason = f"manager action: {decision.action}"
             self._emit(events, decision.action, "manager", {
-                "proposal_id": proposal.proposal_id,
+                "proposal_id": None,
                 "reason": decision.reason,
             })
-            return CycleResult(proposal, decision, stopped_reason=reason, events=events)
+            return CycleResult(options[0], decision, stopped_reason=reason, events=events)
 
+        self._emit(events, "research_proposal", "researcher", chosen.__dict__)
         if worker is None:
             raise SwarmProtocolError("assign_worker requires a worker callback")
-        pr = worker(proposal)
+        pr = worker(chosen)
         self._validate_pr(pr)
         self._emit(events, "pr_packet", "worker", {
-            "proposal_id": proposal.proposal_id,
+            "proposal_id": chosen.proposal_id,
             "pr_id": pr.pr_id,
             "branch": pr.branch,
             "summary": pr.summary,
@@ -138,7 +155,7 @@ class SwarmCoordinator:
             "merged": pr.merged,
             "owner_approved": pr.owner_approved,
         })
-        return CycleResult(proposal, decision, pr=pr, events=events)
+        return CycleResult(chosen, decision, pr=pr, events=events)
 
     def _emit(self, events: list[dict], kind: str, role: Role, payload: dict) -> None:
         event = {
@@ -168,9 +185,34 @@ class SwarmCoordinator:
             raise SwarmProtocolError("proposal needs at least one acceptance criterion")
 
     @staticmethod
-    def _validate_decision(decision: ManagerDecision) -> None:
+    def _validate_decision(decision: ManagerDecision,
+                           options: Sequence[Proposal]) -> None:
         if not decision.reason:
             raise SwarmProtocolError("manager decision needs a reason")
+        if decision.action != "assign_worker":
+            return
+        ids = {option.proposal_id for option in options}
+        if decision.chosen is None:
+            if len(options) != 1:
+                raise SwarmProtocolError(
+                    "assign_worker needs an explicit chosen proposal"
+                )
+            return
+        if decision.chosen not in ids:
+            raise SwarmProtocolError(
+                f"chosen proposal {decision.chosen!r} was not offered: {sorted(ids)}"
+            )
+
+    @staticmethod
+    def _chosen_proposal(decision: ManagerDecision,
+                         options: Sequence[Proposal]) -> Optional[Proposal]:
+        if decision.action != "assign_worker":
+            return None
+        wanted = decision.chosen or options[0].proposal_id
+        for option in options:
+            if option.proposal_id == wanted:
+                return option
+        return None
 
     @staticmethod
     def _validate_pr(pr: PRPacket) -> None:

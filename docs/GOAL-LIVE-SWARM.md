@@ -85,7 +85,8 @@ lifecycle into OSTIS**. The isolated dev profile is the only instance used.
 
 ## Evidence trail
 
-Every cycle writes to OSTIS with `origin` and `verified`: what the models
-produced (`origin=model`), what the system enforced (`origin=rule`), what the
-worker did (`origin=worker`). The morning report quotes these records, the
-run logs, and the tests; nothing is claimed without one of the three.
+Every cycle writes to OSTIS with `origin` and `verified`: model-authored
+records carry the role that produced them (`origin=researcher|manager|worker`)
+and stay unverified; system-enforced records carry `origin=rule` and are
+marked verified. The morning report quotes these records, the run logs, and
+the tests; nothing is claimed without one of the three.

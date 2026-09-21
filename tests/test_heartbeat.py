@@ -74,7 +74,7 @@ def test_heartbeat_wires_storage_roles_and_worker():
     result = runner.run(
         session_id="hb-session",
         researcher=make_proposal,
-        manager=lambda proposal: ManagerDecision("assign_worker", "small and testable"),
+        manager=lambda options: ManagerDecision("assign_worker", "small and testable"),
     )
     runner.close()
 
@@ -84,8 +84,9 @@ def test_heartbeat_wires_storage_roles_and_worker():
     assert [call[0] for call in fake_worktree.calls] == ["create", "check", "packet"]
     assert [event["kind"] for event in bridge.events] == [
         "heartbeat_start",
-        "research_proposal",
+        "research_options",
         "manager_decision",
+        "research_proposal",
         "worktree_created",
         "pr_packet",
         "heartbeat_end",
@@ -111,7 +112,7 @@ def test_heartbeat_can_finish_without_worktree_when_manager_stops():
     result = runner.run(
         session_id="review-session",
         researcher=make_proposal,
-        manager=lambda proposal: ManagerDecision("external_review", "needs evidence"),
+        manager=lambda options: ManagerDecision("external_review", "needs evidence"),
     )
 
     assert result.worktree is None

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional, Sequence
+from typing import Callable, Optional, Sequence, Union
 
 from bridge import LifeSession, OneiroBridge
 from swarm import (
@@ -64,16 +64,25 @@ class HeartbeatRunner:
         self,
         *,
         session_id: str,
-        researcher: Callable[[], Proposal],
-        manager: Callable[[Proposal], ManagerDecision],
+        researcher: Callable[[], Union[Proposal, Sequence[Proposal]]],
+        manager: Callable[[Sequence[Proposal]], ManagerDecision],
+        session: Optional[LifeSession] = None,
     ) -> HeartbeatResult:
-        """Run one cycle and close the LifeSession on every outcome."""
+        """Run one cycle and close the LifeSession on every outcome.
+
+        A caller that owns a longer life (the loop) passes its existing
+        session; the heartbeat then writes into it instead of starting a
+        separate one, so one restart-visible biography covers both. A session
+        the heartbeat started itself is also finished by the heartbeat.
+        """
         self._active_session_id = session_id
-        session = self.bridge.start_life_session(
-            session_id,
-            goals=[{"text": "complete one bounded organization heartbeat", "origin": "rule"}],
-            self_state={"phase": "heartbeat", "origin": "rule"},
-        )
+        own_session = session is None
+        if session is None:
+            session = self.bridge.start_life_session(
+                session_id,
+                goals=[{"text": "complete one bounded organization heartbeat", "origin": "rule"}],
+                self_state={"phase": "heartbeat", "origin": "rule"},
+            )
         self.bridge.record_life_event(
             session,
             {"kind": "heartbeat_start", "branch": self.branch},
@@ -87,7 +96,7 @@ class HeartbeatRunner:
             payload={"branch": self.branch, "check": list(self.check_command)},
             origin="rule",
             verified=True,
-            record_id=f"heartbeat_start_{session_id}",
+            record_id=f"heartbeat_start_{session_id}_{self.branch}",
         )
 
         coordinator = SwarmCoordinator(
@@ -120,12 +129,13 @@ class HeartbeatRunner:
                 payload=summary,
                 origin="rule",
                 verified=True,
-                record_id=f"heartbeat_end_{session_id}",
+                record_id=f"heartbeat_end_{session_id}_{self.branch}",
             )
-            self.bridge.finish_life_session(
-                session,
-                self_state={"phase": "finished", "pr_id": summary["pr_id"], "origin": "rule"},
-            )
+            if own_session:
+                self.bridge.finish_life_session(
+                    session,
+                    self_state={"phase": "finished", "pr_id": summary["pr_id"], "origin": "rule"},
+                )
             return HeartbeatResult(session, cycle, self._worktree, tuple(self._checks))
         except Exception as exc:
             error = {"status": "failed", "error": str(exc), "branch": self.branch}
@@ -142,13 +152,14 @@ class HeartbeatRunner:
                 payload=error,
                 origin="rule",
                 verified=True,
-                record_id=f"heartbeat_error_{session_id}",
+                record_id=f"heartbeat_error_{session_id}_{self.branch}",
             )
-            self.bridge.finish_life_session(
-                session,
-                self_state={"phase": "failed", "error": str(exc), "origin": "rule"},
-                status="failed",
-            )
+            if own_session:
+                self.bridge.finish_life_session(
+                    session,
+                    self_state={"phase": "failed", "error": str(exc), "origin": "rule"},
+                    status="failed",
+                )
             raise
 
     def close(self) -> None:
