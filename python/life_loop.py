@@ -275,9 +275,11 @@ def run_loop(
         for index in range(1, config.cycles + 1):
             cycle_tag = f"c{index}"
             budget = CallBudget(config.model_calls_per_cycle)
-            # The journal is read per cycle, so cycle two sees what cycle one
-            # already proposed. The graph is the memory here, not this process.
-            journal = journal_lines(bridge.load_organization_events(session.session_id))
+            # The journal spans lives, not just this session: an unmerged PR
+            # packet from last night is still work already done tonight. Read
+            # per cycle, so cycle two also sees cycle one. The graph is the
+            # memory here, not this process.
+            journal = journal_lines(bridge.load_organization_events())
             dossier = build_dossier(config, journal)
             echo(f"[loop] cycle {index}/{config.cycles} ({cycle_tag})"
                  f" with {len(journal)} journal line(s)")
