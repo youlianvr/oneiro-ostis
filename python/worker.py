@@ -25,8 +25,12 @@ MAX_STEPS = 24
 MAX_NUDGES = 3
 MAX_WRITE_BYTES = 200_000
 OBSERVATION_CHARS = 6_000
+READ_WINDOW_LINES = 400
 LIST_LIMIT = 300
 CHECK_TIMEOUT = 600.0
+FINISH_GRACE_CALLS = 2
+SHRINK_GUARD_MIN_BYTES = 2_000
+SHRINK_GUARD_RATIO = 0.5
 
 SKIP_PARTS = {".git", "__pycache__", ".pytest_cache", "node_modules", ".venv", "venv"}
 
@@ -38,9 +42,11 @@ TOOLS = [
     }},
     {"type": "function", "function": {
         "name": "read_file",
-        "description": "Read one text file from the worktree with line numbers.",
+        "description": ("Read a text file from the worktree as plain text, up to 400 lines "
+                        "(continue with start_line). Copy snippets for replace_in_file here."),
         "parameters": {"type": "object", "properties": {
             "path": {"type": "string", "description": "Path relative to the worktree root."},
+            "start_line": {"type": "integer", "description": "First line to show, 1-based."},
         }, "required": ["path"]},
     }},
     {"type": "function", "function": {
@@ -51,6 +57,17 @@ TOOLS = [
             "path": {"type": "string"},
             "content": {"type": "string"},
         }, "required": ["path", "content"]},
+    }},
+    {"type": "function", "function": {
+        "name": "replace_in_file",
+        "description": ("Replace an exact snippet inside an existing file: old_text must match "
+                        "the file byte for byte and appear exactly once. Use this for edits "
+                        "instead of rewriting a whole file."),
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string"},
+            "old_text": {"type": "string", "description": "Exact text to replace, copied from read_file."},
+            "new_text": {"type": "string", "description": "Replacement text."},
+        }, "required": ["path", "old_text", "new_text"]},
     }},
     {"type": "function", "function": {
         "name": "run_check",
@@ -74,6 +91,9 @@ Rules:
   never merge, push, release, or approve anything.
 - Make the smallest change that satisfies the acceptance criteria. Prefer editing existing files
   over creating new ones.
+- Edit an existing file with replace_in_file: copy the exact snippet out of read_file and swap it.
+  write_file replaces a whole file, so it is for new files or for a rewrite that is really the point.
+  Never leave a large file as a stub.
 - After changing files, call run_check and iterate until it passes.
 - Read the files you are about to change before changing them; do not guess their content.
 - Never touch .git or anything outside the worktree.
@@ -115,6 +135,7 @@ class WorkerSession:
         self.scope = scope
         self.step_limit = step_limit
         self.actions: list[dict] = []
+        self._pending_changes = 0
 
     # ---------- the loop ----------
 
@@ -142,8 +163,8 @@ class WorkerSession:
                                          actions=self.actions)
                 nudges += 1
                 messages.append({"role": "user", "content":
-                                 "Use the tools: edit the files and run the check. "
-                                 "Call finish only after the check passes."})
+                                 "Use the tools: edit the files with replace_in_file or write_file, "
+                                 "run the check, then call finish."})
                 continue
             for call in tool_calls:
                 name, arguments = self._parse_call(call)
@@ -158,9 +179,51 @@ class WorkerSession:
                     "tool_call_id": call.get("id") or f"call_{step}",
                     "content": result,
                 })
-        return WorkerOutcome("gave_up", f"step limit reached ({self.step_limit})",
-                             steps=self.step_limit, model_calls=model_calls,
-                             actions=self.actions)
+        return self._finish_grace(messages, model_calls)
+
+    def _finish_grace(self, messages: list[dict], model_calls: int) -> WorkerOutcome:
+        """Out of steps with real edits on disk: one bounded window to call finish.
+
+        A worker that edited files and then ran out of steps has already produced
+        the only part worth keeping; the summary is the last cheap piece. Without
+        this window the run drops a real change because the model was still
+        writing tests when the counter hit zero.
+        """
+        if not self._pending_changes:
+            return WorkerOutcome("gave_up", f"step limit reached ({self.step_limit})",
+                                 steps=self.step_limit, model_calls=model_calls,
+                                 actions=self.actions)
+        messages.append({"role": "user", "content":
+                         "You have no model steps left. Call finish now: one short summary "
+                         "in Russian of what you changed and whether the check passes."})
+        for _ in range(FINISH_GRACE_CALLS):
+            reply = self.pool.reply(WORKER_ROLE, messages, tools=TOOLS, budget=self.budget)
+            model_calls += 1
+            message = reply.message
+            tool_calls = message.get("tool_calls") or []
+            messages.append({
+                "role": "assistant",
+                "content": message.get("content") or "",
+                **({"tool_calls": tool_calls} if tool_calls else {}),
+            })
+            for call in tool_calls:
+                name, arguments = self._parse_call(call)
+                if name == "finish":
+                    summary = str(arguments.get("summary") or "").strip() or "finished"
+                    self.actions.append({"step": self.step_limit, "tool": "finish",
+                                         "summary": summary[:500]})
+                    return WorkerOutcome("done", summary, steps=self.step_limit,
+                                         model_calls=model_calls, actions=self.actions)
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": call.get("id") or "grace",
+                    "content": "[no steps left: call finish]",
+                })
+        return WorkerOutcome(
+            "gave_up",
+            f"step limit reached ({self.step_limit}); finish was not called in the grace window",
+            steps=self.step_limit, model_calls=model_calls, actions=self.actions,
+        )
 
     def _task_text(self) -> str:
         return (
@@ -193,10 +256,15 @@ class WorkerSession:
             if name == "list_files":
                 return self._list_files()
             if name == "read_file":
-                return self._read_file(str(arguments.get("path") or ""))
+                return self._read_file(str(arguments.get("path") or ""),
+                                       arguments.get("start_line"))
             if name == "write_file":
                 return self._write_file(str(arguments.get("path") or ""),
                                         str(arguments.get("content") or ""))
+            if name == "replace_in_file":
+                return self._replace_in_file(str(arguments.get("path") or ""),
+                                             str(arguments.get("old_text") or ""),
+                                             str(arguments.get("new_text") or ""))
             if name == "run_check":
                 return self._run_check()
             return f"[unknown tool: {name}]"
@@ -236,24 +304,66 @@ class WorkerSession:
                 break
         return self._clip("\n".join(rows) or "[no files in scope]")
 
-    def _read_file(self, path: str) -> str:
+    def _read_file(self, path: str, start_line: object = 1) -> str:
+        """Plain text, never numbered: the worker copies snippets out of this
+        window into replace_in_file, and a line-number prefix would make every
+        copied snippet un-matchable. Which is also why a read is a window."""
+        target = self._resolve(path)
+        if not target.is_file():
+            return f"[no such file: {path}]"
+        try:
+            start = max(1, int(start_line))
+        except (TypeError, ValueError):
+            start = 1
+        lines = target.read_text(encoding="utf-8", errors="replace").split("\n")
+        window = lines[start - 1: start - 1 + READ_WINDOW_LINES]
+        body = "\n".join(window) or "[empty file]"
+        end = start - 1 + len(window)
+        if end < len(lines):
+            body += (f"\n... [showed lines {start}-{end} of {len(lines)}; "
+                     "read again with start_line to continue]")
+        return self._clip(body)
+
+    def _replace_in_file(self, path: str, old_text: str, new_text: str) -> str:
+        if not old_text:
+            raise ValueError("old_text is required")
         target = self._resolve(path)
         if not target.is_file():
             return f"[no such file: {path}]"
         text = target.read_text(encoding="utf-8", errors="replace")
-        numbered = "\n".join(f"{index:>4} {line}"
-                             for index, line in enumerate(text.splitlines(), start=1))
-        return self._clip(numbered or "[empty file]")
+        count = text.count(old_text)
+        if count == 0:
+            return ("[no exact match for old_text. Read the file and copy the snippet exactly, "
+                    "without surrounding lines you do not intend to change.]")
+        if count > 1:
+            return (f"[old_text appears {count} times. Include more surrounding lines so the "
+                    "match is unique.]")
+        updated = text.replace(old_text, new_text, 1)
+        size = len(updated.encode("utf-8"))
+        if size > MAX_WRITE_BYTES:
+            raise ValueError(f"result too large (limit {MAX_WRITE_BYTES} bytes)")
+        target.write_text(updated, encoding="utf-8")
+        self.actions.append({"tool": "replace_in_file", "path": path})
+        self._pending_changes += 1
+        return f"replaced {len(old_text)} chars with {len(new_text)} chars in {path}"
 
     def _write_file(self, path: str, content: str) -> str:
-        if len(content.encode("utf-8")) > MAX_WRITE_BYTES:
+        size = len(content.encode("utf-8"))
+        if size > MAX_WRITE_BYTES:
             raise ValueError(f"write too large (limit {MAX_WRITE_BYTES} bytes)")
         target = self._resolve(path)
+        if target.is_file():
+            previous = target.stat().st_size
+            if previous >= SHRINK_GUARD_MIN_BYTES and size < previous * SHRINK_GUARD_RATIO:
+                raise ValueError(
+                    f"this would replace a {previous}-byte file with {size} bytes; "
+                    "edit it with replace_in_file instead of rewriting it"
+                )
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
-        self.actions.append({"tool": "write_file", "path": path,
-                             "bytes": len(content.encode("utf-8"))})
-        return f"written {len(content.encode('utf-8'))} bytes to {path}"
+        self.actions.append({"tool": "write_file", "path": path, "bytes": size})
+        self._pending_changes += 1
+        return f"written {size} bytes to {path}"
 
     def _run_check(self) -> str:
         try:
