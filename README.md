@@ -72,7 +72,10 @@ documented in `docs/GOAL-LIVE-SWARM.md`.
 ## Status
 
 - Living OSTIS stack: sc-machine, C++ ScAgents, sc-web, one graph.
-- Memory benchmark in `docs/results.md`; harness series in `docs/harness.md`
-  (candidates judged by replay, winners measured online).
+- Memory, offline comparison in `docs/results.md`; the public benchmark
+  (LongMemEval, graph against a flat journal and against no memory) in
+  `bench/memory/` with its measured numbers in `docs/PROJECT-CONTEXT.md` § 4.5;
+  harness series in `docs/harness.md` (candidates judged by replay, winners
+  measured online).
 - Organization layer runs live: three roles on real models, restart-aware
   loop, isolated worktrees, unmerged PR packets, dashboard feed.

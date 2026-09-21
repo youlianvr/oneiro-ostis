@@ -262,6 +262,32 @@ the method refuses to lie. Four deployments happened before the gate was strong
 enough; two of them were worse than doing nothing, one was noise, and one was
 real.
 
+### 4.5 LongMemEval against our own stores (running)
+
+Source: `~/.openclaw/bench-memory/runs/`; the stand is `bench/memory/`
+(`README.md` there is the manual). This is the measurement D4 asks for: a public
+benchmark, our stores against a flat journal and against no memory, with the
+model held constant and the judge protocol copied from the benchmark itself.
+
+Stage `oracle` (evidence sessions only), 50 questions, run `oracle-50-1`:
+
+| arm | passed | accuracy | tokens |
+|---|---|---|---|
+| full (every evidence session in context) | 29/50 | 0.58 | 595730 |
+| none (no memory) | 3/50 | 0.06 | 176232 |
+
+The floor is real on our stack, and full context reaches 0.58, so the task
+itself is not trivial here. Stage `s` (full haystacks, capped with every
+evidence session kept) is the one that tests the stores: `graph`, `flat`, `none`.
+Its numbers are not in this section because the run has not finished; when it
+does, they land here and in the dashboard's memory section, per question type.
+
+Two honest notes on the oracle pass. First, it says nothing about the graph:
+retrieval is not a question when only evidence sessions are in the haystack,
+which is why the graph arm is not run there. Second, the preference questions
+scored 0.00 on both arms, which is a defect to look at before that column is
+quoted anywhere.
+
 ## 5. Related work: what already exists, and where it beats us
 
 The owner supplied four papers and one general article. All of them do a version
@@ -364,9 +390,15 @@ python harness/rsi.py --reference                     # judge the hand-written p
 python harness/rsi.py --round 12                      # propose, judge, gate, measure
 python harness/publish.py                             # the search tree into the graph
 
+# the memory benchmark (LongMemEval; data outside the repo, see bench/memory/README.md)
+export $(grep -E '^OMNIROUTE_API_KEY=' ../../.env | head -1)
+python bench/memory/run.py --stage oracle --questions 50 --run-tag oracle-50-1
+python bench/memory/run.py --stage s --questions 50 --cap 100 --k 5 --run-tag s-50-1
+
 # the surfaces and the offline tests
 python dashboard/server.py                            # http://localhost:8130
 python -m pytest harness/tests -q                     # 19 tests, no network
+python -m pytest tests -q --ignore=tests/test_core_loop.py   # the project's own tests
 ```
 
 ## 10. Environment facts

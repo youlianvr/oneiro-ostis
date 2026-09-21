@@ -105,6 +105,41 @@ number is quoted; a measured noise floor; held-out tasks never touched by the
 search; a ledger of what each experiment cost; corrections written beside what
 they correct rather than instead of it.
 
+## The stand, and its first measurements (2026-09-21)
+
+The stand lives in `bench/memory/` (data, two stores, four arms, judge, run
+loop; `bench/memory/README.md` is the operating manual). Same content in both
+stores, byte-identical text in both prompts, same scorer, judge separate from
+the answerer, one graph record per question / arm / repetition.
+
+Two stages carry different arms, because retrieval is not a question in one of
+them:
+
+| stage | haystack | arms | why those |
+|---|---|---|---|
+| `oracle` | evidence sessions only | `full`, `none` | the benchmark's own setting; retrieval would be trivial here, so the arm adds nothing |
+| `s` | full haystack, capped, every evidence session kept | `graph`, `flat`, `none` | this is where the store is under test |
+
+**Measured, 50 questions, oracle stage, run `oracle-50-1`** (answer model
+`gemini-3-flash`, judge `deepseek-v4-flash`, both via the local proxy):
+
+| arm | passed | accuracy | tokens |
+|---|---|---|---|
+| full (all evidence sessions in context) | 29/50 | 0.58 | 595730 |
+| none (no memory at all) | 3/50 | 0.06 | 176232 |
+
+Per question type (judge pass rate, full / none): knowledge-update 0.67 / 0.11,
+multi-session 0.42 / 0.00, single-session-assistant 1.00 / 0.17,
+single-session-user 1.00 / 0.14, temporal-reasoning 0.42 / 0.00,
+single-session-preference **0.00 / 0.00**.
+
+What these numbers say, and what they do not. They say the task is real on our
+stack (0.06 is as close to a floor as it gets) and that reading everything in
+context buys 0.58. They do not say anything yet about the graph: the two stores
+have not been run. The preference column is a defect to investigate before it
+is quoted: zero on both arms suggests the judge or the prompts mishandle that
+type rather than the memory failing.
+
 ## Open branches (nothing here is executed)
 
 - **OB1** Shelf-life rule set: which kinds of record get which expected lifetime,
