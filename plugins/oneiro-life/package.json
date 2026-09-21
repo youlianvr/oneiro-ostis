@@ -1,0 +1,10 @@
+{
+  "name": "openclaw-oneiro-life",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenClaw plugin that supervises the Oneiro life process and records gateway lifecycle into OSTIS.",
+  "openclaw": {
+    "extensions": ["./index.js"]
+  }
+}

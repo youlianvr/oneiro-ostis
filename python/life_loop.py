@@ -45,6 +45,7 @@ ALLOWED_CHECKS: dict[str, tuple[tuple[str, ...], str]] = {
         f"{PROJECT_SUBDIR}/tests/test_worker.py",
         f"{PROJECT_SUBDIR}/tests/test_life_loop.py",
         f"{PROJECT_SUBDIR}/tests/test_bridge_vocabulary.py",
+        f"{PROJECT_SUBDIR}/tests/test_gateway_plugin.py",
     ), "the organization layer and its adapters stay green"),
     "offline-suite": ((
         "python", "-m", "pytest", "-q", "-p", "no:cacheprovider",
@@ -53,6 +54,7 @@ ALLOWED_CHECKS: dict[str, tuple[tuple[str, ...], str]] = {
         f"{PROJECT_SUBDIR}/tests/test_worker.py",
         f"{PROJECT_SUBDIR}/tests/test_life_loop.py",
         f"{PROJECT_SUBDIR}/tests/test_bridge_vocabulary.py",
+        f"{PROJECT_SUBDIR}/tests/test_gateway_plugin.py",
         f"{PROJECT_SUBDIR}/tests/test_swarm_protocol.py",
         f"{PROJECT_SUBDIR}/tests/test_worktree_runner.py",
         f"{PROJECT_SUBDIR}/tests/test_heartbeat.py",

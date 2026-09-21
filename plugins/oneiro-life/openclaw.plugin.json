@@ -1,0 +1,54 @@
+{
+  "id": "oneiro-life",
+  "name": "Oneiro Life",
+  "description": "Keeps the Oneiro organization alive: supervises the life process and records gateway lifecycle into OSTIS.",
+  "categories": ["other"],
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "projectDir": {
+        "type": "string",
+        "description": "Absolute path to the oneiro-ostis project. Defaults to this plugin's project."
+      },
+      "pythonPath": {
+        "type": "string",
+        "description": "Python executable used for the OSTIS recorder and the life process.",
+        "default": "python"
+      },
+      "autostart": {
+        "type": "boolean",
+        "description": "Start the life process with the gateway and restart it after a crash (bounded).",
+        "default": false
+      },
+      "cycles": {
+        "type": "integer",
+        "description": "Cycles per supervised life run.",
+        "default": 2
+      },
+      "intervalSeconds": {
+        "type": "number",
+        "description": "Pause between cycles inside a supervised run.",
+        "default": 60
+      },
+      "host": {
+        "type": "string",
+        "description": "OSTIS machine host for the bridge.",
+        "default": "localhost"
+      },
+      "port": {
+        "type": "integer",
+        "description": "OSTIS machine port for the bridge.",
+        "default": 8090
+      },
+      "sessionId": {
+        "type": "string",
+        "description": "Session id the gateway's own records carry in the graph.",
+        "default": "oneiro-gateway"
+      }
+    }
+  }
+}
