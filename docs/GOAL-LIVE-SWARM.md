@@ -183,6 +183,28 @@ scheduled task), which is the owner's decision, not the agent's.
 - Decide whether the life loop should run continuously (OpenClaw cron, or
   plugin supervision once the host offers a blessed process surface).
 
+## Morning verdicts (owner, 2026-09-21)
+
+Three decisions settled at the start of the day; the rest stay open.
+
+- **Packets live as branches, working copies are gone.** Every uncommitted
+  change in the eight run worktrees was committed into its own branch first
+  (`agent/heartbeat-20260921014748`, `agent/heartbeat-proof-20260921020147`,
+  `agent/live-live1-c1`, `agent/live-live2-c1`, `agent/live-live2-c2`,
+  `agent/live-live3-a041541-c1`, `agent/live-live3-c1`,
+  `agent/live-live4-a050037-c1`), then the working copies went to the Recycle
+  Bin (`_scripts/trash.sh`) and the worktree metadata was pruned. Nothing was
+  destroyed; the branches hold every change.
+- **The duplicate gate is hard and graph-checked.** A candidate whose essence
+  matches work already delivered is refused before the manager sees it, and the
+  refusal is recorded in OSTIS. The check reads the graph's own record of past
+  proposals and packets, not only the current session's journal.
+- **The swarm keeps running by hand.** No schedule, no service, no plugin
+  supervision for now; a run starts on the owner's word.
+
+Still open for the owner: the merge verdict on the live packets, the record
+path for the OpenClaw plugin, and the next stage's target.
+
 ## Evidence trail
 
 Every cycle writes to OSTIS with `origin` and `verified`: model-authored
