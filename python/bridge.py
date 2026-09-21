@@ -42,6 +42,7 @@ from sc_client.client import (
     search_by_template,
 )
 from sc_client.constants import sc_type
+from sc_client.constants.exceptions import InvalidValueError
 from sc_client.models import (
     ScAddr,
     ScConstruction,
@@ -105,6 +106,20 @@ NREL_HARNESS_ROUND_RECORD = "nrel_harness_round_record"
 
 CONCEPT_HARNESS = "concept_harness"
 CONCEPT_HARNESS_ROUND = "concept_harness_round"
+
+# Vocabulary that appeared after the first live graph was built. A running
+# sc-machine cannot be reloaded without clearing its accumulated graph, so the
+# bridge resolves these identifiers and creates the missing ones as named
+# nodes at runtime. A freshly rebuilt graph still declares them from
+# knowledge-base/ontology exactly as before.
+RUNTIME_VOCABULARY = (
+    CONCEPT_SESSION,
+    CONCEPT_ORGANIZATION_RECORD,
+    NREL_SESSION_RECORD,
+    NREL_ORGANIZATION_RECORD,
+    NREL_ORIGIN,
+    NREL_CONFIDENCE,
+)
 
 EPISODE_PREFIX = "episode_"
 STRATEGY_PREFIX = "strategy_"
@@ -227,6 +242,7 @@ class OneiroBridge:
         self.port = port
         self._addr_to_idtf: dict[int, str] = {}
         self._episodes_classified: set[str] = set()
+        self._runtime_keynodes: dict[str, ScAddr] = {}
 
     # ---------- connection ----------
 
@@ -246,7 +262,16 @@ class OneiroBridge:
     # ---------- keynodes and idtf helpers ----------
 
     def keynode(self, idtf: str) -> ScAddr:
-        return ScKeynodes[idtf]
+        try:
+            return ScKeynodes[idtf]
+        except (InvalidValueError, KeyError):
+            if idtf not in RUNTIME_VOCABULARY:
+                raise
+            cached = self._runtime_keynodes.get(idtf)
+            if cached is None:
+                cached = self.resolve_entity(idtf)
+                self._runtime_keynodes[idtf] = cached
+            return cached
 
     def resolve_entity(self, name: str) -> ScAddr:
         """Resolve a node by system identifier; create it (ConstNode) if missing."""
