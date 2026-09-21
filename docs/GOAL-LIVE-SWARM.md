@@ -107,6 +107,32 @@ lifecycle into OSTIS**. The isolated dev profile is the only instance used.
   is what made the `live3` restart work while the debris of the killed
   attempt was still on disk.
 
+### The journal effect (`live4`, after `91f4a20d9`)
+
+The dossier now carries the organization's own journal (the last 14 journal
+lines read from OSTIS, across lives), and tells the researcher not to propose
+what the journal already shows. What actually happened:
+
+- the researcher still listed the old marker fix as its first option, so a
+  paragraph of instruction does not by itself stop a small model from
+  repeating itself;
+- the journal changed the **decision**: the manager picked the second option,
+  "add a test that the heartbeat continues the biography after a restart",
+  citing the night goal's own open item, and the worker delivered it
+  (`pr-live-live4-a050037-c1`, 49 lines in `tests/test_heartbeat.py`, check
+  passed, unmerged). The swarm's first work item that no earlier cycle had
+  produced.
+- cycle two did not complete, and the record says exactly why: the provider
+  answered `HTTP 524` for the manager's model after four attempts, the
+  fallback model returned no JSON twice, and the cycle was skipped as
+  `cycle_schema_error` with no freeze and no crash (`cycles_done: 1`,
+  `status: finished`, `freeze_reason: null`).
+
+Conclusion to carry forward: deduplication needs a mechanical guard (refuse
+or re-rank an option whose subject an earlier PR packet already delivered),
+not only an instruction in the dossier. That guard is the next step, and it
+is a design choice the owner should shape.
+
 ### The OpenClaw host: one deviation, recorded
 
 The approved plan had the plugin's service spawning and supervising the life
@@ -149,7 +175,8 @@ scheduled task), which is the owner's decision, not the agent's.
 
 - Branches awaiting a verdict (worktrees under `~/.openclaw/worktrees/`):
   `agent/live-live2-c1`, `agent/live-live2-c2`,
-  `agent/live-live3-a041541-c1` hold the real changes;
+  `agent/live-live3-a041541-c1` and `agent/live-live4-a050037-c1` hold the real
+  changes (the last one adds the restart-continuity test);
   `agent/live-live1-c1` holds the broken stub that exposed the missing edit
   tool, and `agent/live-live3-c1` holds a partial edit from the killed
   attempt. None of them is merged, pushed, or deleted.
