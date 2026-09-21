@@ -33,6 +33,16 @@ PORT = int(os.environ.get("ONEIRO_PORT", "8090"))
 DASH_PORT = int(os.environ.get("ONEIRO_DASH_PORT", "8130"))
 WORLD_SEED = os.environ.get("ONEIRO_SEED", "oneiro-0")
 
+# The OpenClaw plugin cannot spawn processes (the host's install scan blocks
+# that pattern), so it posts its lifecycle records here over loopback and the
+# bridge stays the only writer of the graph.
+GATEWAY_KINDS = frozenset({
+    "gateway_start", "gateway_stop", "gateway_service_start", "gateway_service_stop",
+    "life_process_finished", "life_process_exit", "life_process_restart",
+    "life_process_gave_up",
+})
+GATEWAY_PAYLOAD_LIMIT = 4_000
+
 app = Flask(__name__, static_folder=None)
 
 _lock = threading.Lock()          # serializes every bridge use
@@ -494,6 +504,29 @@ def _find_any_subject() -> str | None:
         b = _bridge()
         subs = b.all_subjects()
     return subs[0] if subs else None
+
+
+@app.post("/api/gateway-record")
+def gateway_record():
+    """One gateway lifecycle record, posted by the OpenClaw plugin.
+
+    Kinds come from a fixed allowlist and the body is size-limited: this is a
+    seam for lifecycle telemetry, not a general write API.
+    """
+    body = request.get_json(silent=True) or {}
+    kind = str(body.get("kind") or "")
+    if kind not in GATEWAY_KINDS:
+        return jsonify({"ok": False, "error": "kind must be a gateway lifecycle kind"}), 400
+    details = body.get("payload") or {}
+    if not isinstance(details, dict) or len(json.dumps(details)) > GATEWAY_PAYLOAD_LIMIT:
+        return jsonify({"ok": False, "error": "payload must be a small JSON object"}), 400
+    session = str(body.get("session") or "oneiro-gateway")[:120]
+    role = str(body.get("role") or "gateway")[:60]
+    with _lock:
+        b = _bridge()
+        b.record_organization_event(session_id=session, role=role, kind=kind,
+                                    payload=details, origin="rule", verified=True)
+    return jsonify({"ok": True, "kind": kind})
 
 
 @app.get("/api/events")
