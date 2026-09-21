@@ -65,9 +65,11 @@ class FakeClient:
         self.model = model
         self.replies = list(replies or ["yes"])
         self.prompts = []
+        self.max_tokens_seen = None
 
     def chat(self, messages, tools=None, max_tokens=None):
         self.prompts.append(messages[0]["content"])
+        self.max_tokens_seen = max_tokens
         text = self.replies.pop(0) if self.replies else "yes"
         return {"content": text}, {"prompt_tokens": 11, "completion_tokens": 2}
 
@@ -273,3 +275,50 @@ def test_judge_label_is_yes_in_the_response():
 def test_judge_unknown_type_fails_loudly():
     with pytest.raises(ValueError):
         judge_module.build_prompt("not-a-type", "q", "a", "r")
+
+
+def test_judge_verdict_survives_an_unclosed_thought():
+    """A reasoning block that closed before the verdict still yields a label."""
+    client = FakeClient(replies=["Yes, it contains the answer."])
+    verdict = judge_module.verdict(client, "multi-session", "q", "a", "r")
+    assert verdict["label"] == "yes"
+    assert verdict["passed"] is True
+
+
+def test_judge_reply_cut_inside_a_thought_has_no_verdict():
+    """The 16-token failure mode: the thought never ended, so no verdict was given."""
+    client = FakeClient(replies=["The user is asking me to evaluate whether a model response"])
+    verdict = judge_module.verdict(client, "multi-session", "q", "a", "r")
+    assert verdict["label"] == ""
+    assert verdict["passed"] is False
+
+
+def test_judge_reply_without_yes_or_no_is_unjudged_not_wrong():
+    """A provider aside in another language is not an answer about the answer."""
+    client = FakeClient(replies=["禁止无意义测试。"])
+    assert judge_module.verdict(client, "multi-session", "q", "a", "r")["label"] == ""
+
+
+def test_judge_gets_room_for_its_verdict():
+    client = FakeClient(replies=["no"])
+    judge_module.verdict(client, "multi-session", "q", "a", "r")
+    assert client.max_tokens_seen == judge_module.JUDGE_MAX_TOKENS
+
+
+def test_summary_keeps_unjudged_cells_out_of_the_denominator():
+    import run as run_module
+
+    def cell(label, passed, recall):
+        return {"arm": "flat", "status": "ok", "judge_label": label, "judge_passed": passed,
+                "question_type": "multi-session", "prompt_tokens": 10, "completion_tokens": 1,
+                "recall_at_k": recall}
+
+    summary = run_module.summarize([cell("yes", True, 1.0), cell("no", False, 0.5),
+                                    cell("", False, None)])
+    row = summary["per_arm"]["flat"]
+    assert row["cells"] == 3
+    assert row["judged"] == 2
+    assert row["unjudged"] == 1
+    assert row["passed"] == 1
+    assert row["accuracy"] == 0.5
+    assert summary["per_type"]["multi-session"]["flat"] == 0.5

@@ -405,13 +405,14 @@ function renderMemoryBench(d){
   const rows = (last.arms || []).map(a => {
     const acc = a.accuracy == null ? "нет данных" : (a.accuracy * 100).toFixed(0) + "%";
     const rec = a.mean_recall_at_k == null ? "задаёт контекст целиком" : (a.mean_recall_at_k * 100).toFixed(0) + "%";
-    return `<tr><td>${ARM_RU[a.arm] || a.arm}</td><td>${a.cells}</td><td>${a.passed}</td><td><b>${acc}</b></td><td>${rec}</td></tr>`;
+    const unj = a.unjudged ? `<span title="судья не дал ни да, ни нет">${a.unjudged}</span>` : "0";
+    return `<tr><td>${ARM_RU[a.arm] || a.arm}</td><td>${a.cells}</td><td>${unj}</td><td>${a.judged == null ? a.cells : a.passed}</td><td><b>${acc}</b></td><td>${rec}</td></tr>`;
   }).join("");
   const past = runs.length > 1
     ? `<div class="swarm-status" style="margin-top:10px">прошлые прогоны: ${runs.slice(0, -1).map(r => r.run_tag).join(", ")}</div>`
     : "";
   $("memoryBench").innerHTML = head
-    + `<table><tr><th>вид памяти</th><th>клеток</th><th>верных</th><th>точность</th><th>нужные сессии найдены</th></tr>${rows}</table>`
+    + `<table><tr><th>вид памяти</th><th>клеток</th><th>без вердикта</th><th>верных</th><th>точность</th><th>нужные сессии найдены</th></tr>${rows}</table>`
     + past;
 }
 

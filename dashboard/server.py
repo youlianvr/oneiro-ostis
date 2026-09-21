@@ -567,16 +567,28 @@ def memory_bench():
         arms: dict[str, dict] = {}
         for cell in cells:
             key = str(cell.get("arm") or "?")
-            bucket = arms.setdefault(key, {"arm": key, "cells": 0, "passed": 0, "recalls": []})
+            bucket = arms.setdefault(
+                key, {"arm": key, "cells": 0, "judged": 0, "unjudged": 0, "passed": 0, "recalls": []}
+            )
             bucket["cells"] += 1
-            if cell.get("status") == "ok" and cell.get("judge_passed"):
-                bucket["passed"] += 1
+            if cell.get("status") == "ok":
+                # Records written before the judge parsed its verdicts carry no
+                # label; for those an ok cell is a judged cell, as it was scored
+                # at the time. A cell with no verdict now is unjudged, not wrong.
+                labelled = cell.get("judge_label") if "judge_label" in cell else "yes"
+                if labelled:
+                    bucket["judged"] += 1
+                    if cell.get("judge_passed"):
+                        bucket["passed"] += 1
+                else:
+                    bucket["unjudged"] += 1
             if cell.get("recall_at_k") is not None:
                 bucket["recalls"].append(cell["recall_at_k"])
         out = []
         for bucket in sorted(arms.values(), key=lambda item: item["arm"]):
             recalls = bucket.pop("recalls")
-            bucket["accuracy"] = round(bucket["passed"] / bucket["cells"], 4) if bucket["cells"] else None
+            bucket["accuracy"] = (round(bucket["passed"] / bucket["judged"], 4)
+                                  if bucket["judged"] else None)
             bucket["mean_recall_at_k"] = (round(sum(recalls) / len(recalls), 4) if recalls else None)
             out.append(bucket)
         return out

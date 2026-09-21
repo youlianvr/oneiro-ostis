@@ -5,9 +5,49 @@ Templates are copied verbatim from the benchmark's evaluation script
 question type, a separate one for abstention questions (question ids carrying
 ``_abs``), the label is a yes/no from a model at temperature 0. The judge model
 is deliberately a different model from the one that answered.
+
+One deliberate addition. The benchmark reads "yes" anywhere in the reply, which
+was fine for the model it was written against; a judge that reasons first emits
+``<think>`` blocks, and with a small completion budget that reasoning is all
+that comes back. Counting such a cell as a failed answer is not a measurement,
+it is a silent zero. So the verdict is parsed explicitly: reasoning is removed,
+a thought that never closed yields no verdict at all, and a cell without a
+verdict is recorded as *unjudged* rather than folded into the score.
 """
 
 from __future__ import annotations
+
+import re
+
+THINK_BLOCK_RE = re.compile(r"<think\b[^>]*>.*?</think\s*>", re.I | re.S)
+THINK_OPEN_RE = re.compile(r"<think\b", re.I)
+THINK_CLOSE_RE = re.compile(r"</think\s*>", re.I)
+THINK_ANY_TAG_RE = re.compile(r"</?think\b[^>]*>", re.I)
+VERDICT_RE = re.compile(r"\b(yes|no)\b", re.I)
+
+# A reasoning judge needs room for the thought and the verdict. The benchmark
+# itself allows 16 completion tokens, which is why this is stated as a number
+# that can be seen in a record rather than left to the caller's default.
+JUDGE_MAX_TOKENS = 256
+
+
+def strip_reasoning(raw: str) -> str:
+    """The judge's visible answer: closed reasoning blocks removed."""
+    return THINK_ANY_TAG_RE.sub(" ", THINK_BLOCK_RE.sub(" ", raw or "")).strip()
+
+
+def parse_label(raw: str) -> str:
+    """``yes``, ``no``, or ``""`` when the reply carries no verdict.
+
+    A reasoning block that never closed means the reply was cut off inside the
+    thought: no verdict was given, so nothing is claimed about the answer.
+    """
+    text = raw or ""
+    if len(THINK_OPEN_RE.findall(text)) > len(THINK_CLOSE_RE.findall(text)):
+        return ""
+    visible = strip_reasoning(text)
+    match = VERDICT_RE.search(visible)
+    return match.group(1).lower() if match else ""
 
 SIMPLE = ("I will give you a question, a correct answer, and a response from a model. "
           "Please answer yes if the response contains the correct answer. Otherwise, answer no. "
@@ -70,14 +110,21 @@ def build_prompt(question_type: str, question: str, gold: str, response: str,
 
 
 def verdict(client, question_type: str, question: str, gold: str, response: str,
-            abstention: bool = False) -> dict:
-    """Ask the judge model; LongMemEval's label is 'yes' in the answer."""
+            abstention: bool = False, max_tokens: int = JUDGE_MAX_TOKENS) -> dict:
+    """Ask the judge model and read its verdict.
+
+    Returns the label (``yes`` / ``no`` / ``""``), whether the answer passed
+    (true only on an explicit yes), and the reply itself, so a cell can be
+    audited after the fact instead of trusted.
+    """
     prompt = build_prompt(question_type, question, gold, response, abstention)
-    message, usage = client.chat([{"role": "user", "content": prompt}], max_tokens=16)
+    message, usage = client.chat([{"role": "user", "content": prompt}], max_tokens=max_tokens)
     raw = str(message.get("content") or "").strip()
+    label = parse_label(raw)
     return {
-        "passed": "yes" in raw.lower(),
-        "raw": raw[:200],
+        "label": label,
+        "passed": label == "yes",
+        "raw": raw,
         "model": client.model,
         "prompt_tokens": int((usage or {}).get("prompt_tokens") or 0),
         "completion_tokens": int((usage or {}).get("completion_tokens") or 0),

@@ -127,6 +127,7 @@ def run_question(question, args, graph: GraphStore | None, flat: FlatJournal,
                 verdict = judge_module.verdict(
                     args.judge_chain, question.question_type, question.question,
                     question.answer, answer["text"], abstention=question.is_abstention,
+                    max_tokens=args.judge_max_tokens,
                 )
             except ProviderError as exc:
                 status = "provider_error"
@@ -141,6 +142,8 @@ def run_question(question, args, graph: GraphStore | None, flat: FlatJournal,
                 "stage": args.stage,
                 "question_id": question.question_id,
                 "question_type": question.question_type,
+                "question": question.question[:500],
+                "gold": question.answer[:500],
                 "abstention": question.is_abstention,
                 "arm": arm,
                 "run": run_index,
@@ -156,7 +159,9 @@ def run_question(question, args, graph: GraphStore | None, flat: FlatJournal,
                 "answer": answer["text"][:2000],
                 "answer_model": answer["model"],
                 "judge_passed": bool(verdict["passed"]),
-                "judge_raw": str(verdict["raw"])[:200],
+                "judge_label": str(verdict.get("label") or ""),
+                "judge_raw": str(verdict["raw"])[:600],
+                "judge_chars": len(str(verdict["raw"])),
                 "judge_model": verdict["model"],
                 "prompt_tokens": answer["prompt_tokens"] + verdict["prompt_tokens"],
                 "completion_tokens": answer["completion_tokens"] + verdict["completion_tokens"],
@@ -177,22 +182,28 @@ def summarize(records: list[dict]) -> dict:
     for arm in arms:
         cells = [r for r in records if r["arm"] == arm]
         ok = [r for r in cells if r["status"] == "ok"]
-        passed = sum(1 for r in ok if r["judge_passed"])
+        # A cell without a verdict is not a wrong answer, it is an unjudged one;
+        # folding it into the denominator would invent a failure.
+        judged = [r for r in ok if r.get("judge_label")]
+        passed = sum(1 for r in judged if r["judge_passed"])
         recalls = [r["recall_at_k"] for r in ok if r["recall_at_k"] is not None]
         summary["per_arm"][arm] = {
             "cells": len(cells),
             "ok": len(ok),
+            "judged": len(judged),
+            "unjudged": len(ok) - len(judged),
             "passed": passed,
-            "accuracy": round(passed / len(ok), 4) if ok else None,
+            "accuracy": round(passed / len(judged), 4) if judged else None,
             "mean_recall_at_k": round(sum(recalls) / len(recalls), 4) if recalls else None,
             "tokens": sum(r["prompt_tokens"] + r["completion_tokens"] for r in cells),
         }
     for question_type in sorted({r["question_type"] for r in records}):
         row: dict = {}
         for arm in arms:
-            ok = [r for r in records
-                  if r["arm"] == arm and r["question_type"] == question_type and r["status"] == "ok"]
-            row[arm] = round(sum(1 for r in ok if r["judge_passed"]) / len(ok), 4) if ok else None
+            judged = [r for r in records
+                      if r["arm"] == arm and r["question_type"] == question_type
+                      and r["status"] == "ok" and r.get("judge_label")]
+            row[arm] = round(sum(1 for r in judged if r["judge_passed"]) / len(judged), 4) if judged else None
         summary["per_type"][question_type] = row
     return summary
 
@@ -206,11 +217,14 @@ def render_report(payload: dict) -> str:
     lines.append("")
     lines.append("## Per arm")
     lines.append("")
-    lines.append("| arm | cells | ok | passed | accuracy | mean recall@k | tokens |")
-    lines.append("|---|---|---|---|---|---|---|")
+    lines.append("accuracy is passed / judged: a cell whose judge gave no verdict at all "
+                 "is counted in `unjudged`, never as a wrong answer.")
+    lines.append("")
+    lines.append("| arm | cells | judged | unjudged | passed | accuracy | mean recall@k | tokens |")
+    lines.append("|---|---|---|---|---|---|---|---|")
     for arm, row in payload["summary"]["per_arm"].items():
-        lines.append(f"| {arm} | {row['cells']} | {row['ok']} | {row['passed']} | "
-                     f"{row['accuracy']} | {row['mean_recall_at_k']} | {row['tokens']} |")
+        lines.append(f"| {arm} | {row['cells']} | {row['judged']} | {row['unjudged']} | "
+                     f"{row['passed']} | {row['accuracy']} | {row['mean_recall_at_k']} | {row['tokens']} |")
     lines.append("")
     lines.append("## Per question type (judge pass rate)")
     lines.append("")
@@ -234,6 +248,9 @@ def build_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--repeat", type=int, default=1)
     parser.add_argument("--seed", type=int, default=20260921)
     parser.add_argument("--max-tokens", type=int, default=500)
+    parser.add_argument("--judge-max-tokens", type=int, default=judge_module.JUDGE_MAX_TOKENS,
+                        help="completion budget for the judge; a reasoning judge needs room "
+                             "for the thought before its verdict")
     parser.add_argument("--data", default="", help="LongMemEval data dir")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
     parser.add_argument("--key-env", default="OMNIROUTE_API_KEY")
