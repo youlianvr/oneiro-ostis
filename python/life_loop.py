@@ -79,6 +79,7 @@ class LoopConfig:
     host: str = "localhost"
     port: int = 8090
     run_tag: str = ""
+    attempt: str = ""
     checks: Mapping[str, tuple[tuple[str, ...], str]] = field(
         default_factory=lambda: dict(ALLOWED_CHECKS)
     )
@@ -86,6 +87,8 @@ class LoopConfig:
     def __post_init__(self) -> None:
         if not self.run_tag:
             self.run_tag = time.strftime("%Y%m%d%H%M%S")
+        if not self.attempt:
+            self.attempt = time.strftime("%H%M%S")
         self.repo_root = Path(self.repo_root).resolve()
         self.project_root = Path(self.project_root).resolve()
         self.worktrees_root = Path(self.worktrees_root).resolve()
@@ -148,6 +151,18 @@ def build_dossier(config: LoopConfig) -> str:
         "self-contained improvement that the offered checks can verify."
     )
     return "\n\n".join(parts)[:DOSSIER_LIMIT]
+
+
+def attempt_names(config: LoopConfig, cycle_tag: str) -> tuple[Path, str, str]:
+    """Worktree path, branch, and PR id for one attempt of one cycle.
+
+    The attempt tag is what lets a restarted process run while the worktree
+    and branch a killed process already left behind still exist; without it
+    the restart would collide with its own debris and the biography would
+    stall exactly when the resume matters.
+    """
+    stem = f"live-{config.run_tag}-a{config.attempt}-{cycle_tag}"
+    return (config.worktrees_root / f"oneiro-{stem}", f"agent/{stem}", f"pr-{stem}")
 
 
 def run_loop(
@@ -279,9 +294,7 @@ def run_loop(
                 continue
 
             check_command, _ = config.checks[chosen.check_id]
-            worktree_path = config.worktrees_root / f"oneiro-live-{config.run_tag}-{cycle_tag}"
-            branch = f"agent/live-{config.run_tag}-{cycle_tag}"
-            pr_id = f"pr-live-{config.run_tag}-{cycle_tag}"
+            worktree_path, branch, pr_id = attempt_names(config, cycle_tag)
 
             outcome_box: dict = {}
 

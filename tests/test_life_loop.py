@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from bridge import LifeSession
-from life_loop import LoopConfig, build_dossier, locate_paths, run_loop
+from life_loop import LoopConfig, attempt_names, build_dossier, locate_paths, run_loop
 from llm import BudgetExhausted, ModelReply, ProviderDown
 
 
@@ -141,3 +141,19 @@ def test_dossier_names_the_checks_and_modules(tmp_path):
     assert "## python modules" in dossier
     assert "unit-tests" in dossier
     assert "python/roles.py" in dossier
+
+
+def test_attempt_names_do_not_collide_across_restarts(tmp_path):
+    """A killed attempt leaves a worktree; the restarted one needs its own."""
+    first = make_config(tmp_path)
+    first.attempt = "010101"
+    second = make_config(tmp_path)
+    second.attempt = "020202"
+
+    path1, branch1, pr1 = attempt_names(first, "c1")
+    path2, branch2, pr2 = attempt_names(second, "c1")
+
+    assert path1 != path2 and branch1 != branch2 and pr1 != pr2
+    assert "a010101" in path1.name and "a020202" in path2.name
+    assert branch1.startswith("agent/live-testrun-")
+    assert pr1.startswith("pr-live-testrun-")
