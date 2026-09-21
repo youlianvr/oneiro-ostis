@@ -139,6 +139,21 @@ tr:hover:not(.winrow){background:var(--blue-bg)}
 @keyframes logIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
 
 .empty{color:var(--dim);font-size:.84rem;padding:14px 0;text-align:center}
+
+/* ---------- лента организации ---------- */
+.feed{max-height:430px;overflow:auto;border-top:1px solid var(--line)}
+.feed-row{display:grid;grid-template-columns:62px 116px 1fr;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:.82rem}
+.feed-row:last-child{border-bottom:0}
+.feed-time{color:var(--dim);font-family:var(--mono);font-size:.73rem;padding-top:2px}
+.feed-role{font-weight:600;color:var(--ink2)}
+.feed-role.researcher{color:var(--blue)}
+.feed-role.manager{color:var(--amber)}
+.feed-role.worker{color:var(--green)}
+.feed-role.gateway{color:var(--dim)}
+.feed-detail{color:var(--ink2);font-size:.78rem;margin-top:2px}
+.feed-detail.mono{font-family:var(--mono);font-size:.73rem}
+.swarm-status{font-size:.8rem;color:var(--ink2);margin-bottom:8px}
+.swarm-status b{color:var(--ink)}
 footer{padding:12px 28px 28px;color:var(--dim);font-size:.73rem}
 footer code{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:0 5px}
 </style>
@@ -176,6 +191,15 @@ footer code{background:var(--card);border:1px solid var(--line);border-radius:4p
 </div>
 
 <div class="stats" id="stats"></div>
+
+<div class="grid" style="grid-template-columns:1fr">
+  <div class="card">
+    <h2>Организация: рой агентов</h2>
+    <div class="sub">исследователь, менеджер и работник на живых моделях: что предложили, что решили, что сделали и где остановились</div>
+    <div class="swarm-status" id="swarmStatus"></div>
+    <div class="feed" id="swarmBody"><div class="empty">загрузка журнала организации…</div></div>
+  </div>
+</div>
 
 <div class="grid" id="evidence" style="grid-template-columns:1fr">
   <div class="card">
@@ -239,8 +263,125 @@ function resetStages(){
   ["day","explore","dream","deploy"].forEach(s => setStage(s, null, ""));
 }
 
+/* ---------- лента организации: роли, предложения, решение, PR ---------- */
+const KIND_RU = {
+  loop_start: "цикл запущен",
+  loop_resumed: "цикл продолжен после перезапуска",
+  loop_end: "цикл завершён",
+  loop_frozen: "работа заморожена",
+  loop_interrupted: "цикл прерван",
+  process_restart: "процесс перезапущен",
+  heartbeat_start: "удар: начало",
+  heartbeat_end: "удар: конец",
+  heartbeat_result: "итог удара",
+  research_proposal: "предложение исследователя",
+  research_options: "варианты исследователя",
+  manager_decision: "решение менеджера",
+  model_evidence: "кто из моделей отвечал",
+  worktree_created: "изолированная копия создана",
+  pr_packet: "PR-пакет готов (не слит)",
+  cycle_finished: "цикл закрыт",
+  cycle_failed: "цикл сорвался",
+  cycle_schema_error: "ответ модели не по схеме",
+  gateway_start: "шлюз OpenClaw запущен",
+  gateway_stop: "шлюз OpenClaw остановлен",
+  gateway_service_start: "служба плагина запущена",
+  gateway_service_stop: "служба плагина остановлена",
+  life_process_finished: "прогон жизни завершён",
+  life_process_exit: "прогон жизни упал",
+  life_process_restart: "прогон жизни перезапущен",
+  life_process_gave_up: "прогон жизни сдался",
+};
+const ROLE_RU = {researcher:"исследователь", manager:"менеджер", worker:"работник",
+                 gateway:"шлюз", rule:"система", system:"система"};
+const ACTION_RU = {assign_worker:"назначить работника", escalate:"спросить владельца",
+                   external_review:"отдать на внешнюю проверку", reject:"отклонить",
+                   stop:"остановить цикл"};
+const STATUS_RU = {running:"работает", finished:"завершена", frozen:"заморожена",
+                   waiting_owner:"ждёт решения владельца", interrupted:"прервана"};
+
+const clip = (text, n) => { const s = String(text || ""); return s.length > n ? s.slice(0, n) + "…" : s; };
+// Тексты приходят от моделей, а длинное тире в интерфейсе запрещено: правка
+// только на показе, в графе запись остаётся такой, какой её написал автор.
+const clean = text => String(text || "").replace(/\s*—\s*/g, ": ");
+
+function feedDetail(r){
+  const p = r.payload || {};
+  switch(r.kind){
+    case "research_proposal":
+      return [clip(p.title, 140), p.check_id ? "проверка: " + p.check_id : ""]
+        .filter(Boolean).join(" · ");
+    case "research_options": {
+      const options = (p.options || p.proposals || p.items || []);
+      return options.length ? options.map(x => clip(x.title || x.name || "", 100))
+        .filter(Boolean).join(" | ") : "";
+    }
+    case "manager_decision":
+      return `${ACTION_RU[p.action] || p.action || "решение"}${p.reason ? ": " + clip(p.reason, 220) : ""}`;
+    case "pr_packet": {
+      const paths = p.changed_paths || [];
+      const flags = `слит: ${p.merged ? "да" : "нет"}, одобрен владельцем: ${p.owner_approved ? "да" : "нет"}`;
+      return `${p.pr_id || ""} · ${p.branch || ""} · файлов: ${paths.length} (${paths.map(x => x.split("/").pop()).join(", ")}) · ${flags}`;
+    }
+    case "cycle_finished": {
+      const w = p.worker || {};
+      const pr = p.pr || {};
+      const workerText = w.status === "done" ? `работник закончил за ${w.steps} шагов`
+                       : w.status === "gave_up" ? `работник сдался (${clip(w.summary, 120)})` : "работника не было";
+      return `${workerText}${pr.pr_id ? " · пакет " + pr.pr_id : " · пакета нет"}`;
+    }
+    case "model_evidence": {
+      const calls = p.calls || [];
+      const models = [...new Set(calls.map(c => c.model).filter(Boolean))];
+      return `вызовов: ${calls.length} · модели: ${models.join(", ") || "нет записи"}`;
+    }
+    case "loop_frozen": case "loop_interrupted":
+      return clip(p.reason || "причина в payload", 260);
+    case "worktree_created":
+      return [p.path, p.branch].filter(Boolean).map(x => clip(x, 130)).join(" · ");
+    case "gateway_start": case "gateway_service_start":
+      return [p.port ? "порт " + p.port : "", p.state_dir ? "профиль " + p.state_dir : ""]
+        .filter(Boolean).join(" · ");
+    default:
+      return Object.keys(p).length ? clip(JSON.stringify(p), 200) : "";
+  }
+}
+
+function renderSwarmFeed(d){
+  const s = d.session;
+  $("swarmStatus").innerHTML = s
+    ? `последняя жизнь: <b>${s.session_id}</b> · состояние: <b>${STATUS_RU[s.status] || s.status}</b> · ревизия: <b>${s.revision}</b> · живых жизней в графе: <b>${d.sessions_total}</b> · записей организации: <b>${d.records_total}</b>`
+    : "в графе пока нет ни одной жизни организации";
+  const rows = (d.records || []).slice().reverse();
+  if(!rows.length){
+    $("swarmBody").innerHTML = '<div class="empty">записей пока нет: запустите цикл роя (python/life_loop.py)</div>';
+    return;
+  }
+  $("swarmBody").innerHTML = rows.map(r => {
+    const time = new Date((r.recorded_at || 0) * 1000)
+      .toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit", second:"2-digit"});
+    const verified = r.verified ? "" : " (не подтверждено)";
+    const detail = clean(feedDetail(r));
+    return `<div class="feed-row">
+      <div class="feed-time">${time}</div>
+      <div class="feed-role ${r.role}">${ROLE_RU[r.role] || r.role}</div>
+      <div><div class="feed-what">${KIND_RU[r.kind] || r.kind}${verified}</div>
+        ${detail ? `<div class="feed-detail mono">${detail}</div>` : ""}</div>
+    </div>`;
+  }).join("");
+}
+
+async function refreshSwarm(){
+  try{
+    renderSwarmFeed(await api("/api/swarm"));
+  }catch(e){
+    // лента не имеет права ломать основной экран
+  }
+}
+
 /* ---------- состояние ---------- */
 async function refresh(){
+  refreshSwarm();
   try{
     const d = await api("/api/state" + (SUBJECT ? "?subject=" + encodeURIComponent(SUBJECT) : ""));
     setConn(true, "связь с графом есть");

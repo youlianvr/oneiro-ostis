@@ -50,6 +50,9 @@ _job_lock = threading.Lock()      # one pipeline job at a time
 _state_lock = threading.Lock()    # guards the snapshot cache
 _state_cache: dict = {}           # subject -> (built_at, snapshot)
 _harness_cache: dict = {}         # the harness report, rebuilt rarely
+_swarm_cache: dict = {}           # the organization feed, seconds-fresh
+SWARM_CACHE_SECONDS = 5.0
+SWARM_RECORD_LIMIT = 80
 _building: dict = {}              # subject -> True while a snapshot builds
 
 
@@ -504,6 +507,46 @@ def _find_any_subject() -> str | None:
         b = _bridge()
         subs = b.all_subjects()
     return subs[0] if subs else None
+
+
+@app.get("/api/swarm")
+def swarm():
+    """The organization feed: sessions, proposals, decisions, PR packets.
+
+    Everything here is a record that exists in the graph, with its role and
+    origin, so the page can show model-authored rows and rule-enforced rows
+    side by side instead of a summary nobody can check.
+    """
+    now = time.time()
+    with _state_lock:
+        cached = _swarm_cache.get("data")
+        if cached and now - cached[0] < SWARM_CACHE_SECONDS:
+            return jsonify(cached[1])
+
+    with _lock:
+        b = _bridge()
+        sessions = b.load_life_sessions()
+        records = b.load_organization_events()
+
+    latest = None
+    if sessions:
+        session = sessions[-1]
+        latest = {
+            "session_id": session.session_id,
+            "status": session.status,
+            "revision": getattr(session, "revision", 0),
+            "events": [event.get("kind") for event in getattr(session, "events", [])][-10:],
+        }
+    items = sorted(({
+        "record_id": r.record_id, "session": r.session_id, "role": r.role,
+        "kind": r.kind, "payload": r.payload, "origin": r.origin,
+        "verified": r.verified, "recorded_at": r.recorded_at,
+    } for r in records), key=lambda item: item["recorded_at"])
+    payload = {"session": latest, "records": items[-SWARM_RECORD_LIMIT:],
+               "sessions_total": len(sessions), "records_total": len(items)}
+    with _state_lock:
+        _swarm_cache["data"] = (now, payload)
+    return jsonify(payload)
 
 
 @app.post("/api/gateway-record")
