@@ -83,6 +83,79 @@ lifecycle into OSTIS**. The isolated dev profile is the only instance used.
 - Any claim that a learned skill transfers or that the graph beats a flat
   file: that measurement stays on the memory line's own plan.
 
+## Night log (2026-09-21, agent run)
+
+### What the runs left behind
+
+- **`live2`**: two cycles, two PR packets, `status=finished`, no freeze.
+  `pr-live-live2-c1` and `pr-live-live2-c2`, both `merged=false`,
+  `owner_approved=false`, worker `done` after 12 and 14 steps. Both cycles
+  converged on the same weakness (the dossier's TODO/FIXME scan matching its
+  own code). That is a real observation, not a bug in the loop: the
+  researcher has no memory of what earlier cycles already proposed.
+- **`live3`**: killed mid-heartbeat on purpose, then restarted with the same
+  run tag. The biography recorded `process_restart`, the journal recorded
+  `loop_resumed`, and the restarted cycle produced
+  `pr-live-live3-a041541-c1` (two changed paths) without colliding with the
+  worktree the killed attempt had left on disk.
+- The first live attempt (`live1`) failed because the worker had no way to
+  edit a large file: `read_file` returned numbered text clipped at 6000
+  chars and `write_file` replaced whole files, so the model stubbed a
+  430-line module down to 15 lines. Fixed in `9fb40f674`: `replace_in_file`,
+  plain-text windowed reads, a shrink guard, and a bounded finish window.
+- `0473db98c` gave every attempt its own worktree, branch, and PR id. That
+  is what made the `live3` restart work while the debris of the killed
+  attempt was still on disk.
+
+### The OpenClaw host: one deviation, recorded
+
+The approved plan had the plugin's service spawning and supervising the life
+process. OpenClaw's install scan refused it:
+
+```
+WARNING: Plugin "oneiro-life" contains dangerous code patterns:
+Shell command execution detected (child_process)
+Plugin "oneiro-life" installation blocked: dangerous code patterns detected
+```
+
+Deviation, with the reason: the plugin now records over loopback HTTP to the
+project dashboard (`POST /api/gateway-record`, allowlisted kinds, small
+bodies); the graph stays written by Python only and the plugin spawns
+nothing. Verified live: `openclaw --dev plugins inspect oneiro-life` shows
+`Status: loaded`, typed hooks `gateway_start` and `gateway_stop`, service
+`oneiro-life`; the gateway boot left `gateway_service_start` and
+`gateway_start` (port 19001) records in OSTIS with `origin=rule`.
+
+Still open: graceful-stop records. Stopping an unmanaged gateway kills the
+process before its shutdown path runs, so no `gateway_stop` or
+`gateway_service_stop` record appeared. Verifying that needs the gateway
+installed as a managed service (`openclaw gateway install` creates a Windows
+scheduled task), which is the owner's decision, not the agent's.
+
+### Exit criteria, checked
+
+- [x] `life_loop.py` completes at least two cycles and stops cleanly (`live2`).
+- [x] A kill during the run, then a restart, resumes the biography from OSTIS
+      (`live3`: `process_restart` plus `loop_resumed`).
+- [x] PR packets with passing checks, `merged=false`, `owner_approved=false`,
+      and real worktree paths (three of them).
+- [x] The dev gateway boots with `oneiro-life` loaded, and OSTIS holds the
+      gateway lifecycle records the plugin wrote.
+- [x] The dashboard shows the organization feed (`/api/swarm`; verified in
+      the running page: 53 rows, no console errors).
+- [x] All units committed locally; no push.
+
+### Artifacts and open items for the owner
+
+- Branches awaiting a verdict (worktrees under `~/.openclaw/worktrees/`):
+  `agent/live-live2-c1`, `agent/live-live2-c2`,
+  `agent/live-live3-a041541-c1` hold the real changes;
+  `agent/live-live1-c1` holds the broken stub that exposed the missing edit
+  tool, and `agent/live-live3-c1` holds a partial edit from the killed
+  attempt. None of them is merged, pushed, or deleted.
+- Decide whether the life loop should run continuously (OpenClaw cron, or
+  plugin supervision once the host offers a blessed process surface).
+
 ## Evidence trail
 
 Every cycle writes to OSTIS with `origin` and `verified`: model-authored
