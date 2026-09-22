@@ -29,6 +29,11 @@ READ_WINDOW_LINES = 400
 LIST_LIMIT = 300
 CHECK_TIMEOUT = 600.0
 FINISH_GRACE_CALLS = 2
+# A worker that declares itself finished without ever running the declared check
+# throws away the whole cycle: the packet gate refuses it and the change dies in
+# the worktree. So "finish" is refused while the check has not passed, a bounded
+# number of times; past that the gate decides, as it always did.
+MAX_FINISH_REFUSALS = 3
 SHRINK_GUARD_MIN_BYTES = 2_000
 SHRINK_GUARD_RATIO = 0.5
 
@@ -76,7 +81,9 @@ TOOLS = [
     }},
     {"type": "function", "function": {
         "name": "finish",
-        "description": "Declare the change complete and give a short summary of what was done.",
+        "description": ("Declare the change complete and give a short summary of what was done. "
+                        "The summary is read by a person who is not a programmer: plain "
+                        "Russian, no file names, no English, no tool names."),
         "parameters": {"type": "object", "properties": {
             "summary": {"type": "string", "description": "What changed and why, in Russian."},
         }, "required": ["summary"]},
@@ -94,11 +101,16 @@ Rules:
 - Edit an existing file with replace_in_file: copy the exact snippet out of read_file and swap it.
   write_file replaces a whole file, so it is for new files or for a rewrite that is really the point.
   Never leave a large file as a stub.
-- After changing files, call run_check and iterate until it passes.
+- After changing files, call run_check and iterate until it passes. Calling finish before the
+  check has passed once is refused, and you will be told what the check said; run it, fix what it
+  names, and only then finish. If the check fails for reasons your change cannot fix, say so
+  honestly in the summary and finish anyway.
 - Read the files you are about to change before changing them; do not guess their content.
 - Never touch .git or anything outside the worktree.
 - Work in the project subdirectory named in the task; that is where the code and tests live.
-- When the check passes, call finish with a short summary in Russian.
+- When the check passes, call finish with a short summary in Russian, one or two sentences, in the
+  words a person who is not a programmer would use: no file names, no English words, no tool names.
+  That summary is what a human reads later in the record of the work.
 """
 
 
@@ -136,6 +148,14 @@ class WorkerSession:
         self.step_limit = step_limit
         self.actions: list[dict] = []
         self._pending_changes = 0
+        self._check_passed = False
+        self._last_check = ""
+        self._finish_refusals = 0
+
+    @property
+    def check_passed(self) -> bool:
+        """Whether the declared check has passed at least once in this session."""
+        return self._check_passed
 
     # ---------- the loop ----------
 
@@ -169,8 +189,18 @@ class WorkerSession:
             for call in tool_calls:
                 name, arguments = self._parse_call(call)
                 if name == "finish":
+                    refusal = self._refuse_finish()
+                    if refusal:
+                        self.actions.append({"step": step, "tool": "finish_refused",
+                                             "reason": refusal[:200]})
+                        messages.append({"role": "tool",
+                                         "tool_call_id": call.get("id") or f"call_{step}",
+                                         "content": refusal})
+                        continue
                     summary = str(arguments.get("summary") or "").strip() or "finished"
-                    self.actions.append({"step": step, "tool": "finish", "summary": summary[:500]})
+                    self.actions.append({"step": step, "tool": "finish",
+                                         "check_passed": self._check_passed,
+                                         "summary": summary[:500]})
                     return WorkerOutcome("done", summary, steps=step,
                                          model_calls=model_calls, actions=self.actions)
                 result = self._execute(name, arguments)
@@ -194,7 +224,7 @@ class WorkerSession:
                                  steps=self.step_limit, model_calls=model_calls,
                                  actions=self.actions)
         messages.append({"role": "user", "content":
-                         "You have no model steps left. Call finish now: one short summary "
+                         "You are out of steps. Call finish now: one short summary "
                          "in Russian of what you changed and whether the check passes."})
         for _ in range(FINISH_GRACE_CALLS):
             reply = self.pool.reply(WORKER_ROLE, messages, tools=TOOLS, budget=self.budget)
@@ -209,20 +239,57 @@ class WorkerSession:
             for call in tool_calls:
                 name, arguments = self._parse_call(call)
                 if name == "finish":
+                    # The same rule holds in the grace window, and it is worth more
+                    # here than anywhere: a check that was never run is the one
+                    # thing that turns a finished change into a refused packet.
+                    refusal = self._refuse_finish()
+                    if refusal:
+                        self.actions.append({"step": self.step_limit, "tool": "finish_refused",
+                                             "reason": refusal[:200]})
+                        messages.append({"role": "tool",
+                                         "tool_call_id": call.get("id") or "grace",
+                                         "content": refusal})
+                        continue
                     summary = str(arguments.get("summary") or "").strip() or "finished"
                     self.actions.append({"step": self.step_limit, "tool": "finish",
+                                         "check_passed": self._check_passed,
                                          "summary": summary[:500]})
                     return WorkerOutcome("done", summary, steps=self.step_limit,
                                          model_calls=model_calls, actions=self.actions)
                 messages.append({
                     "role": "tool",
                     "tool_call_id": call.get("id") or "grace",
-                    "content": "[no steps left: call finish]",
+                    "content": self._execute(name, arguments),
                 })
         return WorkerOutcome(
             "gave_up",
             f"step limit reached ({self.step_limit}); finish was not called in the grace window",
             steps=self.step_limit, model_calls=model_calls, actions=self.actions,
+        )
+
+    def _refuse_finish(self) -> Optional[str]:
+        """Refuse a finish the declared check does not back yet.
+
+        Returns the sentence the model reads, or ``None`` when the finish may
+        stand (the check passed, or the refusal budget is spent and the packet
+        gate should judge the result itself).
+        """
+        if self._check_passed:
+            return None
+        if self._finish_refusals >= MAX_FINISH_REFUSALS:
+            return None
+        self._finish_refusals += 1
+        if self._last_check:
+            return (
+                "[finish refused: the declared check has not passed yet. "
+                "Last check output follows.\n"
+                f"{self._last_check[:1500]}\n"
+                "Fix what it names, call run_check again, and call finish only once "
+                "the check passes.]"
+            )
+        return (
+            "[finish refused: you have not run the declared check at all. Call run_check now; "
+            "if it fails, fix the failure and run it again. Finish only once it passes.]"
         )
 
     def _task_text(self) -> str:
@@ -382,8 +449,12 @@ class WorkerSession:
             self.actions.append({"tool": "run_check", "exit": None, "timeout": True})
             return f"[check timed out after {CHECK_TIMEOUT:.0f}s]"
         output = (completed.stdout or "").strip() or "[no output]"
-        self.actions.append({"tool": "run_check", "exit": completed.returncode})
-        return self._clip(f"exit {completed.returncode}\n{output}")
+        self._check_passed = completed.returncode == 0
+        result = f"exit {completed.returncode}\n{output}"
+        self._last_check = result
+        self.actions.append({"tool": "run_check", "exit": completed.returncode,
+                             "passed": self._check_passed})
+        return self._clip(result)
 
 
 __all__ = ["TOOLS", "WorkerOutcome", "WorkerSession"]

@@ -86,13 +86,21 @@ def channel(tmp_path: Path, fake: FakeTelegram, **kwargs) -> TelegramApprovalCha
 
 
 def test_render_names_every_field_and_no_em_dash():
+    """The owner reads about his work, not about our bookkeeping."""
     text = render(proposal())
     for fragment in ("Нашёл, что ускорить", "Что я хочу изменить", "Что это даёт",
-                     "Что может сломать", "Ветка: agent/selfimprove-p01", "Принять"):
-        if fragment == "Принять":
-            continue
+                     "Что может сломать", "Что затронуто: python/approval.py",
+                     "без твоего нажатия ничего не изменится"):
         assert fragment in text
     assert "\u2014" not in text
+
+
+def test_render_hides_branch_and_numbers_from_the_owner():
+    """A branch name or a proposal id is our machinery, not his decision."""
+    text = render(proposal())
+    for jargon in ("Ветка", "Номер", "Проверки:", "Файлы:",
+                   "agent/selfimprove-p01", "p01-two-buttons"):
+        assert jargon not in text
 
 
 def test_keyboard_carries_two_buttons_within_the_telegram_limit():

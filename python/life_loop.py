@@ -145,9 +145,17 @@ def journal_lines(records, limit: int = 14) -> list[str]:
     return lines[-limit:]
 
 
-def build_dossier(config: LoopConfig, journal: Optional[list[str]] = None) -> str:
-    """Real project material for the researcher: files, markers, open items."""
+def build_dossier(config: LoopConfig, journal: Optional[list[str]] = None,
+                  task: str = "") -> str:
+    """Real project material for the researcher: files, markers, open items.
+
+    ``task`` is what the owner asked for in his own words. It comes first on
+    purpose: a cycle that has a request works on that request, and only a cycle
+    with no request scans the project for whatever looks weak.
+    """
     parts: list[str] = []
+    if task.strip():
+        parts.append("## что просит владелец\n" + task.strip()[:600])
     python_dir = config.project_root / "python"
     modules = sorted(python_dir.glob("*.py"))
     module_lines = [
@@ -221,6 +229,7 @@ def run_loop(
     *,
     bridge: Optional[OneiroBridge] = None,
     pool: Optional[ModelPool] = None,
+    task: str = "",
     sleep: Callable[[float], None] = time.sleep,
     echo: Callable[[str], None] = print,
 ) -> dict:
@@ -286,7 +295,7 @@ def run_loop(
             # per cycle, so cycle two also sees cycle one. The graph is the
             # memory here, not this process.
             journal = journal_lines(bridge.load_organization_events())
-            dossier = build_dossier(config, journal)
+            dossier = build_dossier(config, journal, task)
             echo(f"[loop] cycle {index}/{config.cycles} ({cycle_tag})"
                  f" with {len(journal)} journal line(s)")
 

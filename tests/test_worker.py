@@ -67,6 +67,7 @@ def test_worker_cannot_write_outside_the_worktree(tmp_path):
     outside = tmp_path / "escaped.txt"
     messages = [
         tool_call("write_file", {"path": "../escaped.txt", "content": "nope"}),
+        tool_call("run_check", {}),
         tool_call("finish", {"summary": "готово"}),
     ]
     outcome = make_session(tmp_path, messages).run()
@@ -86,6 +87,7 @@ def test_worker_gives_up_at_the_step_limit(tmp_path):
 def test_worker_answers_unknown_tools_without_crashing(tmp_path):
     messages = [
         tool_call("delete_everything", {"path": "/"}),
+        tool_call("run_check", {}),
         tool_call("finish", {"summary": "готово"}),
     ]
     outcome = make_session(tmp_path, messages).run()
@@ -113,6 +115,7 @@ def test_worker_replaces_a_snippet_in_an_existing_file(tmp_path):
         [
             tool_call("replace_in_file",
                       {"path": "seed.txt", "old_text": "beta", "new_text": "BETA"}),
+            tool_call("run_check", {}),
             tool_call("finish", {"summary": "готово"}),
         ],
         {"seed.txt": "alpha\nbeta\ngamma\n"},
@@ -133,6 +136,7 @@ def test_worker_refuses_a_snippet_that_is_missing_or_ambiguous(tmp_path):
                       {"path": "twice.txt", "old_text": "dup", "new_text": "x"}),
             tool_call("replace_in_file",
                       {"path": "twice.txt", "old_text": "absent", "new_text": "x"}),
+            tool_call("run_check", {}),
             tool_call("finish", {"summary": "готово"}),
         ],
         {"twice.txt": original},
@@ -149,6 +153,7 @@ def test_worker_refuses_to_stub_out_a_large_file(tmp_path):
         tmp_path,
         [
             tool_call("write_file", {"path": "big.py", "content": "stub"}),
+            tool_call("run_check", {}),
             tool_call("finish", {"summary": "готово"}),
         ],
         {"big.py": big},
@@ -178,6 +183,7 @@ def test_worker_reads_a_window_and_says_what_is_left(tmp_path):
 def test_worker_finishes_in_the_grace_window_after_the_step_limit(tmp_path):
     messages = [
         tool_call("write_file", {"path": "note.txt", "content": "hello"}),
+        tool_call("run_check", {}),
         tool_call("finish", {"summary": "готово"}),
     ]
     outcome = make_session(tmp_path, messages, step_limit=1).run()
@@ -186,6 +192,37 @@ def test_worker_finishes_in_the_grace_window_after_the_step_limit(tmp_path):
     assert outcome.summary == "готово"
     assert outcome.steps == 1
     assert (tmp_path / "wt" / "note.txt").read_text(encoding="utf-8") == "hello"
+
+
+def test_worker_refuses_finish_until_the_declared_check_passes(tmp_path):
+    """A worker that never ran the check would waste the whole cycle."""
+    messages = [
+        tool_call("write_file", {"path": "note.txt", "content": "hello"}),
+        tool_call("finish", {"summary": "готово"}),          # refused: no check yet
+        tool_call("run_check", {}),
+        tool_call("finish", {"summary": "готово"}),
+    ]
+    outcome = make_session(tmp_path, messages).run()
+
+    assert outcome.status == "done"
+    assert any(action.get("tool") == "finish_refused" for action in outcome.actions)
+    assert any(action.get("tool") == "run_check" and action.get("passed")
+               for action in outcome.actions)
+
+
+def test_worker_accepts_finish_once_the_refusal_budget_is_spent(tmp_path):
+    """Refusing forever would be a loop, not a contract: the gate decides in the end."""
+    messages = (
+        [tool_call("write_file", {"path": "note.txt", "content": "hello"})]
+        + [tool_call("finish", {"summary": "всё равно готово"}) for _ in range(4)]
+    )
+    session = make_session(tmp_path, messages)
+    outcome = session.run()
+
+    assert outcome.status == "done"
+    assert not session.check_passed
+    refused = [a for a in outcome.actions if a.get("tool") == "finish_refused"]
+    assert len(refused) == 3
 
 
 def test_worker_gives_up_when_the_grace_window_is_wasted(tmp_path):

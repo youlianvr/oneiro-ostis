@@ -128,7 +128,12 @@ class PollResult:
 
 
 def render(proposal: Proposal) -> str:
-    """The message the owner reads: plain words, no jargon, no promises."""
+    """The message the owner reads: plain words, no jargon, no promises.
+
+    Nothing here names a branch, a field or an internal number. The person on the
+    phone decides about his own work, so he is told what changes, what it gives
+    and what can break, and nothing about our bookkeeping.
+    """
     if proposal.kind == ACTION:
         lines = [
             f"{proposal.title}",
@@ -139,6 +144,7 @@ def render(proposal: Proposal) -> str:
             "",
             f"Куда это попадёт: {proposal.target}",
         ]
+        closing = "Ответь кнопками ниже: без твоего нажатия ничего не произойдёт."
     else:
         lines = [
             f"{proposal.title}",
@@ -147,13 +153,14 @@ def render(proposal: Proposal) -> str:
             f"Что это даёт: {proposal.gives}",
             f"Что может сломать: {proposal.risks}",
             "",
-            f"Ветка: {proposal.branch}",
+            "Пока это лежит отдельно и в основной работе ничего не меняет.",
         ]
+        closing = "Ответь кнопками ниже: без твоего нажатия ничего не изменится."
     if proposal.files:
-        lines.append("Файлы: " + ", ".join(proposal.files[:6]))
+        lines.append("Что затронуто: " + ", ".join(proposal.files[:6]))
     if proposal.evidence:
-        lines.append("Проверки: " + "; ".join(proposal.evidence[:4]))
-    lines += ["", f"Номер: {proposal.proposal_id}", "Решение принимается только кнопкой."]
+        lines.append("Что я уже проверил: " + "; ".join(proposal.evidence[:4]))
+    lines += ["", closing]
     return "\n".join(lines)
 
 
@@ -262,7 +269,14 @@ class TelegramApprovalChannel:
     # -- asking ------------------------------------------------------------
 
     def send(self, proposal: Proposal) -> dict:
-        """Post the proposal once. Sending the same one twice is refused."""
+        """Post the proposal once. Sending the same one twice is refused.
+
+        The state file is read again first: the process that asks and the process
+        that takes the press are two different programs, and this file is the
+        only thing they share. Judging from a copy loaded at start-up would
+        refuse a press for a proposal this process never heard of.
+        """
+        self._load()
         if proposal.proposal_id in self._pending:
             raise ApprovalError(f"proposal {proposal.proposal_id} was already sent")
         if proposal.proposal_id in self._decided:
@@ -296,15 +310,31 @@ class TelegramApprovalChannel:
     # -- answering ---------------------------------------------------------
 
     def poll(self, offset: Optional[int] = None, limit: int = 50) -> PollResult:
-        """Read presses. Only the owner's press on a known pending proposal decides."""
+        """Read presses straight from Telegram.
+
+        Only safe when nothing else reads this bot: Telegram moves its offset on
+        every read, so a second reader steals updates from the first. When the
+        gateway owns the connection (``telegram_entry``), it reads updates once
+        and calls :meth:`handle_presses` instead.
+        """
         answer = self._call(
             "getUpdates",
             {"offset": offset, "limit": limit, "timeout": 0, "allowed_updates": ["callback_query"]},
         )
         if not answer.get("ok"):
             raise ApprovalError(f"telegram refused getUpdates: {answer.get('description')}")
+        return self.handle_presses(answer.get("result") or [])
+
+    def handle_presses(self, updates: list[dict]) -> PollResult:
+        """Decide from presses that have already arrived. Text decides nothing.
+
+        The state file is read again first, for the same reason as in
+        :meth:`send`: the process that posts the question does not have to be the
+        process that hears the answer.
+        """
         result = PollResult()
-        for update in answer.get("result") or []:
+        self._load()
+        for update in updates or []:
             update_id = int(update.get("update_id") or 0)
             if update_id:
                 result.next_offset = max(result.next_offset or 0, update_id + 1)
