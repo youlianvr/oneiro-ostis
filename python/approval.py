@@ -35,28 +35,68 @@ class ApprovalError(RuntimeError):
     """The channel refused to do something that would have been dishonest."""
 
 
+CHANGE = "change"
+ACTION = "action"
+KINDS = (CHANGE, ACTION)
+
+
 @dataclass(frozen=True)
 class Proposal:
-    """One self-improvement, described the way a person needs to hear it."""
+    """One thing waiting for a human answer, in the words that person needs.
+
+    Two kinds share the same answer path. A *change* is the agent editing itself:
+    it has a branch and a risk of breaking code. An *action* is the agent doing
+    something in the world on the owner's behalf (writing a row into a database,
+    filing a letter, moving documents) and it has a target instead of a branch,
+    because what is at stake is where the effect lands, not which files changed.
+    """
 
     proposal_id: str
     title: str
     changed: str
     gives: str
     risks: str
-    branch: str
+    branch: str = ""
     files: tuple[str, ...] = ()
     evidence: tuple[str, ...] = ()
+    kind: str = CHANGE
+    target: str = ""
 
     def __post_init__(self) -> None:
         if not PROPOSAL_ID_PATTERN.match(self.proposal_id or ""):
             raise ApprovalError(
                 f"proposal id must be a short slug, got {self.proposal_id!r}"
             )
-        for name in ("title", "changed", "gives", "risks", "branch"):
+        if self.kind not in KINDS:
+            raise ApprovalError(f"unknown proposal kind {self.kind!r}")
+        for name in ("title", "changed", "gives", "risks"):
             value = getattr(self, name)
             if not value or not value.strip():
                 raise ApprovalError(f"proposal {self.proposal_id}: {name} is empty")
+        if self.kind == CHANGE and not (self.branch or "").strip():
+            raise ApprovalError(f"proposal {self.proposal_id}: a change needs a branch")
+        if self.kind == CHANGE and self.target:
+            raise ApprovalError(f"proposal {self.proposal_id}: a change has no target")
+        if self.kind == ACTION and not (self.target or "").strip():
+            raise ApprovalError(
+                f"proposal {self.proposal_id}: an action must name where it lands"
+            )
+        if self.kind == ACTION and self.branch:
+            raise ApprovalError(f"proposal {self.proposal_id}: an action has no branch")
+
+    @classmethod
+    def change(cls, *, proposal_id, title, changed, gives, risks, branch,
+               files=(), evidence=()) -> "Proposal":
+        return cls(proposal_id=proposal_id, title=title, changed=changed, gives=gives,
+                   risks=risks, branch=branch, files=tuple(files),
+                   evidence=tuple(evidence), kind=CHANGE)
+
+    @classmethod
+    def action(cls, *, proposal_id, title, found, proposed, needed, target,
+               evidence=()) -> "Proposal":
+        """A question about doing something in the world, before it is done."""
+        return cls(proposal_id=proposal_id, title=title, changed=found, gives=proposed,
+                   risks=needed, target=target, evidence=tuple(evidence), kind=ACTION)
 
     def callback_data(self, verdict: str) -> str:
         if verdict not in VERDICTS:
@@ -89,15 +129,26 @@ class PollResult:
 
 def render(proposal: Proposal) -> str:
     """The message the owner reads: plain words, no jargon, no promises."""
-    lines = [
-        f"{proposal.title}",
-        "",
-        f"Что я хочу изменить: {proposal.changed}",
-        f"Что это даёт: {proposal.gives}",
-        f"Что может сломать: {proposal.risks}",
-        "",
-        f"Ветка: {proposal.branch}",
-    ]
+    if proposal.kind == ACTION:
+        lines = [
+            f"{proposal.title}",
+            "",
+            f"Что я нашёл: {proposal.changed}",
+            f"Что предлагаю сделать: {proposal.gives}",
+            f"Что мне нужно от тебя: {proposal.risks}",
+            "",
+            f"Куда это попадёт: {proposal.target}",
+        ]
+    else:
+        lines = [
+            f"{proposal.title}",
+            "",
+            f"Что я хочу изменить: {proposal.changed}",
+            f"Что это даёт: {proposal.gives}",
+            f"Что может сломать: {proposal.risks}",
+            "",
+            f"Ветка: {proposal.branch}",
+        ]
     if proposal.files:
         lines.append("Файлы: " + ", ".join(proposal.files[:6]))
     if proposal.evidence:

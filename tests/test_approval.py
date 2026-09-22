@@ -237,6 +237,58 @@ def test_every_decision_is_recorded_for_the_graph(tmp_path):
     assert json.loads((tmp_path / "approvals.json").read_text(encoding="utf-8"))["decided"]
 
 
+def action_proposal(proposal_id: str = "a01-mail-to-db") -> Proposal:
+    """The secretary case: a letter arrived, the agent asks before it writes."""
+    return Proposal.action(
+        proposal_id=proposal_id,
+        title="Письмо про приём в 10 класс",
+        found="в почте письмо о приёме, списки нашлись на рабочем столе",
+        proposed="внести три фамилии в базу приёма",
+        needed="твоё слово, потому что база не моя",
+        target="база приёма, лист 10-А",
+        evidence=("файл списки_10.xlsx прочитан",),
+    )
+
+
+def test_an_action_asks_in_the_owners_words():
+    text = render(action_proposal())
+    assert "Что я нашёл: " in text
+    assert "Что предлагаю сделать: " in text
+    assert "Что мне нужно от тебя: " in text
+    assert "Куда это попадёт: база приёма, лист 10-А" in text
+    assert "Ветка:" not in text
+    assert "\u2014" not in text
+
+
+def test_an_action_without_a_target_is_refused():
+    with pytest.raises(ApprovalError):
+        Proposal.action(proposal_id="a02", title="т", found="ч", proposed="д",
+                        needed="н", target="  ")
+
+
+def test_a_change_without_a_branch_is_refused():
+    with pytest.raises(ApprovalError):
+        Proposal(proposal_id="p03", title="т", changed="ч", gives="д", risks="р")
+
+
+def test_a_change_cannot_carry_a_target():
+    with pytest.raises(ApprovalError):
+        Proposal(proposal_id="p04", title="т", changed="ч", gives="д", risks="р",
+                 branch="agent/x", target="куда-то")
+
+
+def test_an_action_stands_on_the_same_button_path(tmp_path):
+    fake = FakeTelegram()
+    subject = channel(tmp_path, fake)
+    sender = action_proposal()
+    subject.send(sender)
+    assert subject.is_approved(sender.proposal_id) is False
+    fake.press(sender.callback_data(APPROVE), OWNER)
+    decision = subject.poll().decisions[0]
+    assert decision.proposal_id == sender.proposal_id and decision.approved
+    assert subject.is_approved(sender.proposal_id) is True
+
+
 def test_a_refused_press_is_recorded_too(tmp_path):
     records: list[tuple[str, dict]] = []
     fake = FakeTelegram()
