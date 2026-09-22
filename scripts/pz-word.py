@@ -5,7 +5,7 @@ are only knowable in Word:
 
 * the table of contents has real page numbers only after the field is updated;
 * the number printed on the first body page depends on how many pages the front
-  matter (title page, contents, annotation) occupies, and none of those carry a
+  matter (title page and contents) occupies, and neither of those carries a
   number.
 
 This script opens the generated file, updates every field, finds the page where
@@ -55,6 +55,24 @@ def set_first_page_number(path: Path, start_at: int) -> None:
     document.save(str(path))
 
 
+def start_word():
+    """A hidden Word instance that never writes an autosave record.
+
+    Autosave is what makes a killed run dangerous: Word leaves an `.asd`
+    recovery file keyed to the document name, and the next open of that same
+    document stops on the recovery prompt. A build machine never needs the
+    record, so the interval is switched off before the first open.
+    """
+    word = win32.DispatchEx("Word.Application")
+    word.Visible = False
+    word.DisplayAlerts = 0
+    try:
+        word.Options.SaveInterval = 0
+    except Exception:
+        pass
+    return word
+
+
 def quit_word(word) -> None:
     """Close whatever is open and quit.
 
@@ -89,9 +107,8 @@ def main() -> int:
         print(f"FAIL: {DOCX} is missing; run scripts/pz-build.py first", file=sys.stderr)
         return 1
 
-    word = win32.DispatchEx("Word.Application")
-    word.Visible = False
-    word.DisplayAlerts = 0
+    word = start_word()
+
     try:
         doc = word.Documents.Open(str(DOCX))
         for field in doc.Fields:
@@ -115,9 +132,8 @@ def main() -> int:
     # so its first printed number is its physical position in the document
     set_first_page_number(DOCX, start)
 
-    word = win32.DispatchEx("Word.Application")
-    word.Visible = False
-    word.DisplayAlerts = 0
+    word = start_word()
+
     try:
         doc = word.Documents.Open(str(DOCX))
         doc.Repaginate()

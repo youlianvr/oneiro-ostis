@@ -4,18 +4,19 @@
 
 The markdown file in `docs/pz/` is the source; this script is the only writer of
 `docs/pz/Пояснительная записка.docx`. Formatting follows the competition's
-formulary: A4 portrait, Times New Roman 14, single line spacing, margins left
-30 mm, right 10 mm, top and bottom 20 mm, 10 mm first-line indent, justified
-body, headings left, an annotation of at most half a page after the table of
-contents, page numbers bottom centre and absent from the front matter,
-appendices after the sources list.
+form: A4 portrait, Times New Roman 14, single line spacing, margins left 20 mm,
+right 12,5 mm, top and bottom 20 mm, 10 mm first-line indent, justified body,
+headings left, a table of contents right after the title page, page numbers
+bottom centre and absent from the front matter, appendices after the sources
+list. The title page follows the form accepted in the region (the related work
+beside this project): the words ПОЯСНИТЕЛЬНАЯ ЗАПИСКА above the theme, then the
+author, the institution, the supervisor, and the region with the year.
 
-Three rules the script enforces instead of trusting the writer:
+Two rules the script enforces instead of trusting the writer:
 
 * no em dash anywhere in the document text (the workspace bans it);
 * every ТИТУЛЬНЫЙ ЛИСТ placeholder is present, so a filled title page cannot
-  silently lose the author's name;
-* the annotation fits the half page the formulary allows.
+  silently lose the author's name.
 """
 
 from __future__ import annotations
@@ -38,32 +39,28 @@ TARGET = HERE / "docs" / "pz" / "Пояснительная записка.docx"
 FONT = "Times New Roman"
 BODY_SIZE = Pt(14)
 TABLE_SIZE = Pt(12)
-# Margins of the formulary: wide left for binding, narrow right, even vertical.
-LEFT_MARGIN = Mm(30)
-RIGHT_MARGIN = Mm(10)
+# Margins of the form the region accepts: 20 mm left, right 12,5 mm,
+# 20 mm top and bottom. The text block is therefore 177,5 mm wide.
+LEFT_MARGIN = Mm(20)
+RIGHT_MARGIN = Mm(12.5)
 VERTICAL_MARGIN = Mm(20)
 FIGURE_WIDTH = Cm(16)
 # Height a figure may take: an A4 page holds 257 mm of text, and the caption
 # needs a line of its own, so nothing may be taller than this.
 FIGURE_MAX_HEIGHT = Cm(19)
-# Text width of an A4 page with the formulary's margins (210 - 30 - 10 = 170 mm,
-# the same 170 mm the body text uses), minus the table indent above, so the
-# frame of a table ends on the right margin.
-TABLE_WIDTH_TWIPS = 9531
-
-# The formulary gives the annotation at most half a page. At single spacing and
-# a 170 mm line half a page holds about 20 lines, which is under 250 words.
-ANNOTATION_WORD_LIMIT = 175
-ANNOTATION_HEADING = "Аннотация"
+# Text width of an A4 page with these margins (210 - 20 - 12,5 = 177,5 mm, the
+# same width the body text uses), minus the table indent above, so the frame of
+# a table ends on the right margin.
+TABLE_WIDTH_TWIPS = 9955
 
 PLACEHOLDER_KEYS = ("АВТОР:", "РУКОВОДИТЕЛЬ:", "УЧРЕЖДЕНИЕ:", "МЕСТО:")
 
 TOC_INSTRUCTION = 'TOC \\o "1-3" \\h \\z \\u'
-# How many front-matter pages stand before the body: the title page, the table
-# of contents and the annotation. Word measures the real value in
-# `scripts/pz-word.py`; this is the build-time guess.
-FRONT_MATTER_PAGES = 3
-TOC_NOTE = "Оглавление собирается при обновлении полей: выделить и нажать F9."
+# How many front-matter pages stand before the body: the title page and the
+# table of contents. Word measures the real value in `scripts/pz-word.py`;
+# this is the build-time guess.
+FRONT_MATTER_PAGES = 2
+TOC_NOTE = "Содержание собирается при обновлении полей: выделить и нажать F9."
 
 
 # --------------------------------------------------------------------------- #
@@ -300,21 +297,8 @@ def split_row(line: str) -> list[str]:
 # main
 # --------------------------------------------------------------------------- #
 
-def split_annotation(body: list[str]) -> tuple[list[str], list[str]]:
-    """Peel the annotation off the body, because it belongs to the front matter.
-
-    The formulary puts it right after the table of contents, before the
-    introduction, and the front matter carries no page number.
-    """
-    if not body or not body[0].startswith(f"## {ANNOTATION_HEADING}"):
-        return [], body
-    index = 1
-    while index < len(body) and not body[index].startswith("## "):
-        index += 1
-    return body[1:index], body[index:]
-
-
 def read_source() -> tuple[dict[str, str], list[str]]:
+    """Title page fields and the body lines, comments removed."""
     text = SOURCE.read_text(encoding="utf-8")
     text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
     lines = [line.rstrip() for line in text.splitlines()]
@@ -344,56 +328,41 @@ def build() -> int:
         print(f"FAIL: title page is missing {missing}", file=sys.stderr)
         return 1
 
-    annotation, body = split_annotation(body)
-    if not annotation:
-        print(f"FAIL: {ANNOTATION_HEADING} is missing from the source", file=sys.stderr)
-        return 1
-    annotation_words = len(re.findall(r"[^\s]+", " ".join(annotation)))
-    if annotation_words > ANNOTATION_WORD_LIMIT:
-        print(
-            f"FAIL: the annotation is {annotation_words} words, the half page "
-            f"allowed holds about {ANNOTATION_WORD_LIMIT}",
-            file=sys.stderr,
-        )
-        return 1
-
     doc = base_document()
 
     # ---- title page (section 1, no page number) -------------------------- #
-    heading_paragraph = doc.add_paragraph()
-    heading_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    heading_paragraph.paragraph_format.first_line_indent = Mm(0)
-    run = heading_paragraph.add_run(title_page["title"].upper())
-    run.bold = True
-    run.font.name = FONT
-    run.font.size = BODY_SIZE
-
-    doc.add_paragraph()
-    for key in ("АВТОР:", "РУКОВОДИТЕЛЬ:"):
+    # The form is the one accepted in the region (the related work that sits
+    # next to this project): both headings above the theme, then the author,
+    # the institution, the supervisor, and the region with the year.
+    def centered(text: str, *, bold: bool = False) -> None:
         paragraph = doc.add_paragraph()
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
         paragraph.paragraph_format.first_line_indent = Mm(0)
-        plain(paragraph, title_page[key])
+        plain(paragraph, text)
+        if bold:
+            for piece in paragraph.runs:
+                piece.bold = True
 
-    for _ in range(4):
-        blank = doc.add_paragraph()
-        blank.paragraph_format.first_line_indent = Mm(0)
+    def blank() -> None:
+        paragraph = doc.add_paragraph()
+        paragraph.paragraph_format.first_line_indent = Mm(0)
 
-    institution = doc.add_paragraph()
-    institution.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    institution.paragraph_format.first_line_indent = Mm(0)
-    plain(institution, title_page["УЧРЕЖДЕНИЕ:"])
-    for run in institution.runs:
-        run.italic = True
+    centered("ПОЯСНИТЕЛЬНАЯ ЗАПИСКА", bold=True)
+    centered("к исследовательской работе")
+    blank()
+    centered(f"«{title_page['title']}»")
 
-    for _ in range(4):
-        blank = doc.add_paragraph()
-        blank.paragraph_format.first_line_indent = Mm(0)
+    for _ in range(3):
+        blank()
 
-    place = doc.add_paragraph()
-    place.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    place.paragraph_format.first_line_indent = Mm(0)
-    plain(place, title_page["МЕСТО:"])
+    centered(f"Автор: {title_page['АВТОР:']}")
+    centered(title_page["УЧРЕЖДЕНИЕ:"])
+    centered(f"Научный руководитель: {title_page['РУКОВОДИТЕЛЬ:']}")
+
+    for _ in range(3):
+        blank()
+
+    centered(title_page["МЕСТО:"])
 
     # ---- table of contents (still section 1) ----------------------------- #
     doc.add_page_break()
@@ -408,20 +377,9 @@ def build() -> int:
     toc_paragraph.paragraph_format.first_line_indent = Mm(0)
     toc_field(toc_paragraph)
 
-    # ---- annotation (still section 1, no page number) -------------------- #
-    doc.add_page_break()
-    paragraph = doc.add_paragraph()
-    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    paragraph.paragraph_format.first_line_indent = Mm(0)
-    run = paragraph.add_run(ANNOTATION_HEADING)
-    run.bold = True
-    run.font.name = FONT
-    run.font.size = BODY_SIZE
-    for line in annotation:
-        if line.strip():
-            body_paragraph(doc, line.strip())
-
     # ---- body (section 2) ------------------------------------------------ #
+    # The regional form has no annotation page: the related work of the same
+    # region goes straight from the contents to the introduction.
     # The front matter carries no page number. The first body page is therefore
     # numbered after it; `scripts/pz-word.py` measures the real number once
     # Word has laid the table of contents out.
@@ -514,7 +472,6 @@ def build() -> int:
     doc.save(TARGET)
     print(f"saved: {TARGET}")
     print(f"paragraphs: {len(doc.paragraphs)}  tables: {tables}  figures: {figures}")
-    print(f"annotation: {annotation_words} words")
     print(f"title page: {title_page['АВТОР:']} / {title_page['УЧРЕЖДЕНИЕ:']}")
     return 0
 
