@@ -68,6 +68,10 @@ documented in `docs/GOAL-LIVE-SWARM.md`.
 - `docs/PROGRESS.md` — per-stage execution log.
 - `docs/GOAL-LIVE-SWARM.md` — the live-swarm goal, its run log and evidence.
 - `docs/ARCHITECTURE-HYBRID.md` — where Oneiro, Hermes and OpenClaw meet.
+- `docs/pz/` — the research work for the school competition (markdown source,
+  Word and PDF builds, dashboard figures). Rebuild with
+  `python scripts/pz-build.py` then `python scripts/pz-word.py`; the numbers in
+  it come from the artifacts listed in its appendix В.
 
 ## Status
 
