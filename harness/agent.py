@@ -27,8 +27,12 @@ import runner
 from policy import HarnessPolicy, get_policy
 
 # The MCP shelf lives beside the roles in python/; the harness is a flat
-# directory, so the path is spelled out (same pattern as bench/memory).
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
+# directory, so the path is spelled out (same pattern as bench/memory). It goes
+# to the END of the search path, not the front: python/replay is a package of
+# the world engine while harness/replay.py is the replay judge, so the harness's
+# own modules must keep priority or `import replay` silently resolves to the
+# wrong one and the replay tests fail with a missing attribute.
+sys.path.append(str(Path(__file__).resolve().parents[1] / "python"))
 import mcp_client  # noqa: E402
 import skills_index  # noqa: E402
 
