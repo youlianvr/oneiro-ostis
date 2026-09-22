@@ -1,13 +1,12 @@
 """Finish the Word version of the research work: fields, page numbers, PDF.
 
-    python scripts/pz-word.py
-
-`scripts/pz-build.py` writes the docx but cannot lay text out, so two things
+    python scripts/pz-word.py`scripts/pz-build.py` writes the docx but cannot lay text out, so two things
 are only knowable in Word:
 
 * the table of contents has real page numbers only after the field is updated;
-* the number printed on the first body page depends on how many pages that
-  table of contents occupies (the title page and the contents carry no number).
+* the number printed on the first body page depends on how many pages the front
+  matter (title page, contents, annotation) occupies, and none of those carry a
+  number.
 
 This script opens the generated file, updates every field, finds the page where
 the body starts, writes that number as the section's first page number, saves,
@@ -29,7 +28,6 @@ HERE = Path(__file__).resolve().parent.parent
 DOCX = HERE / "docs" / "pz" / "Пояснительная записка.docx"
 PDF = DOCX.with_suffix(".pdf")
 
-WD_LINE_SPACE_SINGLE = 0
 WD_GO_TO_PAGE = 1
 WD_GO_TO_ABSOLUTE = 1
 WD_EXPORT_PDF = 17
@@ -75,21 +73,6 @@ def page_start(doc, page: int) -> int:
     return doc.GoTo(What=WD_GO_TO_PAGE, Which=WD_GO_TO_ABSOLUTE, Count=page).Start
 
 
-def compact_contents(doc) -> None:
-    """Lay the table of contents out at single spacing.
-
-    At the body's 1.5 spacing a table with 26 entries needs a second page for
-    one line, and since the contents carries no page number that stray line
-    costs the work a whole page. A contents page is normally set tighter than
-    the body, so this is formatting, not a deviation from the requirements.
-    """
-    for toc in doc.TablesOfContents:
-        toc.Update()
-        toc.Range.ParagraphFormat.LineSpacingRule = WD_LINE_SPACE_SINGLE
-        toc.Range.ParagraphFormat.SpaceAfter = 0
-        toc.Range.ParagraphFormat.SpaceBefore = 0
-
-
 def body_page(doc, pages: int) -> int | None:
     """First page whose text begins with the body's first heading."""
     for page in range(2, pages + 1):
@@ -113,7 +96,6 @@ def main() -> int:
         doc = word.Documents.Open(str(DOCX))
         for field in doc.Fields:
             field.Update()
-        compact_contents(doc)
         doc.Repaginate()
 
         pages = doc.ComputeStatistics(WD_STAT_PAGES)

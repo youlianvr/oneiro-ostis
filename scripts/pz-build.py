@@ -4,16 +4,18 @@
 
 The markdown file in `docs/pz/` is the source; this script is the only writer of
 `docs/pz/Пояснительная записка.docx`. Formatting follows the competition's
-requirements: A4 portrait, Times New Roman 14, line spacing 1.5, 20 mm margins,
-10 mm first-line indent, justified body, headings left, page numbers bottom
-right and absent from the title page and the table of contents, appendices
-after the sources list.
+formulary: A4 portrait, Times New Roman 14, single line spacing, margins left
+30 mm, right 10 mm, top and bottom 20 mm, 10 mm first-line indent, justified
+body, headings left, an annotation of at most half a page after the table of
+contents, page numbers bottom centre and absent from the front matter,
+appendices after the sources list.
 
-Two rules the script enforces instead of trusting the writer:
+Three rules the script enforces instead of trusting the writer:
 
 * no em dash anywhere in the document text (the workspace bans it);
 * every ТИТУЛЬНЫЙ ЛИСТ placeholder is present, so a filled title page cannot
-  silently lose the author's name.
+  silently lose the author's name;
+* the annotation fits the half page the formulary allows.
 """
 
 from __future__ import annotations
@@ -36,20 +38,31 @@ TARGET = HERE / "docs" / "pz" / "Пояснительная записка.docx"
 FONT = "Times New Roman"
 BODY_SIZE = Pt(14)
 TABLE_SIZE = Pt(12)
+# Margins of the formulary: wide left for binding, narrow right, even vertical.
+LEFT_MARGIN = Mm(30)
+RIGHT_MARGIN = Mm(10)
+VERTICAL_MARGIN = Mm(20)
 FIGURE_WIDTH = Cm(16)
 # Height a figure may take: an A4 page holds 257 mm of text, and the caption
 # needs a line of its own, so nothing may be taller than this.
 FIGURE_MAX_HEIGHT = Cm(19)
-# Text width of an A4 page with 20 mm margins (11906 - 1134 - 1134 twips),
-# minus the table indent above, so the frame ends on the right margin.
+# Text width of an A4 page with the formulary's margins (210 - 30 - 10 = 170 mm,
+# the same 170 mm the body text uses), minus the table indent above, so the
+# frame of a table ends on the right margin.
 TABLE_WIDTH_TWIPS = 9531
+
+# The formulary gives the annotation at most half a page. At single spacing and
+# a 170 mm line half a page holds about 20 lines, which is under 250 words.
+ANNOTATION_WORD_LIMIT = 175
+ANNOTATION_HEADING = "Аннотация"
 
 PLACEHOLDER_KEYS = ("АВТОР:", "РУКОВОДИТЕЛЬ:", "УЧРЕЖДЕНИЕ:", "МЕСТО:")
 
 TOC_INSTRUCTION = 'TOC \\o "1-3" \\h \\z \\u'
-# How many pages the table of contents occupies before the body starts. Word
-# measures the real value in `scripts/pz-word.py`; this is the build-time guess.
-TOC_PAGES = 2
+# How many front-matter pages stand before the body: the title page, the table
+# of contents and the annotation. Word measures the real value in
+# `scripts/pz-word.py`; this is the build-time guess.
+FRONT_MATTER_PAGES = 3
 TOC_NOTE = "Оглавление собирается при обновлении полей: выделить и нажать F9."
 
 
@@ -62,15 +75,17 @@ def base_document() -> Document:
     section = doc.sections[0]
     section.page_width = Mm(210)
     section.page_height = Mm(297)
-    for edge in ("top_margin", "bottom_margin", "left_margin", "right_margin"):
-        setattr(section, edge, Mm(20))
+    section.top_margin = VERTICAL_MARGIN
+    section.bottom_margin = VERTICAL_MARGIN
+    section.left_margin = LEFT_MARGIN
+    section.right_margin = RIGHT_MARGIN
 
     normal = doc.styles["Normal"]
     normal.font.name = FONT
     normal.font.size = BODY_SIZE
     normal.element.rPr.rFonts.set(qn("w:eastAsia"), FONT)
     fmt = normal.paragraph_format
-    fmt.line_spacing = 1.5
+    fmt.line_spacing = 1.0
     fmt.space_before = Pt(0)
     fmt.space_after = Pt(0)
     fmt.first_line_indent = Mm(10)
@@ -88,17 +103,22 @@ def base_document() -> Document:
         pf.space_before = Pt(12)
         pf.space_after = Pt(6)
         pf.keep_with_next = True
-        pf.line_spacing = 1.5
+        pf.line_spacing = 1.0
     return doc
 
 
 def page_number_footer(section, start_at: int) -> None:
-    """PAGE field in the bottom-right corner, counting from `start_at`."""
+    """PAGE field at the bottom centre of the page, counting from `start_at`."""
     footer = section.footer
     footer.is_linked_to_previous = False
     paragraph = footer.paragraphs[0]
-    paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
     paragraph.paragraph_format.first_line_indent = Mm(0)
+    # The formulary centres the number on the sheet, and the text column is not
+    # centred: it spans 30 mm to 200 mm, so its middle sits 10 mm right of the
+    # sheet's. The indent below moves the footer's own column back by exactly
+    # that offset, which puts the number on the middle of the page.
+    paragraph.paragraph_format.left_indent = -int(LEFT_MARGIN - RIGHT_MARGIN)
     run = paragraph.add_run()
     for element, attrs, text in (
         ("w:fldChar", {"w:fldCharType": "begin"}, None),
@@ -280,6 +300,20 @@ def split_row(line: str) -> list[str]:
 # main
 # --------------------------------------------------------------------------- #
 
+def split_annotation(body: list[str]) -> tuple[list[str], list[str]]:
+    """Peel the annotation off the body, because it belongs to the front matter.
+
+    The formulary puts it right after the table of contents, before the
+    introduction, and the front matter carries no page number.
+    """
+    if not body or not body[0].startswith(f"## {ANNOTATION_HEADING}"):
+        return [], body
+    index = 1
+    while index < len(body) and not body[index].startswith("## "):
+        index += 1
+    return body[1:index], body[index:]
+
+
 def read_source() -> tuple[dict[str, str], list[str]]:
     text = SOURCE.read_text(encoding="utf-8")
     text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
@@ -308,6 +342,19 @@ def build() -> int:
     missing = [key for key in PLACEHOLDER_KEYS if key not in title_page]
     if missing:
         print(f"FAIL: title page is missing {missing}", file=sys.stderr)
+        return 1
+
+    annotation, body = split_annotation(body)
+    if not annotation:
+        print(f"FAIL: {ANNOTATION_HEADING} is missing from the source", file=sys.stderr)
+        return 1
+    annotation_words = len(re.findall(r"[^\s]+", " ".join(annotation)))
+    if annotation_words > ANNOTATION_WORD_LIMIT:
+        print(
+            f"FAIL: the annotation is {annotation_words} words, the half page "
+            f"allowed holds about {ANNOTATION_WORD_LIMIT}",
+            file=sys.stderr,
+        )
         return 1
 
     doc = base_document()
@@ -361,12 +408,25 @@ def build() -> int:
     toc_paragraph.paragraph_format.first_line_indent = Mm(0)
     toc_field(toc_paragraph)
 
+    # ---- annotation (still section 1, no page number) -------------------- #
+    doc.add_page_break()
+    paragraph = doc.add_paragraph()
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    paragraph.paragraph_format.first_line_indent = Mm(0)
+    run = paragraph.add_run(ANNOTATION_HEADING)
+    run.bold = True
+    run.font.name = FONT
+    run.font.size = BODY_SIZE
+    for line in annotation:
+        if line.strip():
+            body_paragraph(doc, line.strip())
+
     # ---- body (section 2) ------------------------------------------------ #
-    # The title page and the table of contents carry no page number. The first
-    # body page is therefore numbered after them; `scripts/pz-word.py` measures
-    # the real number once Word has laid the table of contents out.
+    # The front matter carries no page number. The first body page is therefore
+    # numbered after it; `scripts/pz-word.py` measures the real number once
+    # Word has laid the table of contents out.
     section = doc.add_section(WD_SECTION.NEW_PAGE)
-    page_number_footer(section, start_at=TOC_PAGES + 1)
+    page_number_footer(section, start_at=FRONT_MATTER_PAGES + 1)
 
     figures = 0
     tables = 0
@@ -454,6 +514,7 @@ def build() -> int:
     doc.save(TARGET)
     print(f"saved: {TARGET}")
     print(f"paragraphs: {len(doc.paragraphs)}  tables: {tables}  figures: {figures}")
+    print(f"annotation: {annotation_words} words")
     print(f"title page: {title_page['АВТОР:']} / {title_page['УЧРЕЖДЕНИЕ:']}")
     return 0
 
