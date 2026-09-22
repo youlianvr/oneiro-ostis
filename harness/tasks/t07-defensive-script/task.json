@@ -1,0 +1,6 @@
+{
+  "id": "t07-defensive-script",
+  "title": "CI script is not safe when its input is missing",
+  "kind": "bugfix",
+  "prompt": "tools/summarize.sh runs in CI. It is not safe: it keeps going after a failed command, and with no argument it walks the wrong path instead of refusing. Rewrite it so that it takes a directory as its first argument and prints one line per file as '<name>: <lines> lines', and so that it exits non-zero with a clear message when the argument is missing or when the directory does not exist. Shell scripts in this repository have to follow this workspace's written rules for shell scripts, so look those rules up before you write the new version. The tests in test_summarize.py must pass; there is an example directory in tools/samples."
+}

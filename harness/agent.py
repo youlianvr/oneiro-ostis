@@ -17,6 +17,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -24,6 +25,12 @@ from pathlib import Path
 
 import runner
 from policy import HarnessPolicy, get_policy
+
+# The MCP shelf lives beside the roles in python/; the harness is a flat
+# directory, so the path is spelled out (same pattern as bench/memory).
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
+import mcp_client  # noqa: E402
+import skills_index  # noqa: E402
 
 # The provider is any OpenAI-compatible endpoint; the key comes from the
 # environment (see runner.api_key). Since 2026-09-22 that endpoint is the local
@@ -229,10 +236,20 @@ class Provider:
 class ToolBox:
     """Executes the agent's tools inside one repository and reports what happened."""
 
-    def __init__(self, repo: Path, policy: HarnessPolicy):
+    def __init__(self, repo: Path, policy: HarnessPolicy,
+                 extra_tools: list[dict] | None = None, mcp=None, skills=None):
         self.repo = repo
         self.policy = policy
         self.actions: list[dict] = []
+        # Tools the episode was given on top of the local ones (the MCP shelf
+        # and the skill catalog), and what answers for them. All empty when the
+        # run wants a bare harness, so a measured comparison is never changed
+        # silently.
+        self.extra_tools = list(extra_tools or [])
+        self.mcp = mcp
+        self.skills = skills
+        self._allowed = {tool["function"]["name"] for tool in TOOLS} | {
+            tool["function"]["name"] for tool in self.extra_tools}
 
     # -- helpers --
 
@@ -301,6 +318,20 @@ class ToolBox:
         target.write_text(text.replace(old_string, new_string, 1), encoding="utf-8")
         return f"[edited {path}]"
 
+    def find_skills(self, query: str, limit: int = 4) -> str:
+        """Rank the catalog: what is already written for this kind of task."""
+        if self.skills is None:
+            return ("[no skill catalog in this run: it is a policy decision, "
+                    "and this episode was run without it]")
+        return skills_index.render_search(self.skills, str(query), int(limit or 4))
+
+    def read_skill(self, name: str, chars: int = skills_index.CONTRACT_CHARS) -> str:
+        """Open one contract, from the same file a person would open."""
+        if self.skills is None:
+            return "[no skill catalog in this run]"
+        return skills_index.render_contract(self.skills, str(name), int(chars or
+                                            skills_index.CONTRACT_CHARS))
+
     def run_tests(self) -> str:
         return self._shell("python -m pytest -q -p no:cacheprovider")
 
@@ -308,8 +339,14 @@ class ToolBox:
         return self._shell(str(command))
 
     def execute(self, name: str, args: dict) -> str:
+        if str(name).startswith("mcp__"):
+            observation = (self.mcp.call(str(name), args if isinstance(args, dict) else {})
+                           if self.mcp is not None
+                           else "[refused: no mcp shelf is open in this run]")
+            self.actions.append({"tool": name, "args": args, "observation": observation})
+            return self._clip(observation)
         fn = getattr(self, name, None)
-        if fn is None or name not in {t["function"]["name"] for t in TOOLS}:
+        if fn is None or name not in self._allowed:
             return f"[unknown tool: {name}]"
         try:
             observation = fn(**args) if isinstance(args, dict) else fn()
@@ -337,6 +374,13 @@ def system_prompt(policy: HarnessPolicy, file_list: str | None, tests: str | Non
         parts.append(f"Files in the repository:\n{file_list}")
     if policy.include_initial_tests and tests:
         parts.append(f"The test suite currently reports:\n{tests}")
+    if policy.include_skill_catalog:
+        parts.append(
+            "This workspace keeps a catalog of written procedures for recurring "
+            "tasks. Search it with find_skills before you invent an approach of "
+            "your own, then open a candidate with read_skill. A procedure that "
+            "exists is cheaper to follow than one you improvise, and it states "
+            "when it does not apply.")
     return "\n\n".join(parts)
 
 
@@ -359,8 +403,16 @@ def _usage_tokens(usage: dict) -> dict:
 
 
 def run_task(task_id: str, model: str = DEFAULT_MODEL, label: str = "ours",
-             policy: HarnessPolicy | None = None, timeout: float = 900.0) -> dict:
-    """Run one episode and return its record (same shape as the opencode runner)."""
+             policy: HarnessPolicy | None = None, timeout: float = 900.0,
+             mcp_servers: tuple[str, ...] = ()) -> dict:
+    """Run one episode and return its record (same shape as the opencode runner).
+
+    ``mcp_servers`` names services from the shared ``mcp.json`` (Telegram, the
+    Google shelf, a database, ...) whose tools the agent may call. Empty by
+    default: the bare harness stays the baseline everything is compared to.
+    Whether the agent may search the skill catalog is the policy's decision
+    (``include_skill_catalog``), for the same reason: it has to be ablatable.
+    """
     policy = policy or get_policy("baseline")
     task_file = runner.TASKS_DIR / task_id / "task.json"
     if not task_file.exists():
@@ -370,7 +422,33 @@ def run_task(task_id: str, model: str = DEFAULT_MODEL, label: str = "ours",
     scratch = runner.make_scratch(task, f"{label}-{policy.name}")
     repo = scratch / "repo"
     provider = Provider(model, runner.api_key(), policy.temperature)
-    toolbox = ToolBox(repo, policy)
+
+    # The shelf is opened before the loop: a server that cannot start is an
+    # episode fact (recorded), not a reason to lose the episode.
+    hub = None
+    mcp_schemas: list[dict] = []
+    mcp_missing: list[str] = []
+    mcp_evidence: dict | None = None
+    if mcp_servers:
+        try:
+            hub = mcp_client.McpHub(mcp_client.load_servers(), tuple(mcp_servers))
+            mcp_schemas = hub.tools()
+        except (mcp_client.McpError, OSError) as exc:
+            mcp_missing.append(str(exc)[:300])
+            hub = None
+    skill_schemas: list[dict] = []
+    catalog = None
+    catalog_missing = ""
+    if policy.include_skill_catalog:
+        try:
+            catalog = skills_index.load()
+        except (skills_index.CatalogError, OSError) as exc:
+            catalog_missing = str(exc)[:300]
+        else:
+            skill_schemas = list(skills_index.TOOL_SCHEMAS)
+    tools = list(TOOLS) + skill_schemas + mcp_schemas
+    toolbox = ToolBox(repo, policy, extra_tools=skill_schemas + mcp_schemas,
+                      mcp=hub, skills=catalog)
 
     file_list = toolbox.list_files() if policy.include_file_list else None
     initial_tests = toolbox.run_tests() if policy.include_initial_tests else None
@@ -410,7 +488,7 @@ def run_task(task_id: str, model: str = DEFAULT_MODEL, label: str = "ours",
                 break
             request_messages = context()
             call_started = time.time()
-            message, usage = provider.chat(request_messages, TOOLS)
+            message, usage = provider.chat(request_messages, tools)
             latency = round(time.time() - call_started, 2)
             served_models.append(provider.served_provider or provider.served)
             step_tokens = _usage_tokens(usage)
@@ -466,6 +544,12 @@ def run_task(task_id: str, model: str = DEFAULT_MODEL, label: str = "ours",
     except Exception as exc:  # record the failure, never lose the episode
         error = f"{exc.__class__.__name__}: {exc}"
         stop_reason = "error"
+    finally:
+        if hub is not None:
+            # Read the evidence before the shelf closes: the call count lives
+            # in the open sessions.
+            mcp_evidence = hub.evidence()
+            hub.close()
 
     wall = round(time.time() - started, 2)
     result = runner.evaluate(scratch, task_id)
@@ -489,6 +573,15 @@ def run_task(task_id: str, model: str = DEFAULT_MODEL, label: str = "ours",
         "solved": result["solved"],
         "tests": result,
         "tools": {},
+        # What the shelf gave the episode, and what it cost to open it.
+        "mcp": (mcp_evidence if mcp_evidence is not None
+                else {"servers_requested": list(mcp_servers),
+                      "failures": [{"error": m} for m in mcp_missing] if mcp_missing else []}),
+        # What the catalog gave the episode: which queries were asked, which
+        # contracts were opened, and how many characters that cost. A lookup
+        # that never paid for itself shows up here as cost without a hit.
+        "skills": {**skills_index.evidence(toolbox.actions, catalog),
+                   **({"failures": [catalog_missing]} if catalog_missing else {})},
         "tool_calls": len([s for s in steps if s.get("kind") == "tool"]),
         "tokens": tokens,
         "steps": steps,

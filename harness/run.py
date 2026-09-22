@@ -25,7 +25,13 @@ def main() -> None:
     parser.add_argument("--model", default=None)
     parser.add_argument("--label", default=None)
     parser.add_argument("--timeout", type=float, default=900.0)
+    parser.add_argument(
+        "--mcp-servers", default="",
+        help="comma-separated servers from the shared mcp.json whose tools the "
+             "agent may call (default: none, so the bare harness stays the "
+             "baseline every comparison uses)")
     args = parser.parse_args()
+    mcp_servers = tuple(s.strip() for s in args.mcp_servers.split(",") if s.strip())
 
     runner.RUNS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -37,6 +43,7 @@ def main() -> None:
             label=args.label or "ours",
             policy=policy,
             timeout=args.timeout,
+            mcp_servers=mcp_servers,
         )
     else:
         record = runner.run_task(

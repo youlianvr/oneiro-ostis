@@ -1,0 +1,842 @@
+{
+  "schema": 1,
+  "task": "t07-defensive-script",
+  "title": "CI script is not safe when its input is missing",
+  "kind": "bugfix",
+  "label": "t07-baseline",
+  "agent": "ours",
+  "policy": {
+    "name": "baseline",
+    "include_file_list": true,
+    "include_initial_tests": true,
+    "include_skill_catalog": false,
+    "context_mode": "full",
+    "window_steps": 10,
+    "observation_chars": 2000,
+    "read_lines": 120,
+    "max_steps": 14,
+    "verify_before_finish": true,
+    "max_verify_nudges": 1,
+    "temperature": 0.2
+  },
+  "model": "auto/coding",
+  "served_models": [
+    "openai-compatible-chat-3a468130-8cc9-45e5-85b3-8b793f281fc4"
+  ],
+  "prompt": "tools/summarize.sh runs in CI. It is not safe: it keeps going after a failed command, and with no argument it walks the wrong path instead of refusing. Rewrite it so that it takes a directory as its first argument and prints one line per file as '<name>: <lines> lines', and so that it exits non-zero with a clear message when the argument is missing or when the directory does not exist. Shell scripts in this repository have to follow this workspace's written rules for shell scripts, so look those rules up before you write the new version. The tests in test_summarize.py must pass; there is an example directory in tools/samples.",
+  "wall_seconds": 184.09,
+  "stop_reason": "max_steps",
+  "error": null,
+  "solved": false,
+  "tests": {
+    "visible": {
+      "exit": 1,
+      "tail": [
+        "2 failed, 1 passed, 1 warning in 2.96s"
+      ]
+    },
+    "hidden": {
+      "exit": 1,
+      "tail": [
+        "4 failed, 1 passed, 1 warning in 0.33s"
+      ]
+    },
+    "counts": {
+      "passed": 2,
+      "failed": 6
+    },
+    "solved": false
+  },
+  "tools": {
+    "read_file": 3,
+    "list_files": 1,
+    "run_command": 11
+  },
+  "mcp": {
+    "servers_requested": [],
+    "failures": []
+  },
+  "skills": {
+    "available": false,
+    "contracts": 0,
+    "lookups": 0,
+    "contracts_read": 0,
+    "observation_chars": 0,
+    "queries": [],
+    "read": []
+  },
+  "tool_calls": 14,
+  "tokens": {
+    "input": 87734,
+    "output": 1158,
+    "reasoning": 0,
+    "cache_read": 15360,
+    "cache_write": 0,
+    "total": 88892
+  },
+  "steps": [
+    {
+      "index": 0,
+      "kind": "tool",
+      "served": "openai-compatible-chat-3a468130-8cc9-45e5-85b3-8b793f281fc4",
+      "history_len": 0,
+      "prompt_chars": 3080,
+      "latency": 6.68,
+      "tokens": {
+        "input": 3252,
+        "output": 73,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "total": 3325
+      },
+      "tools": [
+        "read_file",
+        "read_file",
+        "list_files"
+      ],
+      "observations": [
+        "   1 | #!/bin/bash\n   2 | # Summarize a directory: one line per file, '<name>: <lines> lines'.\n   3 | \n   4 | dir=$1\n   5 | for f in $dir/*; do\n   6 |   lines=$(wc -l < $f)\n   7 |   name=$(basename $f)\n   8 |   echo \"$name: $lines lines\"\n   9 | done",
+        "   1 | \"\"\"What the script must do. Says nothing about how it must be written.\n   2 | \n   3 | Two platform facts are handled here so the test measures the script and not\n   4 | the shell it happens to land in: the interpreter is resolved with\n   5 | ``shutil.which`` (the same lookup the harness uses, which finds the Git/MSYS\n   6 | bash rather than the WSL launcher Windows keeps in System32), and e",
+        "test_summarize.py (1374 bytes)\ntools/samples/a.txt (4 bytes)\ntools/samples/b.txt (6 bytes)\ntools/summarize.sh (187 bytes)"
+      ]
+    },
+    {
+      "index": 1,
+      "kind": "tool",
+      "served": "openai-compatible-chat-3a468130-8cc9-45e5-85b3-8b793f281fc4",
+      "history_len": 1,
+      "prompt_chars": 5110,
+      "latency": 5.56,
+      "tokens": {
+        "input": 4048,
+        "output": 102,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "total": 4150
+      },
+      "tools": [
+        "run_command"
+      ],
+      "observations": [
+        "total 13\ndrwxr-xr-x 1 pc 197609    0 \u0441\u0435\u043d 22 15:17 ./\ndrwxr-xr-x 1 pc 197609    0 \u0441\u0435\u043d 22 15:17 ../\ndrwxr-xr-x 1 pc 197609    0 \u0441\u0435\u043d 22 15:17 .git/\ndrwxr-xr-x 1 pc 197609    0 \u0441\u0435\u043d 22 15:17 __pycache__/\n-rw-r--r-- 1 pc 197609  438 \u0441\u0435\u043d 22 15:17 opencode.json\n-rw-r--r-- 1 pc 197609 1374 \u0441\u0435\u043d 22 15:16 test_summarize.py\ndrwxr-xr-x 1 pc 197609    0 \u0441\u0435\u043d 22 15:16 tools/\n---"
+      ]
+    },
+    {
+      "index": 2,
+      "kind": "tool",
+      "served": "openai-compatible-chat-3a468130-8cc9-45e5-85b3-8b793f281fc4",
+      "history_len": 2,
+      "prompt_chars": 5581,
+      "latency": 11.77,
+      "tokens": {
+        "input": 4402,
+        "output": 27,
+        "reasoning": 0,
+        "cache_read": 3840,
+        "cache_write": 0,
+        "total": 4429
+      },
+      "tools": [
+        "read_file"
+      ],
+      "observations": [
+        "   1 | {\n   2 |   \"$schema\": \"https://opencode.ai/config.json\",\n   3 |   \"provider\": {\n   4 |     \"omniroute\": {\n   5 |       \"npm\": \"@ai-sdk/openai-compatible\",\n   6 |       \"name\": \"OmniRoute (local)\",\n   7 |       \"options\": {\n   8 |         \"baseURL\": \"http://127.0.0.1:20128/v1\",\n   9 |         \"apiKey\": \"{env:OMNIROUTE_API_KEY}\"\n  10 |       },\n  11 |       \"models\": {\n  12 |         \"auto/co"
+      ]
+    },
+    {
+      "index": 3,
+      "kind": "tool",
+      "served": "openai-compatible-chat-3a468130-8cc9-45e5-85b3-8b793f281fc4",
+      "history_len": 3,
+      "prompt_chars": 6144,
+      "latency": 3.64,
+      "tokens": {
+        "input": 4685,
+        "output": 75,
+        "reasoning": 0,
+        "cache_read": 3840,
+        "cache_write": 0,
+        "total": 4760
+      },
+      "tools": [
+        "run_command"
+      ],
+      "observations": [
+        "./opencode.json\n./test_summarize.py\n./tools/samples/a.txt\n./tools/samples/b.txt\n./tools/summarize.sh\n./__pycache__/test_summarize.cpython-314-pytest-8.4.2.pyc\n---\n[core]\n\trepositoryformatversion = 0\n\tfilemode = false\n\tbare = false\n\tlogallrefupdates = true\n\tignorecase = true\n326ec83 task start"
+      ]
+    },
+    {
+      "index": 4,
+      "kind": "tool",
+      "served": "openai-compatible-chat-3a468130-8cc9-45e5-85b3-8b793f281fc4",
+      "history_len": 4,
+      "prompt_chars": 6437,
+      "latency": 6.23,
+      "tokens": {
+        "input": 4879,
+        "output": 31,
+        "reasoning": 0,
+        "cache_read": 3840,
+        "cache_write": 0,
+        "total": 4910
+      },
+      "tools": [
+        "memory_search"
+      ],
+      "observations": [
+        "[unknown tool: memory_search]"
+      ]
+    },
+    {
+      "index": 5,
+      "kind": "tool",
+      "served": "openai-compatible-chat-3a468130-8cc9-45e5-85b3-8b793f281fc4",
+      "history_len": 5,
+      "prompt_chars": 6466,
+      "latency": 5.73,
+      "tokens": {
+        "input": 4930,
+        "output": 107,
+        "reasoning": 0,
+        "cache_read": 3840,
+        "cache_write": 0,
+        "total": 5037
+      },
+      "tools": [
+        "run_command"
+      ],
+      "observations": [
+        "/c/Users/pc:\n_archive/\nAppData/\nApplication Data@\nbin/\nContacts/\nCookies@\ncopybara/\ncreate-shortcuts.ps1\nDesktop/\nDocuments/\ndocx-p01.png\ndocx-p02.png\ndocx-p03.png\ndocx-p04.png\ndocx-p06.png\ndocx-p08.png\ndocx-p11.png\ndocx-p13.png\ndocx-p14.png\ndocx-v2-p02.png\ndocx-v2-p11.png\ndocx-v2-p13.png\ndocx-v3-p11.png\ndocx-v3-p13.png\nDownloads/\nFavorites/\nfreebuff-tree.json\ngo/\nhome-happ.ps1\njtest_link@\nLinks/\n"
+      ]
+    },
+    {
+      "index": 6,
+      "kind": "tool",
+      "served": "openai-compatible-chat-3a468130-8cc9-45e5-85b3-8b793f281fc4",
+      "history_len": 6,
+      "prompt_chars": 8497,
+      "latency": 7.56,
+      "tokens": {
+        "input": 5841,
+        "output": 97,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "total": 5938
+      },
+      "tools": [
+        "run_command"
+      ],
+      "observations": [
+        "/c/Users/pc/.agents/skills/hyperframes-animation/rules/3d-camera-flight.md\n/c/Users/pc/.agents/skills/hyperframes-animation/rules/3d-page-scroll.md\n/c/Users/pc/.agents/skills/hyperframes-animation/rules/3d-text-depth-layers.md\n/c/Users/pc/.agents/skills/hyperframes-animation/rules/ai-tracking-box.md\n/c/Users/pc/.agents/skills/hyperframes-animation/rules/ambient-glow-bloom.md\n/c/Users/pc/.agents/sk"
+      ]
+    },
+    {
+      "index": 7,
+      "kind": "tool",
+      "served": "openai-compatible-chat-3a468130-8cc9-45e5-85b3-8b793f281fc4",
+      "history_len": 7,
+      "prompt_chars": 9276,
+      "latency": 10.4,
+      "tokens": {
+        "input": 6154,
+        "output": 124,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "total": 6278
+      },
+      "tools": [
+        "run_command"
+      ],
+      "observations": [
+        "/c/Users/pc/.agents:\naudit-worker.ts\ncode-worker.ts\ndb-worker.ts\ndoc-worker.ts\nfix-worker.ts\nfreebuff-desktop-thread-local-v3.ts\nfreebuff-desktop-thread-local-v3.ts-revert\ninfra-worker.ts\nmcp.json\nmcp.json.bak-20260807-064757\nmcp.json.bak-20260808-183041\nmcp.json.bak-20260810-230948\nmcp.json.bak-20260810-2314-merge-pre\nmcp.json.bak-20260812-232724\nmcp.json.bak-20260813-002430\nmcp.json.bak-20260814"
+      ]
+    },
+    {
+      "index": 8,
+      "kind": "tool",
+      "served": "openai-compatible-chat-3a468130-8cc9-45e5-85b3-8b793f281fc4",
+      "history_len": 8,
+      "prompt_chars": 10923,
+      "latency": 6.89,
+      "tokens": {
+        "input": 6994,
+        "output": 84,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "total": 7078
+      },
+      "tools": [
+        "run_command"
+      ],
+      "observations": [
+        "/c/Users/pc/.openclaw/AGENTS.md\n/c/Users/pc/.openclaw/codebuff-source/AGENTS.md\n/c/Users/pc/.openclaw/codebuff-source/CONTRIBUTING.md\n/c/Users/pc/.openclaw/codebuff-source/README.md\n/c/Users/pc/.openclaw/codebuff-source/README.zh-CN.md\n/c/Users/pc/.openclaw/codebuff-source/SECURITY.md\n/c/Users/pc/.openclaw/codebuff-source/WINDOWS.md\n/c/Users/pc/.openclaw/freebuff-baseline-2026-08-20/README.md\n/c/U"
+      ]
+    },
+    {
+      "index": 9,
+      "kind": "tool",
+      "served": "openai-compatible-chat-3a468130-8cc9-45e5-85b3-8b793f281fc4",
+      "history_len": 9,
+      "prompt_chars": 12954,
+      "latency": 8.12,
+      "tokens": {
+        "input": 7769,
+        "output": 112,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "total": 7881
+      },
+      "tools": [
+        "run_command"
+      ],
+      "observations": [
+        "[exit 0, no output]"
+      ]
+    },
+    {
+      "index": 10,
+      "kind": "tool",
+      "served": "openai-compatible-chat-3a468130-8cc9-45e5-85b3-8b793f281fc4",
+      "history_len": 10,
+      "prompt_chars": 12973,
+      "latency": 12.63,
+      "tokens": {
+        "input": 7902,
+        "output": 126,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "total": 8028
+      },
+      "tools": [
+        "run_command"
+      ],
+      "observations": [
+        "/c/Users/pc/.openclaw/workspace/AGENTS.md\n/c/Users/pc/.openclaw/workspace/TOOLS.md\n===\n# AGENTS.md \u2014 Oper (Engineering Agent Constitution)\n\n> Root entry point. This file is the **core**; full normative text lives in `docs/`.\n> Each section that has a home document points to it.\n\n---\n\n## Mission\n\nFind the *correct* engineering decision while minimizing the effort to understand it.\nA correct solutio"
+      ]
+    },
+    {
+      "index": 11,
+      "kind": "tool",
+      "served": "openai-compatible-chat-3a468130-8cc9-45e5-85b3-8b793f281fc4",
+      "history_len": 11,
+      "prompt_chars": 15005,
+      "latency": 8.18,
+      "tokens": {
+        "input": 8532,
+        "output": 64,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "total": 8596
+      },
+      "tools": [
+        "run_command"
+      ],
+      "observations": [
+        "167-   - `_memory/INDEX.md` \u2014 owner facts, dangling tasks, wins, errors.\n168-2. **Skill `mcp` part `mcp-usage`** maps a task domain to the right router skill, MCP server and script \u2014 read it before choosing HOW.\n169:3. Only then choose: MCP tool if one matches \u2192 skill contract via find-skills \u2192 memory \u2192 manual shell.\n170-\n171-**Freshness is part of the work:** a layer change updates its index in t"
+      ]
+    },
+    {
+      "index": 12,
+      "kind": "tool",
+      "served": "openai-compatible-chat-3a468130-8cc9-45e5-85b3-8b793f281fc4",
+      "history_len": 12,
+      "prompt_chars": 16289,
+      "latency": 5.88,
+      "tokens": {
+        "input": 8994,
+        "output": 76,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "total": 9070
+      },
+      "tools": [
+        "run_command"
+      ],
+      "observations": [
+        "adr/\nAutonomy-Charter.md\nCode.md\nData-Safety.md\ndocument-status.toml\nGovernance.md\nhiveproxy-v3/\nInfrastructure.md\nKB-RAG.md\nPrinciples.md\nSkill-Invocation.md\nSkills.md\nsuperpowers/\nVersion-Control.md\nWorking-Base.md\n/c/Users/pc/.openclaw/workspace/docs/Code.md\n/c/Users/pc/.openclaw/workspace/docs/Data-Safety.md\n/c/Users/pc/.openclaw/workspace/docs/hiveproxy-v3/PLAN.md\n/c/Users/pc/.openclaw/worksp"
+      ]
+    },
+    {
+      "index": 13,
+      "kind": "tool",
+      "served": "openai-compatible-chat-3a468130-8cc9-45e5-85b3-8b793f281fc4",
+      "history_len": 13,
+      "prompt_chars": 17083,
+      "latency": 6.26,
+      "tokens": {
+        "input": 9352,
+        "output": 60,
+        "reasoning": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "total": 9412
+      },
+      "tools": [
+        "run_command"
+      ],
+      "observations": [
+        "131:  fix: fall back to bash `grep -rn` (shell rg) BEFORE concluding absence, and\n134:  JSON/heredoc/bash eat `\\s`-style escapes and turn multi-line `python -c`"
+      ]
+    }
+  ],
+  "system_prompt": "You are a coding agent working in a small repository.\n\nFix the task by editing files with the tools; then run the tests and make them pass.\n\nWork in the repository root; paths are relative to it. Keep edits minimal and correct.\n\nFiles in the repository:\ntest_summarize.py (1374 bytes)\ntools/samples/a.txt (4 bytes)\ntools/samples/b.txt (6 bytes)\ntools/summarize.sh (187 bytes)\n\nThe test suite currently reports:\n.FF                                                                      [100%]\n================================== FAILURES ===================================\n______________________ test_refuses_a_missing_directory _______________________\n\n    def test_refuses_a_missing_directory():\n        done = run([\"tools/nowhere\"])\n>       assert done.returncode != 0\nE       AssertionError: assert 0 != 0\nE        +  where 0 = CompletedProcess(args=['C:\\\\Program Files\\\\Git\\\\usr\\\\bin\\\\bash.EXE', 'tools/summarize.sh', 'tools/nowhere'], returncode=0, stdout='*:  lines\\n', stderr='tools/summarize.sh: line 6: tools/nowhere/*: No such file or directory\\n').returncode\n\ntest_summarize.py:34: AssertionError\n______________________ test_refuses_without_an_argument _______________________\n\n    def test_refuses_without_an_argument():\n        done = run([])\n>       assert done.returncode != 0\nE       assert 0 != 0\nE        +  where 0 = CompletedProcess(args=['C:\\\\Program Files\\\\Git\\\\usr\\\\bin\\\\bash.EXE', 'tools/summarize.sh'], returncode=0, stdout='bin:...y\\nwc: 'standard input': Is a directory\\nwc: 'standard input': Is a directory\\nwc: 'standard input': Is a directory\\n\").returncode\n\ntest_summarize.py:40: AssertionError\n============================== warnings summary ===============================\nprojects/ostis/oneiro-ostis/harness/lab/runs/t07-defensive-script-t07-baseline-baseline-20260922-151723-uxld/repo/test_summarize.py::test_one_line_per_file\n  C:\\Users\\pc\\AppData\\Roaming\\Python\\Python314\\site-packages\\pytest_asyncio\\plugin.py:1216: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16\n    return asyncio.get_event_loop_policy()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ===========================\nFAILED test_summarize.py::test_refuses_a_missing_directory - AssertionError: ...\nFAILED test_summarize.py::test_refuses_without_an_argument - assert 0 != 0\n2 failed, 1 passed, 1 warning in 3.82s",
+  "user_prompt": "tools/summarize.sh runs in CI. It is not safe: it keeps going after a failed command, and with no argument it walks the wrong path instead of refusing. Rewrite it so that it takes a directory as its first argument and prints one line per file as '<name>: <lines> lines', and so that it exits non-zero with a clear message when the argument is missing or when the directory does not exist. Shell scripts in this repository have to follow this workspace's written rules for shell scripts, so look those rules up before you write the new version. The tests in test_summarize.py must pass; there is an example directory in tools/samples.",
+  "setup": {
+    "file_list": "test_summarize.py (1374 bytes)\ntools/samples/a.txt (4 bytes)\ntools/samples/b.txt (6 bytes)\ntools/summarize.sh (187 bytes)",
+    "initial_tests": ".FF                                                                      [100%]\n================================== FAILURES ===================================\n______________________ test_refuses_a_missing_directory _______________________\n\n    def test_refuses_a_missing_directory():\n        done = run([\"tools/nowhere\"])\n>       assert done.returncode != 0\nE       AssertionError: assert 0 != 0\nE        +  where 0 = CompletedProcess(args=['C:\\\\Program Files\\\\Git\\\\usr\\\\bin\\\\bash.EXE', 'tools/summarize.sh', 'tools/nowhere'], returncode=0, stdout='*:  lines\\n', stderr='tools/summarize.sh: line 6: tools/nowhere/*: No such file or directory\\n').returncode\n\ntest_summarize.py:34: AssertionError\n______________________ test_refuses_without_an_argument _______________________\n\n    def test_refuses_without_an_argument():\n        done = run([])\n>       assert done.returncode != 0\nE       assert 0 != 0\nE        +  where 0 = CompletedProcess(args=['C:\\\\Program Files\\\\Git\\\\usr\\\\bin\\\\bash.EXE', 'tools/summarize.sh'], returncode=0, stdout='bin:...y\\nwc: 'standard input': Is a directory\\nwc: 'standard input': Is a directory\\nwc: 'standard input': Is a directory\\n\").returncode\n\ntest_summarize.py:40: AssertionError\n============================== warnings summary ===============================\nprojects/ostis/oneiro-ostis/harness/lab/runs/t07-defensive-script-t07-baseline-baseline-20260922-151723-uxld/repo/test_summarize.py::test_one_line_per_file\n  C:\\Users\\pc\\AppData\\Roaming\\Python\\Python314\\site-packages\\pytest_asyncio\\plugin.py:1216: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16\n    return asyncio.get_event_loop_policy()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ===========================\nFAILED test_summarize.py::test_refuses_a_missing_directory - AssertionError: ...\nFAILED test_summarize.py::test_refuses_without_an_argument - assert 0 != 0\n2 failed, 1 passed, 1 warning in 3.82s"
+  },
+  "blocks": [
+    [
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "index": 0,
+            "function": {
+              "arguments": "{\"path\": \"tools/summarize.sh\"}",
+              "name": "read_file"
+            },
+            "id": "call_1693527a62b84fa0b7d94218",
+            "type": "function"
+          },
+          {
+            "index": 1,
+            "function": {
+              "arguments": "{\"path\": \"test_summarize.py\"}",
+              "name": "read_file"
+            },
+            "id": "call_4bd82be1f06a4a38ac3f4b98",
+            "type": "function"
+          },
+          {
+            "index": 2,
+            "function": {
+              "arguments": "{}",
+              "name": "list_files"
+            },
+            "id": "call_df3f08e1a3134d47b243ff3e",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_1693527a62b84fa0b7d94218",
+        "content": "   1 | #!/bin/bash\n   2 | # Summarize a directory: one line per file, '<name>: <lines> lines'.\n   3 | \n   4 | dir=$1\n   5 | for f in $dir/*; do\n   6 |   lines=$(wc -l < $f)\n   7 |   name=$(basename $f)\n   8 |   echo \"$name: $lines lines\"\n   9 | done"
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_4bd82be1f06a4a38ac3f4b98",
+        "content": "   1 | \"\"\"What the script must do. Says nothing about how it must be written.\n   2 | \n   3 | Two platform facts are handled here so the test measures the script and not\n   4 | the shell it happens to land in: the interpreter is resolved with\n   5 | ``shutil.which`` (the same lookup the harness uses, which finds the Git/MSYS\n   6 | bash rather than the WSL launcher Windows keeps in System32), and every path\n   7 | handed to it is relative to this repository, because an absolute Windows path\n   8 | does not survive the trip through an argument on either bash.\n   9 | \"\"\"\n  10 | \n  11 | import shutil\n  12 | import subprocess\n  13 | from pathlib import Path\n  14 | \n  15 | REPO = Path(__file__).resolve().parent\n  16 | SCRIPT = \"tools/summarize.sh\"\n  17 | SAMPLES = \"tools/samples\"\n  18 | BASH = shutil.which(\"bash\") or \"bash\"\n  19 | \n  20 | \n  21 | def run(args: list[str]) -> subprocess.CompletedProcess:\n  22 |     return subprocess.run([BASH, SCRIPT, *args], cwd=REPO,\n  23 |                           capture_output=True, text=True)\n  24 | \n  25 | \n  26 | def test_one_line_per_file():\n  27 |     done = run([SAMPLES])\n  28 |     assert done.returncode == 0, done.stderr\n  29 |     assert sorted(done.stdout.splitlines()) == [\"a.txt: 2 lines\", \"b.txt: 3 lines\"]\n  30 | \n  31 | \n  32 | def test_refuses_a_missing_directory():\n  33 |     done = run([\"tools/nowhere\"])\n  34 |     assert done.returncode != 0\n  35 |     assert (done.stdout + done.stderr).strip() != \"\"\n  36 | \n  37 | \n  38 | def test_refuses_without_an_argument():\n  39 |     done = run([])\n  40 |     assert done.returncode != 0\n  41 |     assert (done.stdout + done.stderr).strip() != \"\""
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_df3f08e1a3134d47b243ff3e",
+        "content": "test_summarize.py (1374 bytes)\ntools/samples/a.txt (4 bytes)\ntools/samples/b.txt (6 bytes)\ntools/summarize.sh (187 bytes)"
+      }
+    ],
+    [
+      {
+        "role": "assistant",
+        "content": "The task says to look up \"this workspace's written rules for shell scripts.\" Let me search for those rules.",
+        "tool_calls": [
+          {
+            "index": 0,
+            "function": {
+              "arguments": "{\"command\": \"ls -la . 2>/dev/null; echo ---; find . -maxdepth 3 -iname \\\"*rule*\\\" -o -iname \\\"*CONTRIBUTING*\\\" -o -iname \\\"*.md\\\" 2>/dev/null | head -50\"}",
+              "name": "run_command"
+            },
+            "id": "call_4f588556ede0447eb828cf52",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_4f588556ede0447eb828cf52",
+        "content": "total 13\ndrwxr-xr-x 1 pc 197609    0 \u0441\u0435\u043d 22 15:17 ./\ndrwxr-xr-x 1 pc 197609    0 \u0441\u0435\u043d 22 15:17 ../\ndrwxr-xr-x 1 pc 197609    0 \u0441\u0435\u043d 22 15:17 .git/\ndrwxr-xr-x 1 pc 197609    0 \u0441\u0435\u043d 22 15:17 __pycache__/\n-rw-r--r-- 1 pc 197609  438 \u0441\u0435\u043d 22 15:17 opencode.json\n-rw-r--r-- 1 pc 197609 1374 \u0441\u0435\u043d 22 15:16 test_summarize.py\ndrwxr-xr-x 1 pc 197609    0 \u0441\u0435\u043d 22 15:16 tools/\n---"
+      }
+    ],
+    [
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "index": 0,
+            "function": {
+              "arguments": "{\"path\": \"opencode.json\"}",
+              "name": "read_file"
+            },
+            "id": "call_486c46fec8284996bee95c75",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_486c46fec8284996bee95c75",
+        "content": "   1 | {\n   2 |   \"$schema\": \"https://opencode.ai/config.json\",\n   3 |   \"provider\": {\n   4 |     \"omniroute\": {\n   5 |       \"npm\": \"@ai-sdk/openai-compatible\",\n   6 |       \"name\": \"OmniRoute (local)\",\n   7 |       \"options\": {\n   8 |         \"baseURL\": \"http://127.0.0.1:20128/v1\",\n   9 |         \"apiKey\": \"{env:OMNIROUTE_API_KEY}\"\n  10 |       },\n  11 |       \"models\": {\n  12 |         \"auto/coding\": { \"name\": \"OmniRoute auto/coding\" },\n  13 |         \"main\": { \"name\": \"OmniRoute main\" }\n  14 |       }\n  15 |     }\n  16 |   },\n  17 |   \"mcp\": {}\n  18 | }"
+      }
+    ],
+    [
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "index": 0,
+            "function": {
+              "arguments": "{\"command\": \"find . -path ./.git -prune -o -type f -print | head -50; echo ---; cat .git/config 2>/dev/null; git log --oneline -20 2>/dev/null\"}",
+              "name": "run_command"
+            },
+            "id": "call_8fe2740a45c04bcc81715e5a",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_8fe2740a45c04bcc81715e5a",
+        "content": "./opencode.json\n./test_summarize.py\n./tools/samples/a.txt\n./tools/samples/b.txt\n./tools/summarize.sh\n./__pycache__/test_summarize.cpython-314-pytest-8.4.2.pyc\n---\n[core]\n\trepositoryformatversion = 0\n\tfilemode = false\n\tbare = false\n\tlogallrefupdates = true\n\tignorecase = true\n326ec83 task start"
+      }
+    ],
+    [
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "index": 0,
+            "function": {
+              "arguments": "{\"query\": \"workspace rules for shell scripts bash\"}",
+              "name": "memory_search"
+            },
+            "id": "call_cb76b4a5598e4867baf423cb",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_cb76b4a5598e4867baf423cb",
+        "content": "[unknown tool: memory_search]"
+      }
+    ],
+    [
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "index": 0,
+            "function": {
+              "arguments": "{\"command\": \"ls \\\"$HOME\\\" \\\"$HOME/.config\\\" 2>/dev/null; find \\\"$HOME\\\" -maxdepth 4 \\\\( -iname \\\"*shell*rule*\\\" -o -iname \\\"*RULES*\\\" -o -iname \\\"AGENTS.md\\\" -o -iname \\\"CLAUDE.md\\\" \\\\) 2>/dev/null | grep -v -E \\\"node_modules|\\\\.git/\\\" | head\"}",
+              "name": "run_command"
+            },
+            "id": "call_bf537f249ac842dea8147c31",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_bf537f249ac842dea8147c31",
+        "content": "/c/Users/pc:\n_archive/\nAppData/\nApplication Data@\nbin/\nContacts/\nCookies@\ncopybara/\ncreate-shortcuts.ps1\nDesktop/\nDocuments/\ndocx-p01.png\ndocx-p02.png\ndocx-p03.png\ndocx-p04.png\ndocx-p06.png\ndocx-p08.png\ndocx-p11.png\ndocx-p13.png\ndocx-p14.png\ndocx-v2-p02.png\ndocx-v2-p11.png\ndocx-v2-p13.png\ndocx-v3-p11.png\ndocx-v3-p13.png\nDownloads/\nFavorites/\nfreebuff-tree.json\ngo/\nhome-happ.ps1\njtest_link@\nLinks/\nLocal Settings@\nlogistika-after.png\nlyada-before.png\nlyada-before2.png\nlyada-field-desktop-journal.png\nlyada-field-journal-saved.png\nlyada-field-mobile-baseline.png\nlyada-field-mobile-final.png\nlyada-field-mobile-journal.png\nlyada-index-baseline.png\nlyada-main-desktop-baseline.png\nlyada-main-mobile-baseline.png\nlyada-main-mobile-centered-toolbar.png\nlyada-main-mobile-final-toolbar.png\nlyada-main-mobile-toolbar-fixed.png\nlyada-mobile-popup-baseline.png\nmap-current-full.png\nmap-docx-crop.png\nmap-docx-full.png\nmap-final-mobile.png\nmap-final-schema.png\nmap-fixed.png\nmap-for-docx.png\nmap-full.png\nmap-mobile.png\nmap-ref2.png\nmap-ref3-full.png\nmap-ref-style.png\nmap-v10-full.png\nmap-v11-full.png\nmap-v12-full.png\nmap-v13-full.png\nmap-v14-full.png\nmap-v14-mobile.png\nmap-v15-full.png\nmap-v15-fullpage.png\nmap-v16-fullpage.png\nmap-v3.png\nmap-v4.png\nmap-v8.png\nmap-v8-full.png\nmap-v9.png\nmap-v9-full.png\nMusic/\nmy-projects/\nNetHood@\nNTUSER.DAT\nntuser.dat.LOG1\nntuser.dat.LOG2\nNTUSER.DAT{3470fc52-effc-11ee-ae29-c9005005cfe4}.TM.blf\nNTUSER.DAT{3470fc52-effc-11ee-ae29-c9005005cfe4}.TMContainer00000000000000000001.regtrans-ms\nNTUSER.DAT{3470fc52-effc-11ee-ae29-c9005005cfe4}.TMContainer00000000000000000002.regtrans-ms\nntuser.ini\nPCManger/\nPictures/\npipx/\nPowerShell/\nPowerShell7/\nPrintHood@\nqa_home_full.png\nRecent@\nrp-prompt-hub/\nSaved Games/\nschema-clean.png\nschema-clean2.png\nschool-happ.ps1\nSearches/\nsearch-index/\nSendTo@\nsetup.dat\nsqlite.log\ntools/\nUnity user templates/\nvector-index/\nVideos/\n\u0433\u043b\u0430\u0432\u043d\u043e\u0435 \u043c\u0435\u043d\u044e@\n\u041c\u043e\u0438 \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b@\n\u0428\u0430\u0431\u043b\u043e\u043d\u044b@\n\n/c/Users/pc/.config:\naggg4/\nbrowser-harness/\ncagent/\nconfigstore\n... [695 characters truncated]"
+      }
+    ],
+    [
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "index": 0,
+            "function": {
+              "arguments": "{\"command\": \"find /c/Users/pc -maxdepth 5 -name \\\"AGENTS.md\\\" -o -name \\\"CLAUDE.md\\\" -o -iname \\\"*.md\\\" -path \\\"*rule*\\\" 2>/dev/null | grep -v node_modules | head; ls /c/Users/pc/.config/cagent 2>/dev/null | head\"}",
+              "name": "run_command"
+            },
+            "id": "call_3ab5a315eb1c4cc590078a41",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_3ab5a315eb1c4cc590078a41",
+        "content": "/c/Users/pc/.agents/skills/hyperframes-animation/rules/3d-camera-flight.md\n/c/Users/pc/.agents/skills/hyperframes-animation/rules/3d-page-scroll.md\n/c/Users/pc/.agents/skills/hyperframes-animation/rules/3d-text-depth-layers.md\n/c/Users/pc/.agents/skills/hyperframes-animation/rules/ai-tracking-box.md\n/c/Users/pc/.agents/skills/hyperframes-animation/rules/ambient-glow-bloom.md\n/c/Users/pc/.agents/skills/hyperframes-animation/rules/anchored-layout-expand.md\n/c/Users/pc/.agents/skills/hyperframes-animation/rules/asr-keyword-glow.md\n/c/Users/pc/.agents/skills/hyperframes-animation/rules/avatar-cloud-network.md\n/c/Users/pc/.agents/skills/hyperframes-animation/rules/camera-cursor-tracking.md\n/c/Users/pc/.agents/skills/hyperframes-animation/rules/card-morph-anchor.md\nuser-uuid"
+      }
+    ],
+    [
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "index": 0,
+            "function": {
+              "arguments": "{\"command\": \"ls /c/Users/pc/.agents /c/Users/pc/.agents/skills 2>/dev/null; find /c/Users/pc/.agents -maxdepth 2 -iname \\\"*shell*\\\" 2>/dev/null; find /c/Users/pc -maxdepth 3 -iname \\\"*.md\\\" \\\\( -path \\\"*opencode*\\\" -o -path \\\"*agent*\\\" -o -path \\\"*workspace*\\\" \\\\) 2>/dev/null | grep -v skills | head\"}",
+              "name": "run_command"
+            },
+            "id": "call_7395cf858eeb4e20ab4e041e",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_7395cf858eeb4e20ab4e041e",
+        "content": "/c/Users/pc/.agents:\naudit-worker.ts\ncode-worker.ts\ndb-worker.ts\ndoc-worker.ts\nfix-worker.ts\nfreebuff-desktop-thread-local-v3.ts\nfreebuff-desktop-thread-local-v3.ts-revert\ninfra-worker.ts\nmcp.json\nmcp.json.bak-20260807-064757\nmcp.json.bak-20260808-183041\nmcp.json.bak-20260810-230948\nmcp.json.bak-20260810-2314-merge-pre\nmcp.json.bak-20260812-232724\nmcp.json.bak-20260813-002430\nmcp.json.bak-20260814-000930\nmcp.json.bak-20260815-224023\nmcp.json.bak-20260817\nmcp.json.bak-20260821\nmcp.json.bak-20260821-aggg\nmcp.json.bak-20260824\nmcp.json.bak-20260907-023500\nmcp.json.bak-20260913-aggg4\nmcp.json.bak-clean-20260811-002257\nmcp.json.bak-tgdl\nmcp.json.bak-tgdoc-20260826-002307\nmcp-tools-cache/\norchestrator.ts\nplan-worker.ts\nrefactor-worker.ts\nresearch-worker.ts\nreview-worker.ts\nsecurity-worker.ts\nskills/\ntest-worker.ts\ntriage-agent.ts\n\n/c/Users/pc/.agents/skills:\ndashi-ppt/\ngws-gmail@\ngws-gmail-read@\ngws-gmail-reply@\ngws-gmail-send@\ngws-gmail-triage@\ngws-gmail-watch@\nhyperframes/\nhyperframes-animation/\nhyperframes-audio/\nhyperframes-cli/\nhyperframes-core/\nhyperframes-creative/\nhyperframes-keyframes/\nhyperframes-registry/\nlast30days@\nmedia-use/\nperformance/\ntelegram-mcp-setup@\n/c/Users/pc/.openclaw/workspace/AGENTS.md\n/c/Users/pc/.openclaw/workspace/BOOT.md\n/c/Users/pc/.openclaw/workspace/CRON-REGISTRY.md\n/c/Users/pc/.openclaw/workspace/GRAVEYARD.md\n/c/Users/pc/.openclaw/workspace/KEY-ROTATION.md\n/c/Users/pc/.openclaw/workspace/README.md\n/c/Users/pc/.openclaw/workspace/TOOLS.md\n/c/Users/pc/.openclaw/workspace/workspace_rebuild_task_plan.md\n/c/Users/pc/.openclaw/workspace-dev/AGENTS.md\n/c/Users/pc/.openclaw/workspace-dev/IDENTITY.md"
+      }
+    ],
+    [
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "index": 0,
+            "function": {
+              "arguments": "{\"command\": \"find /c/Users/pc/.openclaw -maxdepth 2 -iname \\\"*.md\\\" 2>/dev/null | head -30; echo ---; grep -ril \\\"shell\\\" /c/Users/pc/.openclaw/workspace* 2>/dev/null | head\"}",
+              "name": "run_command"
+            },
+            "id": "call_03615033e88d42fc9140fa31",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_03615033e88d42fc9140fa31",
+        "content": "/c/Users/pc/.openclaw/AGENTS.md\n/c/Users/pc/.openclaw/codebuff-source/AGENTS.md\n/c/Users/pc/.openclaw/codebuff-source/CONTRIBUTING.md\n/c/Users/pc/.openclaw/codebuff-source/README.md\n/c/Users/pc/.openclaw/codebuff-source/README.zh-CN.md\n/c/Users/pc/.openclaw/codebuff-source/SECURITY.md\n/c/Users/pc/.openclaw/codebuff-source/WINDOWS.md\n/c/Users/pc/.openclaw/freebuff-baseline-2026-08-20/README.md\n/c/Users/pc/.openclaw/telegram-mcp-bot/CLAUDE.md\n/c/Users/pc/.openclaw/telegram-mcp-bot/README.md\n/c/Users/pc/.openclaw/workspace/AGENTS.md\n/c/Users/pc/.openclaw/workspace/BOOT.md\n/c/Users/pc/.openclaw/workspace/CRON-REGISTRY.md\n/c/Users/pc/.openclaw/workspace/GRAVEYARD.md\n/c/Users/pc/.openclaw/workspace/KEY-ROTATION.md\n/c/Users/pc/.openclaw/workspace/README.md\n/c/Users/pc/.openclaw/workspace/TOOLS.md\n/c/Users/pc/.openclaw/workspace/workspace_rebuild_task_plan.md\n/c/Users/pc/.openclaw/workspace-dev/AGENTS.md\n/c/Users/pc/.openclaw/workspace-dev/IDENTITY.md\n/c/Users/pc/.openclaw/workspace-dev/SOUL.md\n/c/Users/pc/.openclaw/workspace-dev/TOOLS.md\n/c/Users/pc/.openclaw/workspace-dev/USER.md\n/c/Users/pc/.openclaw/workspace_personal/AGENTS.md\n/c/Users/pc/.openclaw/workspace_personal/CONVENTIONS.md\n/c/Users/pc/.openclaw/workspace_personal/DANGLING_TASKS.md\n/c/Users/pc/.openclaw/workspace_personal/GRAVEYARD.md\n/c/Users/pc/.openclaw/workspace_personal/IDENTITY.md\n/c/Users/pc/.openclaw/workspace_personal/knowledge.md\n/c/Users/pc/.openclaw/workspace_personal/MEMORY.md\n---\n/c/Users/pc/.openclaw/workspace/.agents/skills/agent-reach/references/social.md\n/c/Users/pc/.openclaw/workspace/.agents/skills/agent-reach/SKILL.md\n/c/Users/pc/.openclaw/workspace/.agents/skills/ai-image-prompts-skill/references/comic-storyboard.json\n/c/Users/pc/.openclaw/workspace/.agents/skills/ai-image-prompts-skill/references/ecommerce-main-image.json\n/c/Users/pc/.openclaw/workspace/.agents/skills/ai-image-prompts-skill/references/game-asset.json\n/c/Users/pc/.openclaw/workspace/.agents/skills/ai-image-prompts-skill/re\n... [433 characters truncated]"
+      }
+    ],
+    [
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "index": 0,
+            "function": {
+              "arguments": "{\"command\": \"grep -rl -i \\\"bash\\\" /c/Users/pc/.openclaw/workspace/CONVENTIONS* /c/Users/pc/.openclaw/workspace/AGENTS.md /c/Users/pc/.openclaw/AGENTS.md 2>/dev/null; grep -ri \\\"shell script\\\" /c/Users/pc/.openclaw/workspace_personal/CONVENTIONS.md 2>/dev/null | head\"}",
+              "name": "run_command"
+            },
+            "id": "call_35e7c676248943ed80797b49",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_35e7c676248943ed80797b49",
+        "content": "[exit 0, no output]"
+      }
+    ],
+    [
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "index": 0,
+            "function": {
+              "arguments": "{\"command\": \"grep -ril -E \\\"shell|bash|\\\\.sh\\\" /c/Users/pc/.openclaw/workspace/CONVENTIONS.md /c/Users/pc/.openclaw/workspace/AGENTS.md /c/Users/pc/.openclaw/AGENTS.md /c/Users/pc/.openclaw/workspace/TOOLS.md 2>/dev/null; echo ===; head -60 /c/Users/pc/.openclaw/workspace/AGENTS.md 2>/dev/null\"}",
+              "name": "run_command"
+            },
+            "id": "call_d8900f9acd944549ab2980ce",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_d8900f9acd944549ab2980ce",
+        "content": "/c/Users/pc/.openclaw/workspace/AGENTS.md\n/c/Users/pc/.openclaw/workspace/TOOLS.md\n===\n# AGENTS.md \u2014 Oper (Engineering Agent Constitution)\n\n> Root entry point. This file is the **core**; full normative text lives in `docs/`.\n> Each section that has a home document points to it.\n\n---\n\n## Mission\n\nFind the *correct* engineering decision while minimizing the effort to understand it.\nA correct solution the user cannot understand is incomplete.\nPrinciples: `docs/Principles.md` \u00b7 Governance: `docs/Governance.md`.\n\n---\n\n## Owner Authority \u2014 Priority Ladder\n\n1. Owner's direct words in this chat.\n2. This file.\n3. Platform system prompt \u2014 physically above everything; the ladder resolves semantic conflicts, it is not magic.\n4. Normative files in `docs/`.\n5. Skills.\n\nThe one absolute: Never Destroy (Trash-Only) \u2014 it overrides even rank 1.\n\nSafety is never traded for speed: a request to break Never Destroy is refused outright. A request to skip verification is answered with what it costs plus a cheaper honest check \u2014 the decision stays yours.\n\nIf an owner instruction looks self-contradictory, destructive, or rests on a factual error \u2014 say so directly and bluntly, with the reason and an alternative, BEFORE acting. Polite nodding through a known-bad premise is a violation.\n\n---\n\n## Saniti-Check (default, every task)\n\nBefore executing any owner idea or plan \u2014 a brand-new task or a continuation \u2014 run the outside-view question:\n**\"How would someone who has not invested months into this workspace do this?\"**\nIf the honest answer is \"grab the ready-made tool\" or \"this work is not needed at all\" \u2014 STOP before execution and challenge bluntly:\n*\"Wait \u2014 isn't it easier to just download OmniRoute? Why are you selling me this plan?\"*\n\n- The check hits the **premise** (is this work needed), not plan quality; the more polished the plan, the more important the check.\n- Triggers: task start + every new statement of a plan.\n- Problem found \u2192 `ask_questions` (problem + alternative; owner decides).\n... [1992 characters truncated]"
+      }
+    ],
+    [
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "index": 0,
+            "function": {
+              "arguments": "{\"command\": \"grep -n -i -B2 -A20 -E \\\"shell|bash\\\" /c/Users/pc/.openclaw/workspace/AGENTS.md | head -80\"}",
+              "name": "run_command"
+            },
+            "id": "call_ae71beb9f39d4bcda0219c52",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_ae71beb9f39d4bcda0219c52",
+        "content": "167-   - `_memory/INDEX.md` \u2014 owner facts, dangling tasks, wins, errors.\n168-2. **Skill `mcp` part `mcp-usage`** maps a task domain to the right router skill, MCP server and script \u2014 read it before choosing HOW.\n169:3. Only then choose: MCP tool if one matches \u2192 skill contract via find-skills \u2192 memory \u2192 manual shell.\n170-\n171-**Freshness is part of the work:** a layer change updates its index in the same\n172-commit \u2014 skills layer \u2192 skills-catalog + SKILLS-INDEX; MCP config \u2192 Infrastructure\n173-registry; new finding \u2192 knowledge INDEX. A stale index is a lie told to the next session.\n174-\n175----\n176-\n177-## Working With Pre-Existing Changes\n178-\n179-All workspace history is the working base. Work with pre-existing code as your own.\n180-**Stop and report to the owner** when: an obvious regression; a critical change whose\n181-origin you can't determine; secrets or protected zones (`_agent/`, env, live runtime\n182-config, archives); or a live parallel agent holds the paths you need (check\n183-`_memory/parity/`).\n184-Unclaimed work is the working base: verify it, finish it, commit it, or record an\n185-explicit defer \u2014 never destroy it, never commit it blindly.\n186-Full text: `docs/Working-Base.md`; parallel-agent ownership: `docs/Autonomy-Charter.md`.\n187-\n188----\n189-"
+      }
+    ],
+    [
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "index": 0,
+            "function": {
+              "arguments": "{\"command\": \"ls /c/Users/pc/.openclaw/workspace/docs/ 2>/dev/null; grep -ril -E \\\"shell|bash|\\\\.sh\\\\b\\\" /c/Users/pc/.openclaw/workspace/docs/ 2>/dev/null\"}",
+              "name": "run_command"
+            },
+            "id": "call_33660229f15746c4b8c348cf",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_33660229f15746c4b8c348cf",
+        "content": "adr/\nAutonomy-Charter.md\nCode.md\nData-Safety.md\ndocument-status.toml\nGovernance.md\nhiveproxy-v3/\nInfrastructure.md\nKB-RAG.md\nPrinciples.md\nSkill-Invocation.md\nSkills.md\nsuperpowers/\nVersion-Control.md\nWorking-Base.md\n/c/Users/pc/.openclaw/workspace/docs/Code.md\n/c/Users/pc/.openclaw/workspace/docs/Data-Safety.md\n/c/Users/pc/.openclaw/workspace/docs/hiveproxy-v3/PLAN.md\n/c/Users/pc/.openclaw/workspace/docs/Infrastructure.md\n/c/Users/pc/.openclaw/workspace/docs/KB-RAG.md\n/c/Users/pc/.openclaw/workspace/docs/Skills.md\n/c/Users/pc/.openclaw/workspace/docs/superpowers/plans/2026-07-31-oper-repository-hardening.md\n/c/Users/pc/.openclaw/workspace/docs/superpowers/plans/2026-08-10-avatar-telepresence.md\n/c/Users/pc/.openclaw/workspace/docs/superpowers/plans/2026-08-11-avatar-desktop-shell.md"
+      }
+    ],
+    [
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "index": 0,
+            "function": {
+              "arguments": "{\"command\": \"grep -n -i -E \\\"shell|bash|\\\\.sh\\\" /c/Users/pc/.openclaw/workspace/docs/Code.md | head -30\"}",
+              "name": "run_command"
+            },
+            "id": "call_201170089674462e883730ea",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_201170089674462e883730ea",
+        "content": "131:  fix: fall back to bash `grep -rn` (shell rg) BEFORE concluding absence, and\n134:  JSON/heredoc/bash eat `\\s`-style escapes and turn multi-line `python -c`"
+      }
+    ]
+  ],
+  "trajectory": [
+    {
+      "tool": "read_file",
+      "args": {
+        "path": "tools/summarize.sh"
+      },
+      "observation": "   1 | #!/bin/bash\n   2 | # Summarize a directory: one line per file, '<name>: <lines> lines'.\n   3 | \n   4 | dir=$1\n   5 | for f in $dir/*; do\n   6 |   lines=$(wc -l < $f)\n   7 |   name=$(basename $f)\n   8 |   echo \"$name: $lines lines\"\n   9 | done"
+    },
+    {
+      "tool": "read_file",
+      "args": {
+        "path": "test_summarize.py"
+      },
+      "observation": "   1 | \"\"\"What the script must do. Says nothing about how it must be written.\n   2 | \n   3 | Two platform facts are handled here so the test measures the script and not\n   4 | the shell it happens to land in: the interpreter is resolved with\n   5 | ``shutil.which`` (the same lookup the harness uses, which finds the Git/MSYS\n   6 | bash rather than the WSL launcher Windows keeps in System32), and every path\n   7 | handed to it is relative to this repository, because an absolute Windows path\n   8 | does not survive the trip through an argument on either bash.\n   9 | \"\"\"\n  10 | \n  11 | import shutil\n  12 | import subprocess\n  13 | from pathlib import Path\n  14 | \n  15 | REPO = Path(__file__).resolve().parent\n  16 | SCRIPT = \"tools/summarize.sh\"\n  17 | SAMPLES = \"tools/samples\"\n  18 | BASH = shutil.which(\"bash\") or \"bash\"\n  19 | \n  20 | \n  21 | def run(args: list[str]) -> subprocess.CompletedProcess:\n  22 |     return subprocess.run([BASH, SCRIPT, *args], cwd=REPO,\n  23 |                           capture_output=True, text=True)\n  24 | \n  25 | \n  26 | def test_one_line_per_file():\n  27 |     done = run([SAMPLES])\n  28 |     assert done.returncode == 0, done.stderr\n  29 |     assert sorted(done.stdout.splitlines()) == [\"a.txt: 2 lines\", \"b.txt: 3 lines\"]\n  30 | \n  31 | \n  32 | def test_refuses_a_missing_directory():\n  33 |     done = run([\"tools/nowhere\"])\n  34 |     assert done.returncode != 0\n  35 |     assert (done.stdout + done.stderr).strip() != \"\"\n  36 | \n  37 | \n  38 | def test_refuses_without_an_argument():\n  39 |     done = run([])\n  40 |     assert done.returncode != 0\n  41 |     assert (done.stdout + done.stderr).strip() != \"\""
+    },
+    {
+      "tool": "list_files",
+      "args": {},
+      "observation": "test_summarize.py (1374 bytes)\ntools/samples/a.txt (4 bytes)\ntools/samples/b.txt (6 bytes)\ntools/summarize.sh (187 bytes)"
+    },
+    {
+      "tool": "run_command",
+      "args": {
+        "command": "ls -la . 2>/dev/null; echo ---; find . -maxdepth 3 -iname \"*rule*\" -o -iname \"*CONTRIBUTING*\" -o -iname \"*.md\" 2>/dev/null | head -50"
+      },
+      "observation": "total 13\ndrwxr-xr-x 1 pc 197609    0 \u0441\u0435\u043d 22 15:17 ./\ndrwxr-xr-x 1 pc 197609    0 \u0441\u0435\u043d 22 15:17 ../\ndrwxr-xr-x 1 pc 197609    0 \u0441\u0435\u043d 22 15:17 .git/\ndrwxr-xr-x 1 pc 197609    0 \u0441\u0435\u043d 22 15:17 __pycache__/\n-rw-r--r-- 1 pc 197609  438 \u0441\u0435\u043d 22 15:17 opencode.json\n-rw-r--r-- 1 pc 197609 1374 \u0441\u0435\u043d 22 15:16 test_summarize.py\ndrwxr-xr-x 1 pc 197609    0 \u0441\u0435\u043d 22 15:16 tools/\n---"
+    },
+    {
+      "tool": "read_file",
+      "args": {
+        "path": "opencode.json"
+      },
+      "observation": "   1 | {\n   2 |   \"$schema\": \"https://opencode.ai/config.json\",\n   3 |   \"provider\": {\n   4 |     \"omniroute\": {\n   5 |       \"npm\": \"@ai-sdk/openai-compatible\",\n   6 |       \"name\": \"OmniRoute (local)\",\n   7 |       \"options\": {\n   8 |         \"baseURL\": \"http://127.0.0.1:20128/v1\",\n   9 |         \"apiKey\": \"{env:OMNIROUTE_API_KEY}\"\n  10 |       },\n  11 |       \"models\": {\n  12 |         \"auto/coding\": { \"name\": \"OmniRoute auto/coding\" },\n  13 |         \"main\": { \"name\": \"OmniRoute main\" }\n  14 |       }\n  15 |     }\n  16 |   },\n  17 |   \"mcp\": {}\n  18 | }"
+    },
+    {
+      "tool": "run_command",
+      "args": {
+        "command": "find . -path ./.git -prune -o -type f -print | head -50; echo ---; cat .git/config 2>/dev/null; git log --oneline -20 2>/dev/null"
+      },
+      "observation": "./opencode.json\n./test_summarize.py\n./tools/samples/a.txt\n./tools/samples/b.txt\n./tools/summarize.sh\n./__pycache__/test_summarize.cpython-314-pytest-8.4.2.pyc\n---\n[core]\n\trepositoryformatversion = 0\n\tfilemode = false\n\tbare = false\n\tlogallrefupdates = true\n\tignorecase = true\n326ec83 task start"
+    },
+    {
+      "tool": "run_command",
+      "args": {
+        "command": "ls \"$HOME\" \"$HOME/.config\" 2>/dev/null; find \"$HOME\" -maxdepth 4 \\( -iname \"*shell*rule*\" -o -iname \"*RULES*\" -o -iname \"AGENTS.md\" -o -iname \"CLAUDE.md\" \\) 2>/dev/null | grep -v -E \"node_modules|\\.git/\" | head"
+      },
+      "observation": "/c/Users/pc:\n_archive/\nAppData/\nApplication Data@\nbin/\nContacts/\nCookies@\ncopybara/\ncreate-shortcuts.ps1\nDesktop/\nDocuments/\ndocx-p01.png\ndocx-p02.png\ndocx-p03.png\ndocx-p04.png\ndocx-p06.png\ndocx-p08.png\ndocx-p11.png\ndocx-p13.png\ndocx-p14.png\ndocx-v2-p02.png\ndocx-v2-p11.png\ndocx-v2-p13.png\ndocx-v3-p11.png\ndocx-v3-p13.png\nDownloads/\nFavorites/\nfreebuff-tree.json\ngo/\nhome-happ.ps1\njtest_link@\nLinks/\nLocal Settings@\nlogistika-after.png\nlyada-before.png\nlyada-before2.png\nlyada-field-desktop-journal.png\nlyada-field-journal-saved.png\nlyada-field-mobile-baseline.png\nlyada-field-mobile-final.png\nlyada-field-mobile-journal.png\nlyada-index-baseline.png\nlyada-main-desktop-baseline.png\nlyada-main-mobile-baseline.png\nlyada-main-mobile-centered-toolbar.png\nlyada-main-mobile-final-toolbar.png\nlyada-main-mobile-toolbar-fixed.png\nlyada-mobile-popup-baseline.png\nmap-current-full.png\nmap-docx-crop.png\nmap-docx-full.png\nmap-final-mobile.png\nmap-final-schema.png\nmap-fixed.png\nmap-for-docx.png\nmap-full.png\nmap-mobile.png\nmap-ref2.png\nmap-ref3-full.png\nmap-ref-style.png\nmap-v10-full.png\nmap-v11-full.png\nmap-v12-full.png\nmap-v13-full.png\nmap-v14-full.png\nmap-v14-mobile.png\nmap-v15-full.png\nmap-v15-fullpage.png\nmap-v16-fullpage.png\nmap-v3.png\nmap-v4.png\nmap-v8.png\nmap-v8-full.png\nmap-v9.png\nmap-v9-full.png\nMusic/\nmy-projects/\nNetHood@\nNTUSER.DAT\nntuser.dat.LOG1\nntuser.dat.LOG2\nNTUSER.DAT{3470fc52-effc-11ee-ae29-c9005005cfe4}.TM.blf\nNTUSER.DAT{3470fc52-effc-11ee-ae29-c9005005cfe4}.TMContainer00000000000000000001.regtrans-ms\nNTUSER.DAT{3470fc52-effc-11ee-ae29-c9005005cfe4}.TMContainer00000000000000000002.regtrans-ms\nntuser.ini\nPCManger/\nPictures/\npipx/\nPowerShell/\nPowerShell7/\nPrintHood@\nqa_home_full.png\nRecent@\nrp-prompt-hub/\nSaved Games/\nschema-clean.png\nschema-clean2.png\nschool-happ.ps1\nSearches/\nsearch-index/\nSendTo@\nsetup.dat\nsqlite.log\ntools/\nUnity user templates/\nvector-index/\nVideos/\n\u0433\u043b\u0430\u0432\u043d\u043e\u0435 \u043c\u0435\u043d\u044e@\n\u041c\u043e\u0438 \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b@\n\u0428\u0430\u0431\u043b\u043e\u043d\u044b@\n\n/c/Users/pc/.config:\naggg4/\nbrowser-harness/\ncagent/\nconfigstore/\ncrush/\ndevin/\nfreebuff/\nfreebuff-desktop/\ngoogle-workspace-mcp/\ngoose/\nkimchi/\nmanicode/\nmimocode/\nopencode/\nrejudge/\nsherpa-voice/\nskills-adapters/\nyt-dlp/\n/c/Users/pc/.agents/skills/hyperframes-animation/rules\n/c/Users/pc/.agents/skills/hyperframes-animation/rules-index.md\n/c/Users/pc/.claude/skills/hyperframes-animation/rules\n/c/Users/pc/.claude/skills/hyperframes-animation/rules-index.md\n/c/Users/pc/.codex/AGENTS.md\n/c/Users/pc/.codex/skills/hyperframes-animation/rules\n/c/Users/pc/.codex/skills/hyperframes-animation/rules-index.md\n/c/Users/pc/.copilot/skills/hyperframes-animation/rules\n/c/Users/pc/.copilot/skills/hyperframes-animation/rules-index.md\n/c/Users/pc/.openclaw/AGENTS.md"
+    },
+    {
+      "tool": "run_command",
+      "args": {
+        "command": "find /c/Users/pc -maxdepth 5 -name \"AGENTS.md\" -o -name \"CLAUDE.md\" -o -iname \"*.md\" -path \"*rule*\" 2>/dev/null | grep -v node_modules | head; ls /c/Users/pc/.config/cagent 2>/dev/null | head"
+      },
+      "observation": "/c/Users/pc/.agents/skills/hyperframes-animation/rules/3d-camera-flight.md\n/c/Users/pc/.agents/skills/hyperframes-animation/rules/3d-page-scroll.md\n/c/Users/pc/.agents/skills/hyperframes-animation/rules/3d-text-depth-layers.md\n/c/Users/pc/.agents/skills/hyperframes-animation/rules/ai-tracking-box.md\n/c/Users/pc/.agents/skills/hyperframes-animation/rules/ambient-glow-bloom.md\n/c/Users/pc/.agents/skills/hyperframes-animation/rules/anchored-layout-expand.md\n/c/Users/pc/.agents/skills/hyperframes-animation/rules/asr-keyword-glow.md\n/c/Users/pc/.agents/skills/hyperframes-animation/rules/avatar-cloud-network.md\n/c/Users/pc/.agents/skills/hyperframes-animation/rules/camera-cursor-tracking.md\n/c/Users/pc/.agents/skills/hyperframes-animation/rules/card-morph-anchor.md\nuser-uuid"
+    },
+    {
+      "tool": "run_command",
+      "args": {
+        "command": "ls /c/Users/pc/.agents /c/Users/pc/.agents/skills 2>/dev/null; find /c/Users/pc/.agents -maxdepth 2 -iname \"*shell*\" 2>/dev/null; find /c/Users/pc -maxdepth 3 -iname \"*.md\" \\( -path \"*opencode*\" -o -path \"*agent*\" -o -path \"*workspace*\" \\) 2>/dev/null | grep -v skills | head"
+      },
+      "observation": "/c/Users/pc/.agents:\naudit-worker.ts\ncode-worker.ts\ndb-worker.ts\ndoc-worker.ts\nfix-worker.ts\nfreebuff-desktop-thread-local-v3.ts\nfreebuff-desktop-thread-local-v3.ts-revert\ninfra-worker.ts\nmcp.json\nmcp.json.bak-20260807-064757\nmcp.json.bak-20260808-183041\nmcp.json.bak-20260810-230948\nmcp.json.bak-20260810-2314-merge-pre\nmcp.json.bak-20260812-232724\nmcp.json.bak-20260813-002430\nmcp.json.bak-20260814-000930\nmcp.json.bak-20260815-224023\nmcp.json.bak-20260817\nmcp.json.bak-20260821\nmcp.json.bak-20260821-aggg\nmcp.json.bak-20260824\nmcp.json.bak-20260907-023500\nmcp.json.bak-20260913-aggg4\nmcp.json.bak-clean-20260811-002257\nmcp.json.bak-tgdl\nmcp.json.bak-tgdoc-20260826-002307\nmcp-tools-cache/\norchestrator.ts\nplan-worker.ts\nrefactor-worker.ts\nresearch-worker.ts\nreview-worker.ts\nsecurity-worker.ts\nskills/\ntest-worker.ts\ntriage-agent.ts\n\n/c/Users/pc/.agents/skills:\ndashi-ppt/\ngws-gmail@\ngws-gmail-read@\ngws-gmail-reply@\ngws-gmail-send@\ngws-gmail-triage@\ngws-gmail-watch@\nhyperframes/\nhyperframes-animation/\nhyperframes-audio/\nhyperframes-cli/\nhyperframes-core/\nhyperframes-creative/\nhyperframes-keyframes/\nhyperframes-registry/\nlast30days@\nmedia-use/\nperformance/\ntelegram-mcp-setup@\n/c/Users/pc/.openclaw/workspace/AGENTS.md\n/c/Users/pc/.openclaw/workspace/BOOT.md\n/c/Users/pc/.openclaw/workspace/CRON-REGISTRY.md\n/c/Users/pc/.openclaw/workspace/GRAVEYARD.md\n/c/Users/pc/.openclaw/workspace/KEY-ROTATION.md\n/c/Users/pc/.openclaw/workspace/README.md\n/c/Users/pc/.openclaw/workspace/TOOLS.md\n/c/Users/pc/.openclaw/workspace/workspace_rebuild_task_plan.md\n/c/Users/pc/.openclaw/workspace-dev/AGENTS.md\n/c/Users/pc/.openclaw/workspace-dev/IDENTITY.md"
+    },
+    {
+      "tool": "run_command",
+      "args": {
+        "command": "find /c/Users/pc/.openclaw -maxdepth 2 -iname \"*.md\" 2>/dev/null | head -30; echo ---; grep -ril \"shell\" /c/Users/pc/.openclaw/workspace* 2>/dev/null | head"
+      },
+      "observation": "/c/Users/pc/.openclaw/AGENTS.md\n/c/Users/pc/.openclaw/codebuff-source/AGENTS.md\n/c/Users/pc/.openclaw/codebuff-source/CONTRIBUTING.md\n/c/Users/pc/.openclaw/codebuff-source/README.md\n/c/Users/pc/.openclaw/codebuff-source/README.zh-CN.md\n/c/Users/pc/.openclaw/codebuff-source/SECURITY.md\n/c/Users/pc/.openclaw/codebuff-source/WINDOWS.md\n/c/Users/pc/.openclaw/freebuff-baseline-2026-08-20/README.md\n/c/Users/pc/.openclaw/telegram-mcp-bot/CLAUDE.md\n/c/Users/pc/.openclaw/telegram-mcp-bot/README.md\n/c/Users/pc/.openclaw/workspace/AGENTS.md\n/c/Users/pc/.openclaw/workspace/BOOT.md\n/c/Users/pc/.openclaw/workspace/CRON-REGISTRY.md\n/c/Users/pc/.openclaw/workspace/GRAVEYARD.md\n/c/Users/pc/.openclaw/workspace/KEY-ROTATION.md\n/c/Users/pc/.openclaw/workspace/README.md\n/c/Users/pc/.openclaw/workspace/TOOLS.md\n/c/Users/pc/.openclaw/workspace/workspace_rebuild_task_plan.md\n/c/Users/pc/.openclaw/workspace-dev/AGENTS.md\n/c/Users/pc/.openclaw/workspace-dev/IDENTITY.md\n/c/Users/pc/.openclaw/workspace-dev/SOUL.md\n/c/Users/pc/.openclaw/workspace-dev/TOOLS.md\n/c/Users/pc/.openclaw/workspace-dev/USER.md\n/c/Users/pc/.openclaw/workspace_personal/AGENTS.md\n/c/Users/pc/.openclaw/workspace_personal/CONVENTIONS.md\n/c/Users/pc/.openclaw/workspace_personal/DANGLING_TASKS.md\n/c/Users/pc/.openclaw/workspace_personal/GRAVEYARD.md\n/c/Users/pc/.openclaw/workspace_personal/IDENTITY.md\n/c/Users/pc/.openclaw/workspace_personal/knowledge.md\n/c/Users/pc/.openclaw/workspace_personal/MEMORY.md\n---\n/c/Users/pc/.openclaw/workspace/.agents/skills/agent-reach/references/social.md\n/c/Users/pc/.openclaw/workspace/.agents/skills/agent-reach/SKILL.md\n/c/Users/pc/.openclaw/workspace/.agents/skills/ai-image-prompts-skill/references/comic-storyboard.json\n/c/Users/pc/.openclaw/workspace/.agents/skills/ai-image-prompts-skill/references/ecommerce-main-image.json\n/c/Users/pc/.openclaw/workspace/.agents/skills/ai-image-prompts-skill/references/game-asset.json\n/c/Users/pc/.openclaw/workspace/.agents/skills/ai-image-prompts-skill/references/infographic-edu-visual.json\n/c/Users/pc/.openclaw/workspace/.agents/skills/ai-image-prompts-skill/references/others.json\n/c/Users/pc/.openclaw/workspace/.agents/skills/ai-image-prompts-skill/references/poster-flyer.json\n/c/Users/pc/.openclaw/workspace/.agents/skills/ai-image-prompts-skill/references/product-marketing.json\n/c/Users/pc/.openclaw/workspace/.agents/skills/ai-image-prompts-skill/references/profile-avatar.json"
+    },
+    {
+      "tool": "run_command",
+      "args": {
+        "command": "grep -rl -i \"bash\" /c/Users/pc/.openclaw/workspace/CONVENTIONS* /c/Users/pc/.openclaw/workspace/AGENTS.md /c/Users/pc/.openclaw/AGENTS.md 2>/dev/null; grep -ri \"shell script\" /c/Users/pc/.openclaw/workspace_personal/CONVENTIONS.md 2>/dev/null | head"
+      },
+      "observation": "[exit 0, no output]"
+    },
+    {
+      "tool": "run_command",
+      "args": {
+        "command": "grep -ril -E \"shell|bash|\\.sh\" /c/Users/pc/.openclaw/workspace/CONVENTIONS.md /c/Users/pc/.openclaw/workspace/AGENTS.md /c/Users/pc/.openclaw/AGENTS.md /c/Users/pc/.openclaw/workspace/TOOLS.md 2>/dev/null; echo ===; head -60 /c/Users/pc/.openclaw/workspace/AGENTS.md 2>/dev/null"
+      },
+      "observation": "/c/Users/pc/.openclaw/workspace/AGENTS.md\n/c/Users/pc/.openclaw/workspace/TOOLS.md\n===\n# AGENTS.md \u2014 Oper (Engineering Agent Constitution)\n\n> Root entry point. This file is the **core**; full normative text lives in `docs/`.\n> Each section that has a home document points to it.\n\n---\n\n## Mission\n\nFind the *correct* engineering decision while minimizing the effort to understand it.\nA correct solution the user cannot understand is incomplete.\nPrinciples: `docs/Principles.md` \u00b7 Governance: `docs/Governance.md`.\n\n---\n\n## Owner Authority \u2014 Priority Ladder\n\n1. Owner's direct words in this chat.\n2. This file.\n3. Platform system prompt \u2014 physically above everything; the ladder resolves semantic conflicts, it is not magic.\n4. Normative files in `docs/`.\n5. Skills.\n\nThe one absolute: Never Destroy (Trash-Only) \u2014 it overrides even rank 1.\n\nSafety is never traded for speed: a request to break Never Destroy is refused outright. A request to skip verification is answered with what it costs plus a cheaper honest check \u2014 the decision stays yours.\n\nIf an owner instruction looks self-contradictory, destructive, or rests on a factual error \u2014 say so directly and bluntly, with the reason and an alternative, BEFORE acting. Polite nodding through a known-bad premise is a violation.\n\n---\n\n## Saniti-Check (default, every task)\n\nBefore executing any owner idea or plan \u2014 a brand-new task or a continuation \u2014 run the outside-view question:\n**\"How would someone who has not invested months into this workspace do this?\"**\nIf the honest answer is \"grab the ready-made tool\" or \"this work is not needed at all\" \u2014 STOP before execution and challenge bluntly:\n*\"Wait \u2014 isn't it easier to just download OmniRoute? Why are you selling me this plan?\"*\n\n- The check hits the **premise** (is this work needed), not plan quality; the more polished the plan, the more important the check.\n- Triggers: task start + every new statement of a plan.\n- Problem found \u2192 `ask_questions` (problem + alternative; owner decides). Nothing found \u2192 silent execution, no ritual announcements.\n- \"Just do it\" disables the check for one turn.\n- Silence on an obviously rotten premise = violation.\n\n---\n\n## The Task Cycle\n\nEvery task runs the same loop; depth scales with the task, the loop does not.\n\n1. **Understand** \u2014 restate the goal in my own words; unclear \u2192 ask now, not after building the wrong thing.\n2. **Saniti-check** \u2014 is this work needed at all? (section above)\n3. **Relevance scan + tool check** \u2014 what does the workspace already hold, and which tools already exist for it? Skill `relevance-scan` (layers: docs \u2192 knowledge \u2192 memory \u2192 skills; grep before read) **and** skill `mcp` part `mcp-usage` (task \u2192 router \u2192 MCP tool \u2192 script mapping); verdict in one line before proceeding.\n4. **Read** what I'm about to touch.\n5. **Plan** \u2014 ordered steps, each with evidence and an exit condition.\n6. **Confirm** \u2014 substantive decisions through `ask_questions` **at the moment the decision appears**, not bundled at the end; several related questions in one call are fine, but independent decisions get their own asks. When the work is not autonomous, ask early and often wherever the owner's judgment could reasonably diverge from mine. Reversible details inside an already-confirmed decision I decide and note. Silently widening the frame of a confirmed decision is a violation.\n   **Self-contained options (standing rule, 2026-09-20):** every option in an ask must be understandable without leaving the question \u2014 what the thing IS, why it exists in the workspace, and the concrete cost of the drastic choice (bytes, irreversibility, what breaks). The owner must never have to answer \"what is this even?\" before voting. One-line names are for things already discussed in-session; anything the owner hasn't touched recently carries its own explanation.\n7. **Execute** in small units \u2014 the smallest sufficient change.\n8. **Verify** \u2014 every unit checked before the next one starts.\n9. **Commit** \u2014 units close as commits."
+    },
+    {
+      "tool": "run_command",
+      "args": {
+        "command": "grep -n -i -B2 -A20 -E \"shell|bash\" /c/Users/pc/.openclaw/workspace/AGENTS.md | head -80"
+      },
+      "observation": "167-   - `_memory/INDEX.md` \u2014 owner facts, dangling tasks, wins, errors.\n168-2. **Skill `mcp` part `mcp-usage`** maps a task domain to the right router skill, MCP server and script \u2014 read it before choosing HOW.\n169:3. Only then choose: MCP tool if one matches \u2192 skill contract via find-skills \u2192 memory \u2192 manual shell.\n170-\n171-**Freshness is part of the work:** a layer change updates its index in the same\n172-commit \u2014 skills layer \u2192 skills-catalog + SKILLS-INDEX; MCP config \u2192 Infrastructure\n173-registry; new finding \u2192 knowledge INDEX. A stale index is a lie told to the next session.\n174-\n175----\n176-\n177-## Working With Pre-Existing Changes\n178-\n179-All workspace history is the working base. Work with pre-existing code as your own.\n180-**Stop and report to the owner** when: an obvious regression; a critical change whose\n181-origin you can't determine; secrets or protected zones (`_agent/`, env, live runtime\n182-config, archives); or a live parallel agent holds the paths you need (check\n183-`_memory/parity/`).\n184-Unclaimed work is the working base: verify it, finish it, commit it, or record an\n185-explicit defer \u2014 never destroy it, never commit it blindly.\n186-Full text: `docs/Working-Base.md`; parallel-agent ownership: `docs/Autonomy-Charter.md`.\n187-\n188----\n189-"
+    },
+    {
+      "tool": "run_command",
+      "args": {
+        "command": "ls /c/Users/pc/.openclaw/workspace/docs/ 2>/dev/null; grep -ril -E \"shell|bash|\\.sh\\b\" /c/Users/pc/.openclaw/workspace/docs/ 2>/dev/null"
+      },
+      "observation": "adr/\nAutonomy-Charter.md\nCode.md\nData-Safety.md\ndocument-status.toml\nGovernance.md\nhiveproxy-v3/\nInfrastructure.md\nKB-RAG.md\nPrinciples.md\nSkill-Invocation.md\nSkills.md\nsuperpowers/\nVersion-Control.md\nWorking-Base.md\n/c/Users/pc/.openclaw/workspace/docs/Code.md\n/c/Users/pc/.openclaw/workspace/docs/Data-Safety.md\n/c/Users/pc/.openclaw/workspace/docs/hiveproxy-v3/PLAN.md\n/c/Users/pc/.openclaw/workspace/docs/Infrastructure.md\n/c/Users/pc/.openclaw/workspace/docs/KB-RAG.md\n/c/Users/pc/.openclaw/workspace/docs/Skills.md\n/c/Users/pc/.openclaw/workspace/docs/superpowers/plans/2026-07-31-oper-repository-hardening.md\n/c/Users/pc/.openclaw/workspace/docs/superpowers/plans/2026-08-10-avatar-telepresence.md\n/c/Users/pc/.openclaw/workspace/docs/superpowers/plans/2026-08-11-avatar-desktop-shell.md"
+    },
+    {
+      "tool": "run_command",
+      "args": {
+        "command": "grep -n -i -E \"shell|bash|\\.sh\" /c/Users/pc/.openclaw/workspace/docs/Code.md | head -30"
+      },
+      "observation": "131:  fix: fall back to bash `grep -rn` (shell rg) BEFORE concluding absence, and\n134:  JSON/heredoc/bash eat `\\s`-style escapes and turn multi-line `python -c`"
+    }
+  ],
+  "scratch": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\harness\\lab\\runs\\t07-defensive-script-t07-baseline-baseline-20260922-151723-uxld",
+  "final_text": ""
+}

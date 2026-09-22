@@ -17,6 +17,10 @@ class HarnessPolicy:
     # context: what the model is shown before it starts
     include_file_list: bool = True
     include_initial_tests: bool = True
+    # Whether the agent may search the workspace skill catalog (find_skills /
+    # read_skill). Off by default so the bare harness remains the floor every
+    # catalog run is measured against; the lookup has to earn its tokens.
+    include_skill_catalog: bool = False
     # history: what is kept from earlier steps
     context_mode: str = "full"          # full | window
     window_steps: int = 10              # used when context_mode == "window"
@@ -33,6 +37,7 @@ class HarnessPolicy:
             "name": self.name,
             "include_file_list": self.include_file_list,
             "include_initial_tests": self.include_initial_tests,
+            "include_skill_catalog": self.include_skill_catalog,
             "context_mode": self.context_mode,
             "window_steps": self.window_steps,
             "observation_chars": self.observation_chars,
@@ -87,6 +92,10 @@ VARIANTS = {
     "window4_terse": replace(BASE, name="window4_terse", context_mode="window",
                              window_steps=4, observation_chars=600, read_lines=60),
     "window2": replace(BASE, name="window2", context_mode="window", window_steps=2),
+    # The same harness plus the skill catalog. Exists as a reference so "does
+    # looking in the catalog pay for itself?" has a counterpart to be measured
+    # against, instead of being asserted in a document.
+    "catalog": replace(BASE, name="catalog", include_skill_catalog=True),
 }
 
 
