@@ -38,8 +38,12 @@ import judge as judge_module  # noqa: E402
 from stores import FlatJournal, GraphStore, search_flat  # noqa: E402
 
 DEFAULT_BASE_URL = "http://127.0.0.1:20128/v1"
-DEFAULT_ANSWER_MODELS = ("anymodel-org/ag/gemini-3-flash", "vyceai-com/deepseek-v4-flash")
-DEFAULT_JUDGE_MODELS = ("vyceai-com/deepseek-v4-flash", "anymodel-org/ag/gemini-3-flash")
+# Two live OmniRoute routing names, deliberately in opposite order: the answer
+# chain prefers the strong general model, the judge chain prefers the fast one,
+# so a cell's answer and its verdict come from different models. Routing names
+# survive provider churn; the record keeps the id that actually served the call.
+DEFAULT_ANSWER_MODELS = ("main", "auto/coding")
+DEFAULT_JUDGE_MODELS = ("auto/coding", "main")
 DEFAULT_BENCH_DIR = Path(os.environ.get("ONEIRO_BENCH_DIR") or (Path.home() / ".openclaw" / "bench-memory"))
 
 

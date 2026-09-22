@@ -360,11 +360,17 @@ users, and in GAVEL's case an external task domain.
 - **No number without a run**, and no claim without a recording behind it.
 - **Never destroy data.** Deletion is recycling through `_scripts/trash.sh` in
   the workspace; permanent deletion is not an available operation.
-- **One LLM provider now**: `https://inference.dahl.global/v1`, key from the
-  environment variable `INFERENCE_DAHL_GLOBAL_KEY` (workspace `.env`). It is a
-  free tier that admits paid accounts first, so it refuses requests under load;
-  refusals are recorded as "not measured", never as failures. No other key is
-  authorized.
+- **One LLM provider now (owner decision 2026-09-22)**: the local OmniRoute proxy
+  at `http://127.0.0.1:20128/v1`, key from `OMNIROUTE_API_KEY` (workspace `.env`).
+  Models are asked for by routing name (`auto/coding`, `main`), not by upstream
+  id: every concrete provider id probed through the proxy either rejected
+  credentials or answered without honouring the tool schema, while the routing
+  names answer with real tool calls in seconds. The proxy names the upstream
+  that answered in `x-omniroute-provider`, and that id is recorded per call, so
+  no row of results can be attributed to a model that did not serve it.
+  Refusals are still recorded as "not measured", never as failures.
+  The old direct vendor endpoint (`inference.dahl.global`) is now one upstream
+  inside the proxy, not a separate provider of this project.
 - **Provider-agnostic adapter** in code: base_url + key, no provider hard-coded.
 - **Do not push to any remote** without an explicit, one-time authorization.
 - The jury is non-technical: anything presented must be legible without AI
@@ -405,9 +411,9 @@ python -m pytest tests -q --ignore=tests/test_core_loop.py   # the project's own
 
 | fact | value |
 |---|---|
-| Agent model (real track) | `deepseek-ai/DeepSeek-V4-Flash-0731` |
-| Proposer model (dream/search) | `zai-org/GLM-5.3-Flash`, with a fallback chain when the provider refuses |
-| Provider | `https://inference.dahl.global/v1`, env `INFERENCE_DAHL_GLOBAL_KEY` |
+| Agent model (real track) | `auto/coding` (routing name; upstream id is recorded per episode) |
+| Proposer model (dream/search) | `main`, with `auto/coding:reliable` behind it when the proxy refuses |
+| Provider | `http://127.0.0.1:20128/v1`, env `OMNIROUTE_API_KEY` |
 | Ports | sc-web 8000, sc-machine SCTP 8090, dashboard 8130 (`ONEIRO_DASH_PORT`), bridge default 8090 |
 | Containers | `ostis/sc-web:0.9.0` from the registry; `sc-machine` built locally from a GitHub release binary distribution (no conan; `conan.ostis.net` is unreachable) |
 | Recordings | `harness/lab/runs/<task>-<label>-r<N>-<stamp>/record.json`; rounds in `harness/lab/rsi/round-*.json`; criteria in `harness/lab/rsi/criteria.json` |

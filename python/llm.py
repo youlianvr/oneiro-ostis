@@ -1,9 +1,15 @@
 """Model access for the living roles: one provider, bounded waits, one budget.
 
-Owner decision (2026-09-21): the researcher and the worker think on
-``deepseek-ai/DeepSeek-V4-Flash-0731``, the manager on
-``zai-org/GLM-5.3-Flash``, and ``MiniMaxAI/MiniMax-M2.7`` stands in when the
-primary model is unreachable.
+Owner decision (2026-09-22): every model call goes to the local OmniRoute
+proxy (``http://127.0.0.1:20128/v1``), not to a single vendor endpoint. The
+proxy holds the provider keys, fails over between upstreams, and answers with
+the id of the model that actually served the call; that id is recorded, so a
+result row can never be attributed to a model that did not produce it.
+
+The role aliases below are the proxy's routing names, not upstream model ids:
+they stay valid while the relays behind them change, which is exactly what
+made the previous fixed-vendor setup stop working (the vendor answered
+``model_concurrency`` and every call waited).
 
 This module owns exactly three things:
 
@@ -27,8 +33,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-DEFAULT_BASE_URL = "https://inference.dahl.global/v1"
-API_KEY_ENV = "INFERENCE_DAHL_GLOBAL_KEY"
+DEFAULT_BASE_URL = "http://127.0.0.1:20128/v1"
+API_KEY_ENV = "OMNIROUTE_API_KEY"
 REQUEST_TIMEOUT = 180.0
 MAX_REQUEST_ATTEMPTS = 4
 MAX_PLACEHOLDER_RETRIES = 8
@@ -36,11 +42,11 @@ PLACEHOLDER_WAIT = 15.0
 PLACEHOLDER_MARKER = "model is starting up"
 
 ROLE_MODELS = {
-    "researcher": "deepseek-ai/DeepSeek-V4-Flash-0731",
-    "worker": "deepseek-ai/DeepSeek-V4-Flash-0731",
-    "manager": "zai-org/GLM-5.3-Flash",
+    "researcher": "auto/coding",
+    "worker": "auto/coding",
+    "manager": "main",
 }
-FALLBACK_MODEL = "MiniMaxAI/MiniMax-M2.7"
+FALLBACK_MODEL = "auto/coding:reliable"
 
 RETRYABLE_ERRORS = (urllib.error.URLError, TimeoutError, ConnectionError,
                     json.JSONDecodeError, KeyError)
@@ -106,8 +112,11 @@ class ChatClient:
     api_key: str
     base_url: str = DEFAULT_BASE_URL
     temperature: float = 0.2
+    # What the proxy says actually answered: the routing alias is what we ask
+    # for, the provider id is what we can show.
+    served_provider: str = ""
 
-    def _post(self, payload: dict) -> dict:
+    def _post(self, payload: dict) -> tuple[dict, dict]:
         request = urllib.request.Request(
             f"{self.base_url.rstrip('/')}/chat/completions",
             data=json.dumps(payload).encode("utf-8"),
@@ -116,7 +125,7 @@ class ChatClient:
             method="POST",
         )
         with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
-            return json.loads(response.read().decode("utf-8"))
+            return json.loads(response.read().decode("utf-8")), dict(response.headers)
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None,
              max_tokens: int | None = None) -> tuple[dict, dict]:
@@ -134,9 +143,11 @@ class ChatClient:
         last_failure = "no attempt made"
         for attempt in range(MAX_REQUEST_ATTEMPTS):
             try:
-                body = self._post(payload)
+                body, headers = self._post(payload)
                 choice = body["choices"][0]
                 message = choice["message"]
+                self.served_provider = (headers.get("x-omniroute-provider")
+                                        or headers.get("X-Omniroute-Provider") or "")
             except urllib.error.HTTPError as exc:
                 if exc.code == 429:
                     # The provider's own wait outlives a one-second ladder; a
@@ -197,6 +208,7 @@ class CallRecord:
     model: str
     ok: bool
     detail: str = ""
+    served: str = ""            # upstream that actually answered, when named
 
 
 @dataclass
@@ -252,7 +264,8 @@ class ModelPool:
                 problems.append(f"{model}: {exc}")
                 self.calls.append(CallRecord(role, model, False, str(exc)[:300]))
                 continue
-            self.calls.append(CallRecord(role, model, True))
+            self.calls.append(CallRecord(role, model, True,
+                                         served=getattr(client, "served_provider", "")))
             return ModelReply(message=message, usage=usage, model=model)
         raise ProviderDown("; ".join(problems))
 

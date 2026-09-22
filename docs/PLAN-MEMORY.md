@@ -86,6 +86,13 @@ snapshot. First run (2026-09-20, free-looking slice, one call each):
 | failure modes seen | HTTP 400/401/403/404/429/502/503, timeouts |
 | usable at that moment (examples) | `dahl/MiniMaxAI/MiniMax-M2.7`, `vyceai-com/deepseek-v4-flash`, `anymodel-org/ag/gemini-3-flash`, `anymodel-org/ag/gemini-2.5-flash-lite`, `auto/cheap`, `auto/gemini` |
 
+> Re-checked 2026-09-22 on the local OmniRoute proxy: the direct provider ids
+> above are stale. Through the proxy the concrete ids mostly reject credentials
+> (401) or answer without honouring the tool schema, while the routing names
+> `main` and `auto/coding` answer with real tool calls in seconds. The wall to
+> pick from is the routing names, and the proxy's `x-omniroute-provider` header
+> names the upstream that actually served each call.
+
 Consequence for the run: pick a primary from models that survive several checks,
 keep a fallback chain, and record which model actually served each call. A row
 of results belongs to one model; if that model dies mid-row the row is re-run and

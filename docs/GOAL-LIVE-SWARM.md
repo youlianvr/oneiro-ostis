@@ -8,10 +8,10 @@
 
 By morning Oneiro must be a **living organization**, not a protocol:
 
-1. Three roles call real models through the `dahl` provider:
-   **researcher** and **worker** on `deepseek-ai/DeepSeek-V4-Flash-0731`,
-   **manager** on `zai-org/GLM-5.3-Flash`. When the provider misbehaves, the
-   automatic fallback is `MiniMaxAI/MiniMax-M2.7`; anything beyond that is
+1. Three roles call real models through the local OmniRoute proxy:
+   **researcher** and **worker** on `auto/coding`,
+   **manager** on `main`. When the proxy misbehaves, the
+   automatic fallback is `auto/coding:reliable`; anything beyond that is
    recorded, not improvised.
 2. The heartbeat runs as **cycles and survives restarts**: stopping the
    process and starting it again continues the biography from OSTIS instead

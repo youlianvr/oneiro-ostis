@@ -40,8 +40,8 @@ TASKS_DIR = HARNESS_DIR / "tasks"
 RUNS_DIR = HARNESS_DIR / "lab" / "runs"
 PROVIDER_TEMPLATE = HARNESS_DIR / "opencode.template.json"
 
-DEFAULT_MODEL = "deepseek-ai/DeepSeek-V4-Flash-0731"
-API_KEY_ENV = "INFERENCE_DAHL_GLOBAL_KEY"
+DEFAULT_MODEL = "auto/coding"
+API_KEY_ENV = "OMNIROUTE_API_KEY"
 AGENT_TIMEOUT = 600.0
 
 # On Windows opencode installs as a .cmd shim, which CreateProcess cannot

@@ -26,12 +26,15 @@ import runner
 from policy import HarnessPolicy, get_policy
 
 # The provider is any OpenAI-compatible endpoint; the key comes from the
-# environment (see runner.api_key). dahl serves three tool-capable models:
-#   deepseek-ai/DeepSeek-V4-Flash-0731  (fastest, default)
-#   MiniMaxAI/MiniMax-M2.7              (fallback)
-#   zai-org/GLM-5.3-Flash               (slow, chatty about tool calls)
-DEFAULT_MODEL = "deepseek-ai/DeepSeek-V4-Flash-0731"
-BASE_URL = os.environ.get("ONEIRO_BASE_URL", "https://inference.dahl.global/v1")
+# environment (see runner.api_key). Since 2026-09-22 that endpoint is the local
+# OmniRoute proxy, and the model is a routing name rather than an upstream id:
+# concrete provider ids through the proxy were either rejecting credentials or
+# answering without honouring the tool schema, while the routing names answer
+# with real tool calls in seconds. The proxy reports which upstream actually
+# served each call, and that id is recorded per step, so an episode can always
+# be attributed to the model that produced it.
+DEFAULT_MODEL = "auto/coding"
+BASE_URL = os.environ.get("ONEIRO_BASE_URL", "http://127.0.0.1:20128/v1")
 REQUEST_TIMEOUT = 120.0
 MAX_PLACEHOLDER_RETRIES = 8
 MAX_REQUEST_ATTEMPTS = 4
@@ -142,8 +145,13 @@ class Provider:
         self.api_key = api_key
         self.temperature = temperature
         self.base_url = base_url.rstrip("/")
+        self.served: str = model
+        # The proxy names the upstream that answered in its own headers. The
+        # body model is the routing alias ("auto"), which says nothing; the
+        # provider id is the evidence that one upstream served the episode.
+        self.served_provider: str = ""
 
-    def _post(self, payload: dict) -> dict:
+    def _post(self, payload: dict) -> tuple[dict, dict]:
         request = urllib.request.Request(
             f"{self.base_url}/chat/completions",
             data=json.dumps(payload).encode("utf-8"),
@@ -152,10 +160,15 @@ class Provider:
             method="POST",
         )
         with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
-            return json.loads(response.read().decode("utf-8"))
+            return json.loads(response.read().decode("utf-8")), dict(response.headers)
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None) -> tuple[dict, dict]:
-        """Return (message, usage), retrying transient provider failures."""
+        """Return (message, usage), retrying transient provider failures.
+
+        After the call, ``self.served`` holds the model id the provider says it
+        used. Behind a routing alias that is not always the requested name, and
+        the record must carry what really answered.
+        """
         payload: dict = {"model": self.model, "messages": messages,
                          "temperature": self.temperature}
         if tools:
@@ -166,7 +179,7 @@ class Provider:
         last_error: Exception | None = None
         for attempt in range(MAX_REQUEST_ATTEMPTS):
             try:
-                body = self._post(payload)
+                body, headers = self._post(payload)
                 choice = body["choices"][0]
                 message = choice["message"]
             except urllib.error.HTTPError as exc:
@@ -188,6 +201,13 @@ class Provider:
                 time.sleep(2 ** attempt)
                 continue
 
+            served = body.get("model")
+            if served:
+                self.served = served
+            provider = (headers.get("x-omniroute-provider")
+                        or headers.get("X-Omniroute-Provider") or "")
+            if provider:
+                self.served_provider = provider
             usage = body.get("usage") or {}
             content = message.get("content") or ""
             if PLACEHOLDER_MARKER in content and not message.get("tool_calls"):
@@ -366,6 +386,7 @@ def run_task(task_id: str, model: str = DEFAULT_MODEL, label: str = "ours",
     # replay judge can rebuild that exact context instead of guessing an offset.
     blocks: list[list[dict]] = []
     steps: list[dict] = []
+    served_models: list[str] = []
     tokens = {"input": 0, "output": 0, "reasoning": 0, "cache_read": 0,
               "cache_write": 0, "total": 0}
     nudges = 0
@@ -391,6 +412,7 @@ def run_task(task_id: str, model: str = DEFAULT_MODEL, label: str = "ours",
             call_started = time.time()
             message, usage = provider.chat(request_messages, TOOLS)
             latency = round(time.time() - call_started, 2)
+            served_models.append(provider.served_provider or provider.served)
             step_tokens = _usage_tokens(usage)
             for key in tokens:
                 tokens[key] += step_tokens[key]
@@ -400,6 +422,7 @@ def run_task(task_id: str, model: str = DEFAULT_MODEL, label: str = "ours",
             step = {
                 "index": len(steps),
                 "kind": "tool" if calls else "text",
+                "served": provider.served_provider or provider.served,
                 "history_len": len(blocks),
                 "prompt_chars": sum(len(m.get("content") or "") for m in request_messages),
                 "latency": latency,
@@ -456,6 +479,9 @@ def run_task(task_id: str, model: str = DEFAULT_MODEL, label: str = "ours",
         "agent": "ours",
         "policy": policy.descriptor(),
         "model": model,
+        # The alias can be served by more than one upstream over a long episode;
+        # the set is recorded so a comparison can never mix two models unseen.
+        "served_models": sorted(set(served_models)),
         "prompt": task["prompt"],
         "wall_seconds": wall,
         "stop_reason": stop_reason,

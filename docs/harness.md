@@ -52,8 +52,8 @@ out to matter:
 
 The agent is ours: a tool loop over `list_files`, `read_file`, `write_file`,
 `edit_file`, `run_tests`, `run_command`, on a scratch copy of the task. The model
-is `deepseek-ai/DeepSeek-V4-Flash-0731` through the provider at
-`inference.dahl.global`. Every episode is recorded as `record.json`: the exact
+is a routing name on the local OmniRoute proxy (`auto/coding` by default). Every
+episode is recorded as `record.json`: the exact
 messages sent, the tool calls, the observations returned, the tokens billed, and
 the history length at each step. **That recording is what the judge replays.**
 
