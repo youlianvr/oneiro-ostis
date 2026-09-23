@@ -267,7 +267,7 @@ class TaskRunner:
                                        "reason": reason[:400]})
             last = attempt >= MAX_ATTEMPTS
             self._say((FAILED_LAST_TEXT if last else FAILED_TEXT).format(text=state.text))
-            self.echo(f"[runner] {state.task_id}: no packet ({reason[:120]})")
+            self.echo(f"задача {state.task_id}: изменение не собрано ({reason[:120]})")
             return None
         proposal_id = proposal_id_for(state.task_id, attempt)
         # The sentence about what changes is composed here, from the parts of the
@@ -344,7 +344,7 @@ class TaskRunner:
                                  "proposal_id": state.question,
                                  "verdict": verdict})
         self._say(APPROVED_TEXT if verdict == approval.APPROVE else REJECTED_TEXT)
-        self.echo(f"[runner] {state.task_id}: owner said {verdict}")
+        self.echo(f"задача {state.task_id}: владелец ответил «{verdict}»")
         return verdict
 
     # -- the project's own loop as the worker ------------------------------ #
@@ -368,14 +368,14 @@ class TaskRunner:
         token = approval._walk_env(None, telegram_entry.TOKEN_ENV)
         owner = approval._walk_env(None, telegram_entry.OWNER_ENV)
         if not token or not owner:
-            self.echo(f"[runner] no bot token or owner id: {text}")
+            self.echo(f"нет доступа к боту или не задан владелец, сообщение осталось непосланным: {text}")
             return
         call = telegram_entry.telegram_transport(token)
         try:
             call("sendMessage", {"chat_id": int(owner), "text": text,
                                  "disable_web_page_preview": True})
         except Exception as exc:  # noqa: BLE001 - the record already holds the truth
-            self.echo(f"[runner] could not tell the owner: {exc}")
+            self.echo(f"не удалось написать владельцу: {exc}")
 
     # -- the loop ---------------------------------------------------------- #
 
@@ -398,7 +398,7 @@ class TaskRunner:
             try:
                 self.tick()
             except Exception as exc:  # noqa: BLE001 - a runner must not die silently
-                self.echo(f"[runner] tick failed: {exc}")
+                self.echo(f"шаг не удался: {exc}")
             time.sleep(pause)
 
 
@@ -447,9 +447,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     runner = runner_from_env()
     if "--once" in args:
         result = runner.tick()
-        print(f"runner: {result['moved'] or 'nothing to do'}")
+        print(f"работа с задачей: {result['moved'] or 'делать нечего'}")
         return 0
-    runner.echo("runner: watching the graph for jobs from the phone")
+    runner.echo("слежу за памятью: жду задачи с телефона")
     runner.run_forever()
     return 0
 

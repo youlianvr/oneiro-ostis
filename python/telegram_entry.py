@@ -313,7 +313,7 @@ class TelegramGateway:
             },
         )
         if not answer.get("ok"):
-            raise EntryError(f"telegram refused getUpdates: {answer.get('description')}")
+            raise EntryError(f"Телеграм отказал в чтении сообщений: {answer.get('description')}")
         updates = answer.get("result") or []
         run = EntryRun()
         for update in updates:
@@ -350,7 +350,7 @@ class TelegramGateway:
              "allowed_updates": ["message", "callback_query"]},
         )
         if not answer.get("ok"):
-            raise EntryError(f"telegram refused the first read: {answer.get('description')}")
+            raise EntryError(f"Телеграм отказал в первом чтении: {answer.get('description')}")
         rows = answer.get("result") or []
         if rows:
             newest = max(int(row.get("update_id") or 0) for row in rows)
@@ -421,10 +421,10 @@ class TelegramGateway:
         except EntryError as exc:
             # The reply is cosmetic compared with the task: the work is already
             # recorded, so a failed answer is logged, not raised.
-            self._log_line(f"entry: reply failed: {exc.technical}")
+            self._log_line(f"вход: ответ не ушёл: {exc.technical}")
             return text
         if not answer.get("ok"):
-            self._log_line(f"entry: telegram refused the reply: {answer.get('description')}")
+            self._log_line(f"вход: Телеграм отказал в ответе: {answer.get('description')}")
         return text
 
     def _build_channel(self) -> Optional[approval.TelegramApprovalChannel]:
@@ -453,7 +453,7 @@ class TelegramGateway:
                 verified=True,
             )
         except Exception as exc:
-            self._log_line(f"entry: could not record {kind}: {exc}")
+            self._log_line(f"вход: не удалось записать «{kind}»: {exc}")
 
     def _log_line(self, line: str) -> None:
         if self._log is not None:
@@ -472,7 +472,7 @@ class TelegramGateway:
             try:
                 self.run_once()
             except EntryError as exc:
-                self._log_line(f"entry: loop error: {exc.technical}")
+                self._log_line(f"вход: сбой в работе: {exc.technical}")
             time.sleep(pause)
 
 
@@ -493,20 +493,20 @@ def main(argv: Optional[list[str]] = None) -> int:
     try:
         gateway = gateway_from_env()
     except EntryError as exc:
-        print(f"FAIL: {exc.technical}", file=sys.stderr)
+        print(f"Сбой: {exc.technical}", file=sys.stderr)
         return 1
     if "--prime" in args:
         offset = gateway.prime()
-        print(f"first read done, отсечка сообщений: {offset}")
+        print(f"первое чтение сделано, отсечка сообщений: {offset}")
         return 0
     if once:
         run = gateway.run_once()
-        print(f"tasks taken: {len(run.tasks)}  ignored: {len(run.ignored)}  "
-              f"decisions: {len(run.decisions)}  refusals: {len(run.refusals)}")
+        print(f"взято задач: {len(run.tasks)}  пропущено: {len(run.ignored)}  "
+              f"решено: {len(run.decisions)}  отказов: {len(run.refusals)}")
         return 0
     if gateway._offset is None:
         gateway.prime()
-    gateway._log_line("entry: watching the phone")
+    gateway._log_line("вход: слежу за твоими сообщениями")
     gateway.run_forever()
     return 0
 
