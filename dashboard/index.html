@@ -174,17 +174,17 @@ footer code{background:var(--card);border:1px solid var(--line);border-radius:4p
     <div class="d">стратегия действует в детерминированном мире, каждый шаг пишется в граф</div><div class="info" id="i-day"></div></div>
   <div class="stage" data-stage="explore"><div class="n">этап 2 · сбор данных</div><div class="t">Разведка</div>
     <div class="d">дополнительные эпизоды расширяют покрытие опыта для судьи</div><div class="info" id="i-explore"></div></div>
-  <div class="stage" data-stage="dream"><div class="n">этап 3 · оценка</div><div class="t">Replay</div>
-    <div class="d">точный replay по записям: оценка кандидатов без запуска мира</div><div class="info" id="i-dream"></div></div>
-  <div class="stage" data-stage="deploy"><div class="n">этап 4 · измерение</div><div class="t">Деплой</div>
+  <div class="stage" data-stage="dream"><div class="n">этап 3 · оценка</div><div class="t">Повтор по записям</div>
+    <div class="d">точный повтор по записям: кандидаты оцениваются без запуска мира</div><div class="info" id="i-dream"></div></div>
+  <div class="stage" data-stage="deploy"><div class="n">этап 4 · измерение</div><div class="t">Выкатка</div>
     <div class="d">победитель проверяется в мире, оценка сверяется с прогнозом</div><div class="info" id="i-deploy"></div></div>
 </div>
 
 <div class="deck">
   <button class="btn-primary" id="btnDay">Эпизод: текущая стратегия</button>
   <button id="btnExplore">Эпизоды: разведка</button>
-  <button class="btn-dream" id="btnDream">Оценка кандидатов (replay)</button>
-  <button class="btn-primary" id="btnCycle">Полный цикл (эпизод + разведка + оценка + деплой)</button>
+  <button class="btn-dream" id="btnDream">Оценка кандидатов (повтор по записям)</button>
+  <button class="btn-primary" id="btnCycle">Полный цикл (эпизод + разведка + оценка + выкатка)</button>
   <button class="btn-danger" id="btnReset">Сброс базы знаний</button>
   <button id="btnStop" disabled>Остановить</button>
   <span class="job" id="jobTxt">простаивает</span>
@@ -203,9 +203,10 @@ footer code{background:var(--card);border:1px solid var(--line);border-radius:4p
 
 <div class="grid" style="grid-template-columns:1fr">
   <div class="card">
-    <h2>Память: LongMemEval</h2>
+    <h2>Память: внешний набор вопросов</h2>
+    <div class="sub"><span id="memSetName" title="LongMemEval">внешний набор вопросов</span>: вопросы из чужой работы, тот же помощник отвечает на них с разными видами памяти</div>
     <div class="sub">один и тот же вопрос задаётся четырём видам памяти: полный контекст, типизированный граф (сначала время, потом похожесть), плоский журнал слов и вовсе без памяти. Судья вопроса и вердикта это разные модели, каждое решение это запись в графе</div>
-    <div class="body" id="memoryBench"><div class="empty">загрузка записей бенчмарка…</div></div>
+    <div class="body" id="memoryBench"><div class="empty">загрузка записей замера…</div></div>
   </div>
 </div>
 
@@ -215,8 +216,8 @@ footer code{background:var(--card);border:1px solid var(--line);border-radius:4p
     <div class="body" id="claimsBody"><div class="empty">загрузка результатов измерений…</div></div>
   </div>
   <div class="card">
-    <h2>Харнесс агента: что ищет цикл и что он доказал</h2>
-    <div class="sub">цикл предлагает политики харнесса, судья решает по записям прогонов, онлайн измеряется только то, что прошло ворота</div>
+    <h2>Обвязка агента: что ищет цикл и что он доказал</h2>
+    <div class="sub">цикл предлагает правила обвязки, судья решает по записям прогонов, онлайн измеряется только то, что прошло ворота</div>
     <div class="body" id="harnessBody"><div class="empty">загрузка отчёта цикла…</div></div>
   </div>
 </div>
@@ -228,7 +229,7 @@ footer code{background:var(--card);border:1px solid var(--line);border-radius:4p
     <div class="verdict" id="ascentVerdict"></div>
   </div>
   <div class="card">
-    <h2>Оценка стратегий судьёй (replay)</h2>
+    <h2>Оценка стратегий судьёй (повтор по записям)</h2>
     <div class="body" style="max-height:340px;overflow:auto" id="dreamTable"></div>
   </div>
   <div class="card">
@@ -243,7 +244,8 @@ footer code{background:var(--card);border:1px solid var(--line);border-radius:4p
 </div>
 
 <footer>
-  Живой стек OSTIS: sc-machine, C++-агенты, данные из графа <code>/api/state</code>.
+  Память помощника живёт в графе <span title="остов системы знаний, платформа памяти">OSTIS</span>:
+  каждое число на этой странице прочитано из записей, а не посчитано отдельно.
 </footer>
 
 <script>
@@ -279,34 +281,151 @@ const KIND_RU = {
   loop_frozen: "работа заморожена",
   loop_interrupted: "цикл прерван",
   process_restart: "процесс перезапущен",
-  heartbeat_start: "удар: начало",
-  heartbeat_end: "удар: конец",
-  heartbeat_result: "итог удара",
+  heartbeat_start: "шаг работы начат",
+  heartbeat_end: "шаг работы закончен",
+  heartbeat_result: "итог шага работы",
+  heartbeat_error: "шаг работы сорвался",
+  task: "владелец поставил задачу",
+  task_taken: "задача принята",
+  task_started: "взялся за задачу",
+  task_question: "задан вопрос владельцу",
+  task_done: "владелец ответил, задача закрыта",
+  task_failed: "задача не вышла",
+  proposal_sent: "вопрос отправлен в Телеграм",
+  proposal_decision: "владелец нажал кнопку",
+  proposal_decided: "владелец нажал кнопку",
+  smoke: "проверка связи",
   research_proposal: "предложение исследователя",
   research_options: "варианты исследователя",
   manager_decision: "решение менеджера",
   model_evidence: "кто из моделей отвечал",
   worktree_created: "изолированная копия создана",
-  pr_packet: "PR-пакет готов (не слит)",
+  pr_packet: "изменение подготовлено, не влито",
   cycle_finished: "цикл закрыт",
   cycle_failed: "цикл сорвался",
   cycle_schema_error: "ответ модели не по схеме",
-  gateway_start: "шлюз OpenClaw запущен",
-  gateway_stop: "шлюз OpenClaw остановлен",
-  gateway_service_start: "служба плагина запущена",
-  gateway_service_stop: "служба плагина остановлена",
+  gateway_start: "хост помощника запущен",
+  gateway_stop: "хост помощника остановлен",
+  gateway_service_start: "служба помощника запущена",
+  gateway_service_stop: "служба помощника остановлена",
   life_process_finished: "прогон жизни завершён",
   life_process_exit: "прогон жизни упал",
   life_process_restart: "прогон жизни перезапущен",
   life_process_gave_up: "прогон жизни сдался",
 };
 const ROLE_RU = {researcher:"исследователь", manager:"менеджер", worker:"работник",
-                 gateway:"шлюз", rule:"система", system:"система"};
+                 gateway:"шлюз", rule:"система", system:"система", human:"владелец",
+                 agent:"помощник"};
 const ACTION_RU = {assign_worker:"назначить работника", escalate:"спросить владельца",
                    external_review:"отдать на внешнюю проверку", reject:"отклонить",
                    stop:"остановить цикл"};
+const actionRu = a => ACTION_RU[a] || (a ? tip("решение помощника", a) : "решение");
 const STATUS_RU = {running:"работает", finished:"завершена", frozen:"заморожена",
                    waiting_owner:"ждёт решения владельца", interrupted:"прервана"};
+
+/* ---------- слова для человека ----------
+   Панель читают владелец и жюри: подписи русские, а исходное имя остаётся в
+   подсказке при наведении, чтобы любую строку можно было сверить с записью в
+   памяти. Путей к файлам, команд, отпечатков моделей и номеров процессов на
+   экране нет: это адресовано программисту, а не тому, кто смотрит работу. */
+const tip = (label, id) => id
+  ? `<span title="${String(id).replace(/"/g, "&quot;")}">${label}</span>` : label;
+
+const CHECK_RU = {"unit-tests": "быстрые проверки", "offline-suite": "весь набор проверок",
+                  "harness-suite": "проверки обвязки", "memory-suite": "проверки памяти"};
+/* Мир и его прогоны названы словами: в записях они зовутся island, workshop,
+   oneiro-0, и это имена для программы, а не для человека. */
+const WORLD_RU = {island: "остров", workshop: "мастерская"};
+const worldRu = name => tip(WORLD_RU[name] || "мир помощника", name);
+const seedRu = name => {
+  const raw = String(name || "").replace(/`/g, "");
+  const m = raw.match(/-?(\d+)$/);
+  return m ? tip(`прогон №${m[1]}`, raw) : tip("прогон", raw);
+};
+const taskRu = id => {
+  const raw = String(id || "");
+  const m = raw.match(/^t(\d+)/);
+  return m ? tip(`задача №${Number(m[1])}`, raw) : tip("задача", raw);
+};
+const checkRu = id => tip(CHECK_RU[id] || "проверки помощника", id);
+
+/* Имена политик харнесса читаются из harness/policy.py: это их смысл, не догадка. */
+const POLICY_RU = {baseline: "исходная политика", blind: "без списка файлов",
+                   windowed: "окно в 6 шагов", window3: "окно в 3 шага",
+                   window2: "окно в 2 шага", window4_terse: "окно в 4 шага, короткие подсказки",
+                   terse: "короткие подсказки",
+                   cautious: "осторожная: меньше шагов, больше проверок",
+                   catalog: "с каталогом умений"};
+const policyRu = name => POLICY_RU[name] ? tip(POLICY_RU[name], name) : tip("политика помощника", name);
+
+const ORDER_RU = {nearest: "ближние места", farthest: "дальние места", alpha: "по алфавиту",
+                  reverse_alpha: "в обратном алфавитном порядке", coastal: "береговые места"};
+const PLACE_RU = {camp: "лагерь", beach: "пляж", cove: "бухта", jungle: "джунгли",
+                  ruins: "развалины", cave: "пещера", cliff: "утёс", peak: "вершина",
+                  swamp: "болото"};
+const placeRu = name => PLACE_RU[name] ? tip(PLACE_RU[name], name) : "неизвестное место";
+const ACTION_WORLD_RU = {travel: "переход", dig: "раскопки", deliver: "сдача находки"};
+const OUTCOME_RU = {success: "получилось", failure: "не вышло"};
+const DELIVER_RU = {cbc: "бухта, пляж, лагерь", ccb: "бухта, лагерь, пляж",
+                    bcc: "пляж, бухта, лагерь"};
+
+/* Имена стратегий читаются из python/strategy.py: обходы мест, предел раскопок,
+   порядок сдачи находок. Исходное имя остаётся в подсказке. */
+function strategyRu(name){
+  const raw = String(name || "");
+  if(!raw) return "(без имени)";
+  if(POLICY_RU[raw]) return policyRu(raw);
+  const dl = raw.match(/^cand_([a-z_]+)_dl_([a-z]+)$/);
+  if(dl) return tip(`кандидат: ${ORDER_RU[dl[1]] || "обход"}, сдача находок: ` +
+    (DELIVER_RU[dl[2]] || "в порядке, выбранном помощником"), raw);
+  const digs = raw.match(/^cand_([a-z_]+)_d(\d+)$/);
+  if(digs) return tip(`кандидат: ${ORDER_RU[digs[1]] || "обход"}, до ${digs[2]} раскопок в месте`, raw);
+  const known = {survey: "полный обход всех мест, сначала ближние",
+                 survey_reverse: "полный обход всех мест, сначала дальние",
+                 weak_wander: "первый день: по одному месту наскоро"};
+  return tip(known[raw] || "стратегия помощника", raw);
+}
+
+/* Субъект опыта и эпизод названы по дате и дню, а не отпечатком записи. */
+// В записях субъект опыта зовётся dream_<отпечаток> или dash_<отпечаток>:
+// на экране он называется датой, а отпечаток остаётся в подсказке.
+function subjectText(id){
+  const raw = String(id || "");
+  const m = raw.match(/^(dream|dash)_(\d+)$/);
+  if(!m) return "опыт помощника";
+  const at = new Date(Number(m[2]) * 1000);
+  const when = at.toLocaleDateString("ru-RU", {day: "2-digit", month: "long"}) +
+               ", " + at.toLocaleTimeString("ru-RU", {hour: "2-digit", minute: "2-digit"});
+  return (m[1] === "dash" ? "опыт из панели от " : "опыт от ") + when;
+}
+
+
+function episodeLabel(id){
+  const raw = String(id || "");
+  const m = raw.match(/^(dream_\d+)-(d\d+|explore|online.*)$/);
+  if(!m) return tip("эпизод", raw);
+  const kind = m[2] === "explore" ? "разведка"
+             : /^online/.test(m[2]) ? "измерено онлайн"
+             : "день " + m[2].slice(1);
+  return tip(kind.charAt(0).toUpperCase() + kind.slice(1), raw);
+}
+
+/* Заметка шага приходит из мира английскими словами: переводим разбором
+   известных образцов, а неизвестную формулировку показываем как есть, чтобы
+   не выдумывать факт. */
+function noteRu(note){
+  const s = String(note || "");
+  let m = s.match(/^at ([a-z]+)$/);
+  if(m) return "на месте: " + (PLACE_RU[m[1]] || m[1]);
+  if(s === "site empty") return "место уже пустое";
+  if(s === "illegal action") return "недопустимое действие";
+  if(s === "budget exhausted") return "шаги закончились";
+  m = s.match(/^found artefact_([a-z]+)_(\d+) worth ([\d.]+)$/);
+  if(m) return `находка в месте «${PLACE_RU[m[1]] || m[1]}» №${m[2]}, оценка ${m[3]}`;
+  m = s.match(/^delivered for ([\d.]+)$/);
+  if(m) return `находка сдана, выручка ${m[1]}`;
+  return s;
+}
 
 const clip = (text, n) => { const s = String(text || ""); return s.length > n ? s.slice(0, n) + "…" : s; };
 // Тексты приходят от моделей, а длинное тире в интерфейсе запрещено: правка
@@ -316,53 +435,71 @@ const clean = text => String(text || "").replace(/\s*—\s*/g, ": ");
 function feedDetail(r){
   const p = r.payload || {};
   switch(r.kind){
+    // Текст предложения и обоснования пишет модель: он лежит в записи и остаётся
+    // там же, а на экран идёт короткая подпись. Иначе на панели оказались бы
+    // имена файлов и английские слова, которые модель написала для себя.
     case "research_proposal":
-      return [clip(p.title, 140), p.check_id ? "проверка: " + p.check_id : ""]
+      return [tip("предложение исследователя", p.title || ""),
+              p.check_id ? "проверка: " + checkRu(p.check_id) : ""]
         .filter(Boolean).join(" · ");
     case "research_options": {
       const options = (p.options || p.proposals || p.items || []);
-      return options.length ? options.map(x => clip(x.title || x.name || "", 100))
-        .filter(Boolean).join(" | ") : "";
+      if(!options.length) return "";
+      const raw = options.map(x => x.title || x.name || "").filter(Boolean).join(" | ");
+      return tip(`вариантов предложено: ${options.length}`, raw);
     }
     case "manager_decision":
-      return `${ACTION_RU[p.action] || p.action || "решение"}${p.reason ? ": " + clip(p.reason, 220) : ""}`;
+      return actionRu(p.action) + (p.reason ? " · " + tip("обоснование в записи", p.reason) : "");
     case "pr_packet": {
-      const paths = p.changed_paths || [];
-      const flags = `слит: ${p.merged ? "да" : "нет"}, одобрен владельцем: ${p.owner_approved ? "да" : "нет"}`;
-      return `${p.pr_id || ""} · ${p.branch || ""} · файлов: ${paths.length} (${paths.map(x => x.split("/").pop()).join(", ")}) · ${flags}`;
+      const parts = (p.changed_paths || []).length;
+      const merged = p.merged ? "да" : "нет";
+      const approved = p.owner_approved ? "да" : "нет";
+      return `затронуто частей помощника: ${parts} · влито в основную работу: ` +
+        `${merged} · одобрено владельцем: ${approved}`;
     }
     case "cycle_finished": {
       const w = p.worker || {};
       const pr = p.pr || {};
       const workerText = w.status === "done" ? `работник закончил за ${w.steps} шагов`
                        : w.status === "gave_up" ? `работник сдался (${clip(w.summary, 120)})` : "работника не было";
-      return `${workerText}${pr.pr_id ? " · пакет " + pr.pr_id : " · пакета нет"}`;
+      return `${workerText}${pr.pr_id ? " · изменение готово" : " · изменения нет"}`;
     }
     case "model_evidence": {
       const calls = p.calls || [];
-      const models = [...new Set(calls.map(c => c.model).filter(Boolean))];
-      return `вызовов: ${calls.length} · модели: ${models.join(", ") || "нет записи"}`;
+      const worked = calls.filter(c => c.ok).length;
+      return `обращений к моделям: ${calls.length}, ответили: ${worked}` +
+        " · имена моделей видны в записи";
     }
     case "loop_frozen": case "loop_interrupted":
-      return clip(p.reason || "причина в payload", 260);
+      return tip("причина в записи", p.reason || "");
     case "worktree_created":
-      return [p.path, p.branch].filter(Boolean).map(x => clip(x, 130)).join(" · ");
-    case "gateway_start": case "gateway_service_start":
-      return [p.port ? "порт " + p.port : "", p.state_dir ? "профиль " + p.state_dir : ""]
-        .filter(Boolean).join(" · ");
+      return "отдельная копия для этого изменения";
+    case "task": case "task_taken":
+      return p.text ? `«${clip(p.text, 120)}»` : "";
+    case "task_started":
+      return p.attempt ? `заход номер ${p.attempt}` : "";
+    case "task_question":
+      return "вопрос с кнопками ушёл владельцу";
+    case "task_done": case "proposal_decision": case "proposal_decided":
+      return p.verdict ? (String(p.verdict).toLowerCase().startsWith("appr")
+        ? "владелец ответил: принять" : "владелец ответил: отклонить") : "";
+    case "task_failed":
+      return p.attempt ? `заход ${p.attempt} не дал изменения` : "изменения не вышло";
+    case "gateway_start": case "gateway_stop": case "gateway_service_start": case "gateway_service_stop":
+      return "служба отвечает за запись о самой себе";
     default:
-      return Object.keys(p).length ? clip(JSON.stringify(p), 200) : "";
+      return "подробности в записи";
   }
 }
 
 function renderSwarmFeed(d){
   const s = d.session;
   $("swarmStatus").innerHTML = s
-    ? `последняя жизнь: <b>${s.session_id}</b> · состояние: <b>${STATUS_RU[s.status] || s.status}</b> · ревизия: <b>${s.revision}</b> · живых жизней в графе: <b>${d.sessions_total}</b> · записей организации: <b>${d.records_total}</b>`
-    : "в графе пока нет ни одной жизни организации";
+    ? `последняя сессия работы: <b>${STATUS_RU[s.status] || s.status}</b> · живых сессий в памяти: <b>${d.sessions_total}</b> · записей о работе: <b>${d.records_total}</b>`
+    : "в памяти пока нет ни одной сессии работы";
   const rows = (d.records || []).slice().reverse();
   if(!rows.length){
-    $("swarmBody").innerHTML = '<div class="empty">записей пока нет: запустите цикл роя (python/life_loop.py)</div>';
+    $("swarmBody").innerHTML = '<div class="empty">записей пока нет: запустите работу помощника кнопкой выше</div>';
     return;
   }
   $("swarmBody").innerHTML = rows.map(r => {
@@ -393,15 +530,22 @@ const ARM_RU = {
   flat: "плоский журнал слов",
   none: "без памяти"
 };
+/* Виды замера памяти: oracle — вся память под рукой, s — поиск по большому складу. */
+const STAGE_RU = {oracle: "вся память под рукой", s: "поиск по большому складу"};
+const stageRu = id => STAGE_RU[id] ? tip(STAGE_RU[id], id) : tip("замер памяти", id);
 
 function renderMemoryBench(d){
   const runs = d.runs || [];
   if(!runs.length){
-    $("memoryBench").innerHTML = '<div class="empty">записей пока нет: запустите <code>python bench/memory/run.py --stage oracle</code></div>';
+    $("memoryBench").innerHTML = '<div class="empty">записей пока нет: замер памяти ещё не запускался</div>';
     return;
   }
   const last = runs[runs.length - 1];
-  const head = `<div class="swarm-status">прогонов: <b>${runs.length}</b> · клеток в графе: <b>${d.records_total}</b> · последний прогон: <b>${last.run_tag}</b>${last.stage ? " · " + last.stage : ""}</div>`;
+  const when = last.last_ts
+    ? new Date(last.last_ts * 1000).toLocaleDateString("ru-RU", {day: "2-digit", month: "long"}) +
+      ", " + new Date(last.last_ts * 1000).toLocaleTimeString("ru-RU", {hour: "2-digit", minute: "2-digit"})
+    : "дата в записи";
+  const head = `<div class="swarm-status">замеров: <b>${runs.length}</b> · записей в памяти: <b>${d.records_total}</b> · последний замер: ${tip("<b>" + when + "</b>", last.run_tag)}${last.stage ? " · " + stageRu(last.stage) : ""}</div>`;
   const rows = (last.arms || []).map(a => {
     const acc = a.accuracy == null ? "нет данных" : (a.accuracy * 100).toFixed(0) + "%";
     const rec = a.mean_recall_at_k == null ? "задаёт контекст целиком" : (a.mean_recall_at_k * 100).toFixed(0) + "%";
@@ -409,7 +553,7 @@ function renderMemoryBench(d){
     return `<tr><td>${ARM_RU[a.arm] || a.arm}</td><td>${a.cells}</td><td>${unj}</td><td>${a.judged == null ? a.cells : a.passed}</td><td><b>${acc}</b></td><td>${rec}</td></tr>`;
   }).join("");
   const past = runs.length > 1
-    ? `<div class="swarm-status" style="margin-top:10px">прошлые прогоны: ${runs.slice(0, -1).map(r => r.run_tag).join(", ")}</div>`
+    ? `<div class="swarm-status" style="margin-top:10px">прошлых замеров: ${runs.length - 1}</div>`
     : "";
   $("memoryBench").innerHTML = head
     + `<table><tr><th>вид памяти</th><th>клеток</th><th>без вердикта</th><th>верных</th><th>точность</th><th>нужные сессии найдены</th></tr>${rows}</table>`
@@ -445,11 +589,14 @@ function render(d){
   const sel = $("subjectSel");
   if(sel.dataset.loaded !== d.subjects.join(",")){
     sel.dataset.loaded = d.subjects.join(",");
+    // В списке — название опыта по дате; отпечаток записи виден подсказкой на
+    // самом списке: в пункте списка разметка не выводится.
     sel.innerHTML = d.subjects.length
-      ? d.subjects.map(s => `<option value="${s}">${s}</option>`).join("")
+      ? d.subjects.map(s => `<option value="${s}">${subjectText(s)}</option>`).join("")
       : "<option value=\"\">пока никого</option>";
     if(d.subject && d.subjects.includes(d.subject)) sel.value = d.subject;
   }
+  sel.title = sel.value;
 
   // статистика: крупные цифры, подпись мельче. Хронология раундов берётся
   // из идентификаторов эпизодов (r{N}-online-...), которые пишутся при каждом
@@ -503,7 +650,7 @@ function referenceHtml(refs){
   if(!refs || !refs.length) return "";
   const p = v => v == null ? "нет" : (100*v).toFixed(1) + "%";
   const rows = refs.map(r => `<tr>
-      <td class="mono">${r.policy}</td>
+      <td>${policyRu(r.policy)}</td>
       <td>${p(r.predicted_saving)}</td>
       <td>${r.decision_replayable == null ? "нет" : (100*r.decision_replayable).toFixed(0) + "%"}</td>
       <td class="${r.search_token_delta <= 0 ? "outcome-success" : "outcome-failure"}">${p(r.search_token_delta)}</td>
@@ -511,8 +658,8 @@ function referenceHtml(refs){
       <td>${r.transferred ? "перенеслась" : "нет"}</td></tr>`).join("");
   return `<div class="claim">
     <div class="ct">Контроль: политики, написанные вручную</div>
-    <div class="cn">судья оценивает их по записям, затем они измеряются онлайн. Расхождение прогноза с измерением здесь и есть предел replay: судья считает символы в запросе, а не то, сколько шагов сделает агент</div>
-    <table><tr><th>политика</th><th>прогноз экономии</th><th>воспроизв.</th><th>измерено: поиск</th><th>измерено: held-out</th><th>перенос</th></tr>${rows}</table>
+    <div class="cn">судья оценивает их по записям, затем они измеряются онлайн. Расхождение прогноза с измерением здесь и есть предел повтора по записям: судья считает символы в запросе, а не то, сколько шагов сделает агент</div>
+    <table><tr><th>политика</th><th>прогноз экономии</th><th>${tip("воспроизводимость решения", "decision_replayable")}</th><th>измерено: поиск</th><th>измерено: ${tip("отложенные задачи", "held-out")}</th><th>перенос</th></tr>${rows}</table>
   </div>`;
 }
 
@@ -524,7 +671,7 @@ function repeatHtml(rounds){
   return withCheck.map(r => {
     const rc = r.repeat_check, t = rc.totals || {};
     const rows = rc.rows.map(row => `<tr>
-        <td class="mono">${row.in_search_set ? "поиск" : "held-out"} · ${row.task}</td>
+        <td>${row.in_search_set ? "поиск" : tip("отложенные задачи", "held-out")} · ${taskRu(row.task)}</td>
         <td>${row.baseline_tokens}</td>
         <td>${row.samples.join(", ")}</td>
         <td class="${row.delta_mean <= 0 ? "outcome-success" : "outcome-failure"}">${(100*row.delta_mean).toFixed(1)}%</td>
@@ -542,16 +689,15 @@ function repeatHtml(rounds){
    переводим, незнакомую строку показываем как есть: лучше английская правда,
    чем придуманный русский пересказ. */
 function ruOutcome(s){
-  if(!s) return "";
-  const rules = [
+  if(!s) return "";    const rules = [
     [/^no candidate passed the efficiency gate; nothing deployed$/, "ни один кандидат не прошёл ворота по эффективности: ничего не выкачено"],
     [/^no model answered or none returned a valid candidate$/, "ни одна модель не ответила или не выдала годного кандидата"],
     [/^deployed and within capability tolerance/, "выкачено, потеря задач в пределах допуска"],
     [/^deployed but lost (\d+) tasks \(tolerance (\d+)\)/, "выкачено, но потеряно задач: $1 (допуск $2)"],
-    [/^online path: measured and refused\. The predicted saving of ([+-]?[\d.]+%) came with ([+-]?[\d.]+%) prompt tokens and (\d+) of (\d+) tasks lost \(tolerance (\d+)\); held-out tasks were never touched/, "онлайн-путь: измерено и отклонено. Прогноз экономии $1 обернулся $2 токенов промпта, потеряно задач $3 из $4 (допуск $5), held-out задачи не трогались"],
-    [/^online path: measured and refused\. Predicted ([+-]?[\d.]+%), measured ([+-]?[\d.]+%) prompt tokens on (\d+) comparable tasks, (\d+) of (\d+) tasks lost \(tolerance (\d+)\); held-out tasks were never touched/, "онлайн-путь: измерено и отклонено. Прогноз $1, измерено $2 токенов промпта на $3 сопоставимых задачах, потеряно задач $4 из $5 (допуск $6); held-out задачи не трогались"],
+    [/^online path: measured and refused\. The predicted saving of ([+-]?[\d.]+%) came with ([+-]?[\d.]+%) prompt tokens and (\d+) of (\d+) tasks lost \(tolerance (\d+)\); held-out tasks were never touched/, "онлайн-путь: измерено и отклонено. Прогноз экономии $1 обернулся $2 токенов промпта, потеряно задач $3 из $4 (допуск $5), отложенные задачи не трогались"],
+    [/^online path: measured and refused\. Predicted ([+-]?[\d.]+%), measured ([+-]?[\d.]+%) prompt tokens on (\d+) comparable tasks, (\d+) of (\d+) tasks lost \(tolerance (\d+)\); held-out tasks were never touched/, "онлайн-путь: измерено и отклонено. Прогноз $1, измерено $2 токенов промпта на $3 сопоставимых задачах, потеряно задач $4 из $5 (допуск $6); отложенные задачи не трогались"],
     [/^online path: measurement incomplete\. The provider refused (\d+) of (\d+) runs, so capability was not settled and nothing was deployed/, "онлайн-путь: измерение неполное, провайдер отказал в $1 из $2 прогонов: способность не установлена, ничего не выкачено"],
-    [/; the saving did not transfer to the held-out tasks/, "; экономия не перенеслась на held-out задачи"],
+    [/; the saving did not transfer to the held-out tasks/, "; экономия не перенеслась на отложенные задачи"],
     [/; deployed on its online measurement, not on a judged estimate/, "; выкачено по онлайн-измерению, а не по прогнозу судьи"],
     [/; round incomplete: the provider refused (\d+) online runs \(recorded as unmeasured, not as failures\)/, "; раунд неполный: провайдер отказал в $1 онлайн-прогонах (они записаны как неизмеренные, а не как провалы)"],
   ];
@@ -580,11 +726,11 @@ function renderHarness(h){
     const rows = (r.verdicts || []).map(v => {
       const tag = v.path === "replay" ? `<span class="tag win">судья</span>`
         : v.path === "verify" ? `<span class="tag dep">онлайн-проверка</span>`
-        : v.path === "online" ? `<span class="tag dep">онлайн-AB</span>`
-        : v.path === "gate-v1" ? `<span class="tag dep">ворота v1</span>`
+        : v.path === "online" ? `<span class="tag dep">онлайн-сравнение</span>`
+        : v.path === "gate-v1" ? `<span class="tag dep">${tip("ворота, первое правило", "gate-v1")}</span>`
         : `<span class="tag">отказ</span>`;
       const dep = r.deployed === v.policy ? `<span class="tag dep">выкачено</span>` : "";
-      return `<tr><td class="mono">${v.policy} ${tag}${dep}</td>
+      return `<tr><td>${policyRu(v.policy)} ${tag}${dep}</td>
         <td><span class="bar-wrap"><span class="bar green" style="width:0" data-hw="${Math.max(3, Math.round(120 * Math.abs(v.predicted_saving)))}"></span>${pct(v.predicted_saving)}</span></td>
         <td><span class="bar-wrap"><span class="bar" style="width:0" data-hw="${Math.max(3, Math.round(120 * (v.decision_replayable || 0)))}"></span>${pct(v.decision_replayable)}</span></td></tr>`;
     }).join("");
@@ -592,19 +738,19 @@ function renderHarness(h){
     const online = r.online_search;
     const corr = r.comparison_corrected;
     const measured = held && online
-      ? `<div class="cn">измерено онлайн: поиск ${online.solved}/${online.tasks} задач, ${online.prompt_tokens} токенов промпта · held-out ${held.solved}/${held.tasks} задач, ${held.prompt_tokens} токенов</div>`
+      ? `<div class="cn">измерено онлайн: поиск ${online.solved}/${online.tasks} задач, ${online.prompt_tokens} токенов промпта · ${tip("отложенные задачи", "held-out")} ${held.solved}/${held.tasks} задач, ${held.prompt_tokens} токенов</div>`
       : "";
     const corrected = corr
-      ? `<div class="cn">пересчёт по честной базовой линии: поиск ${(100*corr.search.token_delta).toFixed(0)}% токенов на ${corr.search.token_scope_tasks.length} сопоставимых задачах, held-out ${(100*corr.held_out.token_delta).toFixed(0)}% на ${corr.held_out.token_scope_tasks.length}</div>`
+      ? `<div class="cn">пересчёт по честной базовой линии: поиск ${(100*corr.search.token_delta).toFixed(0)}% токенов на ${corr.search.token_scope_tasks.length} сопоставимых задачах, ${tip("отложенные задачи", "held-out")} ${(100*corr.held_out.token_delta).toFixed(0)}% на ${corr.held_out.token_scope_tasks.length}</div>`
       : "";
     const ab = r.online_ab;
     const abLine = ab && !r.deployed
       ? `<div class="cn">онлайн-проверка перед выкаткой: ${(100*ab.token_delta).toFixed(1)}% токенов промпта на ${ab.token_scope_tasks.length} сопоставимых задачах, решено ${ab.solved_after} из ${ab.tasks}</div>`
       : "";
     const v1note = r.criteria_version === 1
-      ? `<div class="cn">правила v1: решение принималось по прогнозу, требования воспроизводимости ещё не было</div>` : "";
+      ? `<div class="cn">первое правило приёмки: решение принималось по прогнозу, требования воспроизводимости ещё не было</div>` : "";
     return `<div class="claim">
-      <div class="ct">Раунд ${r.round}: кандидатов ${r.candidates}, ${r.deployed ? "выкачено «" + r.deployed + "»" : "ничего не выкачено"}</div>
+      <div class="ct">Раунд ${r.round}: кандидатов ${r.candidates}, ${r.deployed ? tip("выкачено новое правило обвязки", r.deployed) : "ничего не выкачено"}</div>
       ${v1note}
       ${measured}
       ${corrected}
@@ -620,9 +766,9 @@ function renderHarness(h){
       <div class="cn">${led.refused_from_recordings_alone} из ${led.candidates_proposed} кандидатов отклонены по записям прогонов, без единого онлайн-запуска</div>
     </div>
     <div class="claim">
-      <div class="ct">Правила приёмки, версия ${cr.version}</div>
+      <div class="ct">Правила приёмки (${tip("действующая редакция", "версия " + cr.version)})</div>
       <div class="cn">порог прогнозируемой экономии ${pct(eff.min_predicted_saving)} · порог воспроизводимости решения ${pct(cap.min_decision_replayable)} · онлайн-потеря задач не больше ${cap.max_tasks_lost} · онлайн-путь для непроигрываемых кандидатов: ${path.enabled ? "включён" : "выключен"}</div>
-      <div class="cn">базовый уровень: поиск ${h.incumbent.search.solved}/${h.incumbent.search.tasks} задач, ${h.incumbent.search.prompt_tokens} токенов промпта · held-out ${h.incumbent.held_out.solved}/${h.incumbent.held_out.tasks} задач, ${h.incumbent.held_out.prompt_tokens} токенов</div>
+      <div class="cn">базовый уровень: поиск ${h.incumbent.search.solved}/${h.incumbent.search.tasks} задач, ${h.incumbent.search.prompt_tokens} токенов промпта · ${tip("отложенные задачи", "held-out")} ${h.incumbent.held_out.solved}/${h.incumbent.held_out.tasks} задач, ${h.incumbent.held_out.prompt_tokens} токенов</div>
     </div>
     <div class="claim">
       <div class="ct">Судья: точность на собственных записях</div>
@@ -633,7 +779,7 @@ function renderHarness(h){
     ${repeatHtml(h.rounds)}
     ${roundsHtml}
   </div>
-  <div class="claims-note">Числа прочитаны из harness/lab/rsi: цикл отчитывается сам, дашборд ничего не добавляет. Правила приёмки пересчитаны по замороженным критериям: ${refused} из ${recheck.length} вердиктов, записанных по прежним правилам, были бы отклонены сейчас, выкачки среди них: ${deployedRefused}.</div>`;
+  <div class="claims-note">Числа прочитаны из записей цикла: он отчитывается сам, панель ничего не добавляет. Правила приёмки пересчитаны по замороженным критериям: ${refused} из ${recheck.length} вердиктов, записанных по прежним правилам, были бы отклонены сейчас, выкачки среди них: ${deployedRefused}.</div>`;
 
   requestAnimationFrame(() => requestAnimationFrame(() => {
     el.querySelectorAll(".bar[data-hw]").forEach(b => b.style.width = b.dataset.hw + "px");
@@ -659,13 +805,18 @@ function renderClaims(bench){
 
   const seedRows = (ser.domains || []).map(dom => {
     const rows = dom.rows.map(r =>
-      `<tr><td class="mono">${r.seed}</td><td>${r.day1 == null ? "" : r.day1.toFixed(1)}</td>
+      `<tr><td>${seedRu(r.seed)}</td><td>${r.day1 == null ? "" : r.day1.toFixed(1)}</td>
        <td>${r.final == null ? "" : r.final.toFixed(1)}</td>
        <td class="pos">${r.delta == null ? "" : "+" + r.delta.toFixed(1)}</td>
        <td>${r.ratio == null ? "" : r.ratio.toFixed(2) + "x"}</td></tr>`).join("");
-    const domName = dom.name.replace(/\u2014/g, "\u00b7");
-    return `<div class="claim"><div class="ct">${domName}: самоулучшение измерено</div>
-      <div class="cn">каждая строка: отдельный мир, 3 цикла «эпизод, оценка, деплой». Дельта измерена в мире, не спрогнозирована</div>
+    // «island · 5 seeds» приходит из разбора файла серии: слово о мире и число
+    // прогонов говорим по-русски, отпечаток мира остаётся в подсказке.
+    const rawName = dom.name.replace(/\u2014/g, "\u00b7");
+    const worldKey = (rawName.match(/^([a-z_]+)/) || [])[1] || "";
+    const seedCount = (rawName.match(/(\d+)\s*seeds/) || [])[1];
+    const domName = worldRu(worldKey) + (seedCount ? `, прогонов: ${seedCount}` : "");
+    return `<div class="claim"><div class="ct">Мир «${domName}», самоулучшение измерено</div>
+      <div class="cn">каждая строка: отдельный мир, 3 цикла «эпизод, оценка, выкатка». Дельта измерена в мире, не спрогнозирована</div>
       <table><tr><th>мир</th><th>день 1</th><th>итог</th><th>дельта</th><th>×раз</th></tr>${rows}</table></div>`;
   }).join("");
 
@@ -674,29 +825,29 @@ function renderClaims(bench){
       <div class="ct">1. Структурированная память в графе бьёт альтернативы</div>
       <div class="cn">один и тот же опыт записан тремя способами и прочитан обратно (этап 3 работы)</div>
       <table>
-        <tr><th></th><th>recall</th><th>порядок</th><th>источник</th></tr>
-        <tr><td>OSTIS-граф</td><td><b>${f2(ostis.recall)}</b></td><td><b>${f2(ostis.order)}</b></td><td><b>${f2(ostis.provenance)}</b></td></tr>
+        <tr><th></th><th>${tip("полнота поиска", "recall")}</th><th>порядок</th><th>${tip("происхождение", "provenance")}</th></tr>
+        <tr><td>граф OSTIS</td><td><b>${f2(ostis.recall)}</b></td><td><b>${f2(ostis.order)}</b></td><td><b>${f2(ostis.provenance)}</b></td></tr>
         <tr><td>плоское хранилище</td><td>${f2(flat.recall)}</td><td>${f2(flat.order)}</td><td>${f2(flat.provenance)}</td></tr>
         <tr><td>без памяти (окно 3)</td><td>${f2(ctx.recall)}</td><td>${f2(ctx.order)}</td><td>${f2(ctx.provenance)}</td></tr>
       </table>
-      <div class="cn" style="margin-top:6px">абляции: без хронологии порядок падает до ${f2(noTemp.order)}, без источника провенанс до ${f2(noProv.provenance)}: обе связи в графе несут данные</div>
+      <div class="cn" style="margin-top:6px">проверка по урезанной памяти: без хронологии порядок падает до ${f2(noTemp.order)}, без происхождения источник теряется до ${f2(noProv.provenance)}: обе связи в памяти несут данные</div>
     </div>
     <div class="claim">
       <div class="ct">2. Судья оценивает стратегии без запуска мира</div>
-      <div class="cn">точный replay по записям опыта; совпадение прогноза с измеренным результатом отслеживается отдельно</div>
+      <div class="cn">точный повтор по записям опыта; совпадение прогноза с измеренным результатом отслеживается отдельно</div>
       <div><span class="big">${ser.improved ?? "?"}/${ser.seeds ?? "?"}</span> миров улучшились после первого сна</div>
-      <div class="cn" style="margin-top:6px">конфликтов записей, останавливающих replay: ${ostis.conflicts ?? 0} в бенчмарке памяти, 0 в серии</div>
+      <div class="cn" style="margin-top:6px">конфликтов записей, останавливающих повтор: ${ostis.conflicts ?? 0} в замере памяти, 0 в серии миров</div>
     </div>
     ${seedRows}
   </div>
-  <div class="claims-note">Числа прочитаны из docs/results.md и docs/series.md: таблицы генерируются прогонами на этом же стеке (python -m metrics.build_table, python -m series), дашборд не показывает ничего, что не было измерено.</div>`;
+  <div class="claims-note">Числа прочитаны из записей прогонов: таблицы собираются прогонами на этом же стеке, панель не показывает ничего, что не было измерено.</div>`;
 }
 
 /* ---------- график роста ---------- */
 function renderAscent(d, first){
   const eps = d.episodes || {};
   if(!Object.keys(eps).length){
-    $("ascent").innerHTML = `<div class="empty">деплой-эпизодов нет: запустите полный цикл, затем одиночные этапы кнопками выше</div>`;
+    $("ascent").innerHTML = `<div class="empty">эпизодов выкатки нет: запустите полный цикл, затем одиночные этапы кнопками выше</div>`;
     $("ascentVerdict").innerHTML = "";
     return;
   }
@@ -711,7 +862,7 @@ function renderAscent(d, first){
   });
   const pts = [...onlineByRoundAsc.entries()].sort((a,b) => a[0]-b[0]).map(([r,v]) => ({r, v}));
   if(!pts.length){
-    $("ascent").innerHTML = `<div class="empty">эпизодов деплоя нет: запустите полный цикл</div>`;
+    $("ascent").innerHTML = `<div class="empty">эпизодов выкатки нет: запустите полный цикл</div>`;
     $("ascentVerdict").innerHTML = "";
     return;
   }
@@ -759,13 +910,13 @@ function renderTable(strategies){
   }
   const bestOnline = Math.max(...strategies.map(s => s.online ?? -Infinity));
   $("dreamTable").innerHTML = `<table>
-    <tr><th>стратегия</th><th>replay-прогноз</th><th>измерено онлайн</th><th>раунд</th></tr>` +
+    <tr><th>стратегия</th><th>прогноз повтора по записям</th><th>измерено онлайн</th><th>раунд</th></tr>` +
     rows.map(st => {
       const isWin = st.online != null && st.online >= bestOnline - 0.01;
       const barW = Math.max(3, Math.round(140 * (st.replay || 0) / maxR));
       return `<tr class="${isWin ? "winrow" : ""}">
-        <td>${st.name || "(без имени)"}
-          ${st.online != null ? `<span class="tag dep">деплой</span>` : ""}
+        <td>${strategyRu(st.name)}
+          ${st.online != null ? `<span class="tag dep">выкачено</span>` : ""}
           ${isWin ? `<span class="tag win">лучшая</span>` : ""}</td>
         <td><span class="bar-wrap"><span class="bar" style="width:0" data-w="${barW}"></span>${st.replay ?? ""}</span></td>
         <td>${st.online != null ? st.online.toFixed(2) : ""}</td>
@@ -788,21 +939,21 @@ function renderEpisodes(eps){
   }
   if(!currentEp || !names.includes(currentEp)) currentEp = names[names.length-1];
   $("epTabs").innerHTML = names.map(n =>
-    `<button class="ep-tab ${n === currentEp ? "active" : ""}" data-ep="${n}">${n}</button>`).join("");
+    `<button class="ep-tab ${n === currentEp ? "active" : ""}" data-ep="${n}">${episodeLabel(n)}</button>`).join("");
   document.querySelectorAll(".ep-tab").forEach(t =>
     t.addEventListener("click", () => { currentEp = t.dataset.ep; renderEpisodes(eps); }));
   const steps = eps[currentEp];
   const total = steps.reduce((a,s) => a + (s.score||0), 0);
   $("epBody").innerHTML = steps.map(st =>
     `<div class="step"><span class="idx">${st.i}</span>
-     <span class="act">${st.action}:${st.object}</span>
-     <span class="outcome-${st.outcome}">${st.outcome === "success" ? "успех" : st.outcome === "failure" ? "неудача" : st.outcome}</span>
+     <span class="act">${(ACTION_WORLD_RU[st.action] || "шаг")}: ${placeRu(st.object)}</span>
+     <span class="outcome-${st.outcome}">${OUTCOME_RU[st.outcome] || "без исхода"}</span>
      <span class="sc ${st.score >= 0 ? "pos" : "neg"}">${st.score != null ? st.score.toFixed(2) : ""}</span>
-     <span class="note">${st.note || ""}</span></div>`).join("") +
+     <span class="note">${noteRu(st.note)}</span></div>`).join("") +
     `<div class="step" style="border-top:1px solid var(--line);margin-top:6px;padding-top:8px">
      <span class="idx"></span><span class="act"><b>итого</b></span>
      <span></span><span class="sc pos"><b>${total.toFixed(1)}</b></span>
-     <span class="note">${steps.length} шагов записано в граф</span></div>`;
+     <span class="note">${steps.length} шагов записано в память</span></div>`;
 }
 
 /* ---------- управление задачами ---------- */
@@ -830,7 +981,7 @@ $("btnExplore").addEventListener("click", () => act("explore"));
 $("btnDream").addEventListener("click", () => act("dream"));
 $("btnCycle").addEventListener("click", () => act("cycle"));
 $("btnReset").addEventListener("click", () => {
-  if(confirm("Сбросить базу знаний? Все записанные эпизоды и стратегии будут удалены (онтология пересоберётся из исходников).")) act("reset");
+  if(confirm("Сбросить базу знаний? Все записанные эпизоды и стратегии будут удалены, память соберётся заново из описания предметной области.")) act("reset");
 });
 $("btnStop").addEventListener("click", () => api("/api/stop", {method: "POST"}));
 $("subjectSel").addEventListener("change", e => {
@@ -846,7 +997,7 @@ es.onmessage = e => {
   const log = $("log");
   if(log.querySelector(".empty")) log.innerHTML = "";
   const div = document.createElement("div");
-  div.className = "line" + (line.startsWith("ERROR") || line.startsWith("Сброс не удался") ? " err" : "");
+  div.className = "line" + (line.startsWith("Сбой") || line.startsWith("Сброс не удался") ? " err" : "");
   div.innerHTML = `<span class="t">${t}</span>${line}`;
   log.appendChild(div);
   log.scrollTop = log.scrollHeight;
@@ -858,8 +1009,8 @@ es.onmessage = e => {
   if(line.includes("Запущено: Полный")) resetStages();
   if(line.includes("Разведка маршрутом")) { setStage("day","done","записано"); setStage("explore","active"); }
   if(line.includes("Оценка кандидатов")) { setStage("explore","done","2 маршрута"); setStage("dream","active"); }
-  if(line.includes("Replay завершил")) $("i-dream").textContent = line.slice(0,64);
-  if(line.includes("Победитель replay")) { setStage("dream","done"); setStage("deploy","active"); }
+  if(line.includes("Повтор по записям проверил")) $("i-dream").textContent = line.slice(0,64);
+  if(line.includes("Лучший вариант")) { setStage("dream","done"); setStage("deploy","active"); }
   if(line.includes("День завершён:")) { setStage("day","done","измерено"); setStage("deploy","done","измерено онлайн"); scheduleReset(); }
   if(line.includes("Раунд")) { /* полный цикл пишет свои строки, баннер уже обновлён по этапам */ }
   if(line.includes("Полный цикл")) resetStages();

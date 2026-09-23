@@ -40,7 +40,7 @@ function recordIntoOstis(cfg, api, kind, payload) {
       (error, stdout, stderr) => {
         if (error) {
           const detail = String(stderr || error.message).trim().slice(0, 200);
-          api.logger.warn(`oneiro-life: record ${kind} failed: ${detail}`);
+          api.logger.warn(`Oneiro: не удалось записать событие ${kind}: ${detail}`);
           resolve(false);
           return;
         }
@@ -51,8 +51,8 @@ function recordIntoOstis(cfg, api, kind, payload) {
 
 export default definePluginEntry({
   id: "oneiro-life",
-  name: "Oneiro Life",
-  description: "Records the gateway's own lifecycle into the Oneiro OSTIS graph.",
+  name: "Oneiro",
+  description: "Записывает в память Oneiro сведения о собственном запуске и остановке помощника.",
   register(api) {
     const cfg = settings(api);
 
@@ -63,11 +63,11 @@ export default definePluginEntry({
           state_dir: ctx.stateDir,
           project_dir: ctx.workspaceDir ?? null,
         });
-        api.logger.info(`oneiro-life ready; records go through ${cfg.pythonPath}`);
+        api.logger.info(`Oneiro: служба готова, запись идёт через ${cfg.pythonPath}`);
       },
       async stop(ctx) {
         await recordIntoOstis(cfg, api, "gateway_service_stop", { state_dir: ctx.stateDir });
-        api.logger.info("oneiro-life stopped");
+        api.logger.info("Oneiro: служба остановлена");
       },
     });
 
@@ -78,6 +78,6 @@ export default definePluginEntry({
       await recordIntoOstis(cfg, api, "gateway_stop", { reason: event.reason ?? null });
     });
 
-    api.logger.info(`oneiro-life registered: recorder=${RECORDER_PATH}`);
+    api.logger.info("Oneiro: служба зарегистрирована, запись в память включена");
   },
 });

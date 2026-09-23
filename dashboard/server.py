@@ -297,7 +297,7 @@ def subjects():
 def _run_job(name: str, fn, subject: str | None):
     """Run a pipeline action in the background, streaming stage events."""
     if not _job_lock.acquire(blocking=False):
-        return jsonify({"error": "another job is already running"}), 409
+        return jsonify({"error": "другая работа уже идёт"}), 409
 
     _job.update(running=True, name=name, started=time.time(), subject=subject)
 
@@ -305,7 +305,7 @@ def _run_job(name: str, fn, subject: str | None):
         try:
             fn()
         except Exception as e:  # surface any pipeline failure in the UI
-            _log_event(f"ERROR: {e}")
+            _log_event(f"Сбой: {e}")
         finally:
             _invalidate_cache()  # the graph just changed; refresh honestly
             _job.update(running=False, name=None, subject=None)
@@ -374,12 +374,12 @@ def _start(kind: str):
     actions = {
         "day": (_do_day, subject, "День"),
         "explore": (_do_explore, subject, "Разведка"),
-        "dream": (_do_dream, subject, "Оценка (replay)"),
+        "dream": (_do_dream, subject, "Оценка (повтор по записям)"),
         "cycle": (_do_cycle, subject, "Полный цикл"),
         "reset": (_do_reset, None, "Сброс базы"),
     }
     if kind not in actions:
-        return jsonify({"error": "unknown action"}), 400
+        return jsonify({"error": "неизвестное действие"}), 400
     fn, subj, label = actions[kind]
     _stop_event.clear()
     _event_q.queue.clear()
@@ -389,7 +389,18 @@ def _start(kind: str):
 
 def _check_stop():
     if _stop_requested():
-        raise RuntimeError("stopped by user")
+        raise RuntimeError("остановлено владельцем")
+
+
+# Имена стратегий в журнале читаются словами, как и в панели: сами имена
+# (survey, weak_wander) остаются в записях, а не в строке для человека.
+_STRATEGY_RU = {"survey": "полный обход всех мест, сначала ближние",
+                "survey_reverse": "полный обход всех мест, сначала дальние",
+                "weak_wander": "первый день: по одному месту наскоро"}
+
+
+def _strategy_ru(name: str) -> str:
+    return _STRATEGY_RU.get(str(name), "выбранная помощником стратегия")
 
 
 def _do_day():
@@ -399,7 +410,7 @@ def _do_day():
     subject = _job["subject"]
     with _lock:
         b = _bridge()
-        _log_event(f"Эпизод по текущей стратегии: каждый шаг пишется в граф (субъект {subject})")
+        _log_event("Эпизод по текущей стратегии: каждый шаг записывается в память")
         _check_stop()
         result = run_episode(b, subject, strategy_weak_incumbent(), episode_id=episode_id_for("day", "weak_wander"))
         b.mark_strategy_online_score("weak_wander", result.total_score)
@@ -415,9 +426,9 @@ def _do_explore():
         b = _bridge()
         for strat in (strategy_survey(), strategy_survey_reverse()):
             _check_stop()
-            _log_event(f"Разведка маршрутом «{strat.name}»: агент намеренно ходит иначе, чтобы опыт был богаче")
+            _log_event(f"Разведка маршрутом «{_strategy_ru(strat.name)}»: помощник намеренно ходит иначе, чтобы опыт был богаче")
             result = run_episode(b, subject, strat, episode_id=episode_id_for("explore", strat.name))
-            _log_event(f"Маршрут «{strat.name}» завершён: счёт {result.total_score:.1f}")
+            _log_event(f"Маршрут «{_strategy_ru(strat.name)}» завершён: счёт {result.total_score:.1f}")
 
 
 def _do_dream():
@@ -429,7 +440,7 @@ def _do_dream():
     subject = _job["subject"] or _find_any_subject()
     if not subject:
         raise RuntimeError("Нет записанного опыта: сначала запустите день")
-    _log_event(f"Оценка кандидатов: точный replay по записям опыта за {subject}")
+    _log_event("Оценка кандидатов: точный повтор по записям опыта")
     with _lock:
         b = _bridge()
         _check_stop()
@@ -444,10 +455,12 @@ def _do_dream():
         )
         elapsed = time.perf_counter() - t0
     ranked = sorted(result.results, key=lambda p: p[1].estimated_score, reverse=True)
-    _log_event(f"Replay завершил {len(result.results)} вариантов стратегии за {elapsed:.1f} сек, мир не запускался ни разу")
+    _log_event(f"Повтор по записям проверил {len(result.results)} вариантов стратегии за {elapsed:.1f} сек, мир не запускался ни разу")
     for cand, rr in ranked[:3]:
-        _log_event(f"   {cand.name}: прогноз {rr.estimated_score:.1f} (покрытие {rr.coverage:.2f})")
-    _log_event(f"Победитель replay-оценки: {result.winner.name} (прогноз {result.results and sorted(result.results, key=lambda p: p[1].estimated_score, reverse=True)[0][1].estimated_score or 0:.1f}), будет измерен в следующем эпизоде")
+        _log_event(f"   вариант: прогноз {rr.estimated_score:.1f} (покрытие {rr.coverage:.2f})")
+    _log_event(f"Лучший вариант: прогноз "
+               f"{result.results and sorted(result.results, key=lambda p: p[1].estimated_score, reverse=True)[0][1].estimated_score or 0:.1f},"
+               " он будет измерен в следующем эпизоде")
     _log_event(f"Противоречий в записях: {len(result.consistency['conflicts'])}")
 
 
@@ -455,14 +468,14 @@ def _do_cycle():
     from loop import run_loop
 
     subject = _job["subject"]
-    _log_event(f"Полный цикл: эпизод, разведка, оценка, деплой для {subject}")
+    _log_event("Полный цикл: эпизод, разведка, оценка, выкатка")
     with _lock:
         b = _bridge()
         report = run_loop(b, subject=subject, rounds=2, max_steps=40, limit=24,
                           generator=None, exploration=True)
     for r in report.rounds:
         _log_event(f"Раунд {r.round_index}: онлайн-счёт {r.online.total_score:.1f}, "
-                   f"на следующий день выбрана стратегия {r.deployed_next.name}")
+                   "лучший вариант выбран, он проверяется в следующем дне")
 
 
 def _bash_exe() -> str:
@@ -474,22 +487,25 @@ def _bash_exe() -> str:
                       r"C:\Program Files\Git\usr\bin\bash.exe"):
         if os.path.exists(candidate):
             return candidate
-    raise RuntimeError("Git Bash not found; install Git for Windows")
+    raise RuntimeError("не найден Git Bash: он входит в состав Git для Windows. "
+                       "Установите Git для Windows и повторите")
 
 
 def _do_reset():
-    _log_event("Сброс базы знаний (пересборка docker-тома из исходников онтологии)")
+    _log_event("Сброс памяти: база знаний собирается заново из описания онтологии")
     script = os.path.join(ROOT, "scripts", "reset_stack.sh")
     proc = subprocess.run(
         [_bash_exe(), script, "--yes"],
         capture_output=True, text=True, timeout=900,
         cwd=ROOT,
     )
-    for line in (proc.stdout or "").strip().splitlines()[-8:]:
-        _log_event(line)
+    # Вывод сборки не пересказывается на экране: это служебные строки сборщика
+    # на английском, и человеку они ничего не решают. Важен исход.
     if proc.returncode != 0:
-        raise RuntimeError(f"Сброс не удался: {(proc.stderr or '').strip()[-300:]}")
-    _log_event("Стек здоров, база знаний собрана заново из исходников")
+        # Техническая причина остаётся в консоли сервера, на экран идёт исход.
+        print(f"сброс не удался: {(proc.stderr or '').strip()[-300:]}", file=sys.stderr)
+        raise RuntimeError("Сброс не удался")
+    _log_event("Память отвечает, база знаний собрана заново")
 
 
 def _find_any_subject() -> str | None:
@@ -627,5 +643,5 @@ def events():
 
 
 if __name__ == "__main__":
-    print(f"dashboard on http://localhost:{DASH_PORT} (stack at {HOST}:{PORT})")
+    print(f"панель открыта на http://localhost:{DASH_PORT} (память помощника на {HOST}:{PORT})")
     app.run(host="127.0.0.1", port=DASH_PORT, threaded=True)

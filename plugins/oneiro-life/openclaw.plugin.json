@@ -1,7 +1,7 @@
 {
   "id": "oneiro-life",
-  "name": "Oneiro Life",
-  "description": "Records the OpenClaw gateway's own lifecycle into the Oneiro OSTIS graph.",
+  "name": "Oneiro",
+  "description": "Записывает в память Oneiro сведения о собственном запуске и остановке помощника.",
   "categories": ["other"],
   "activation": {
     "onStartup": true
@@ -12,17 +12,17 @@
     "properties": {
       "pythonPath": {
         "type": "string",
-        "description": "Python interpreter that runs the recorder which writes to OSTIS.",
+        "description": "Программа python, которая выполняет запись в память.",
         "default": "python"
       },
       "sessionId": {
         "type": "string",
-        "description": "Session id the gateway's own records carry in the graph.",
+        "description": "Имя сессии работы, под которым записи помощника ложатся в память.",
         "default": "oneiro-gateway"
       },
       "ostisPort": {
         "type": "integer",
-        "description": "Port of the sc-machine the recorder connects to.",
+        "description": "Порт, на котором отвечает память помощника.",
         "default": 8090
       }
     }
