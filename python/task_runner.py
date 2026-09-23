@@ -245,7 +245,11 @@ class TaskRunner:
         attempt = state.failures + 1
         self._record(STARTED_KIND, {"task_id": state.task_id, "text": state.text,
                                     "attempt": attempt})
-        self._say(STARTED_TEXT.format(text=state.text))
+        # Said once per job, not once per attempt: a restart in the middle of the
+        # work would otherwise greet the owner again for the same thing, and he
+        # ends up reading the same line three times while nothing new happened.
+        if not state.started:
+            self._say(STARTED_TEXT.format(text=state.text))
         config = LoopConfig(
             repo_root=self.repo_root,
             project_root=self.project_root,

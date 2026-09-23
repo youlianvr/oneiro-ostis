@@ -176,6 +176,20 @@ def test_a_cycle_that_produced_no_packet_is_reported_honestly():
     assert "подготовить изменение не вышло" in said[-1]
 
 
+def test_a_second_attempt_does_not_greet_the_owner_again():
+    """A process that restarts mid-work must not repeat "взялся за дело"."""
+    bridge = FakeBridge([
+        task_record(),
+        record("task_started", {"task_id": "task-12", "attempt": 1}),
+        packet_record(),
+    ])
+    runner, calls = make_runner(bridge)
+    runner.work(runner.states()["task-12"])
+
+    said = [text for kind, text in calls if kind == "said"]
+    assert not any(text.startswith("Взялся за дело") for text in said)
+
+
 def test_a_job_that_failed_once_is_worked_again():
     bridge = FakeBridge([
         task_record(),
