@@ -34,10 +34,20 @@ cd cowagent && python -m venv --system-site-packages .venv
 # 3. подключить нашу память и вопрос человеку (в том же формате, что читает хост)
 cd <проект>/oneiro-ostis && python scripts/host-wire.py --apply
 
-# 4. запуск и остановка
+# 4. запуск и остановка — ярлык Oneiro на рабочем столе, или вручную:
+cd <проект>/oneiro-ostis && scripts\oneiro-app.cmd        # поднять (панель 8130 + консоль 9899)
+cd <проект>/oneiro-ostis && scripts\oneiro-app.cmd --check # что работает, без запуска
+cd <проект>/oneiro-ostis && scripts\oneiro-app.cmd --stop  # остановить оба
+
+# отладка одной консоли, без панели и без прокси:
 cd tools/upstream/cowagent && COW_DATA_DIR="$HOME/cow/instance" ./.venv/Scripts/python.exe app.py
-# остановка: закрыть процесс, который слушает 9899 (pid виден в netstat)
+# остановка: Stop-Process по pid из netstat; taskkill на этой машине виснет сам по себе
 ```
+
+Адрес продукта — http://127.0.0.1:9899: чат, настройки Oneiro
+(`/oneiro/api/settings`) и панель графа (`/oneiro/`) живут на одном origin.
+Панель запускается лаунчером отдельным процессом на 8130 и остаётся
+самостоятельной; почему не один интерпретатор — `PLAN-ONE-PROCESS.md`.
 
 ## Интеграции: что включено и что нет
 
