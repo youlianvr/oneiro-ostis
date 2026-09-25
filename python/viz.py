@@ -22,13 +22,12 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from bridge import OneiroBridge
+from config import settings
 from replay.engine import ExperienceTree
 
 
 def gather(subject: str, domain: str) -> dict:
-    bridge = OneiroBridge(
-        os.environ.get("ONEIRO_HOST", "localhost"), int(os.environ.get("ONEIRO_PORT", "8090"))
-    )
+    bridge = OneiroBridge(settings.graph_host, settings.graph_port)
     bridge.connect()
     try:
         records = bridge.retrieve_attempts(subject)

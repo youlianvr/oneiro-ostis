@@ -26,11 +26,12 @@ from typing import Optional
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "python"))
 
 from bridge import OneiroBridge
+from config import settings
 from loop import run_loop
 from loop_workshop import run_workshop_loop
 
-HOST = os.environ.get("ONEIRO_HOST", "localhost")
-PORT = int(os.environ.get("ONEIRO_PORT", "8090"))
+HOST = settings.graph_host
+PORT = settings.graph_port
 
 
 @dataclass
@@ -172,11 +173,11 @@ def main(argv: list[str]) -> int:
     bridge.connect()
 
     if domain == "island":
-        seeds = [f"oneiro-{i}" for i in range(int(os.environ.get("ONEIRO_SEEDS", "5")))]
-        runs = [run_island_seed(bridge, s, rounds=int(os.environ.get("ONEIRO_ROUNDS", "3")), limit=24) for s in seeds]
+        seeds = [f"oneiro-{i}" for i in range(settings.series_seeds)]
+        runs = [run_island_seed(bridge, s, rounds=settings.loop_rounds, limit=24) for s in seeds]
     elif domain == "workshop":
-        seeds = [f"workshop-{i}" for i in range(int(os.environ.get("ONEIRO_SEEDS", "3")))]
-        runs = [run_workshop_seed(bridge, s, rounds=int(os.environ.get("ONEIRO_ROUNDS", "3")), limit=24) for s in seeds]
+        seeds = [f"workshop-{i}" for i in range(settings.series_seeds)]
+        runs = [run_workshop_seed(bridge, s, rounds=settings.loop_rounds, limit=24) for s in seeds]
     else:
         print(f"unknown domain {domain!r}", file=sys.stderr)
         return 2

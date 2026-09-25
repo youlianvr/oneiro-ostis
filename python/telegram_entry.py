@@ -214,10 +214,7 @@ class TelegramGateway:
 
     def graph(self) -> OneiroBridge:
         if self._bridge is None:
-            self._bridge = OneiroBridge(
-                host=os.environ.get("ONEIRO_HOST", "localhost"),
-                port=int(os.environ.get("ONEIRO_PORT", "8090")),
-            )
+            self._bridge = OneiroBridge()
             self._bridge.connect()
         return self._bridge
 

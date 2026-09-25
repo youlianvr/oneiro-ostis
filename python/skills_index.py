@@ -23,10 +23,11 @@ whether looking in the catalog was worth the tokens is for the judge to settle.
 from __future__ import annotations
 
 import json
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
+
+from config import settings
 
 TERM_RE = re.compile(r"[a-z0-9:.\-]{3,}")
 CATALOG_REL = Path("knowledge") / "wiki" / "skills-catalog.json"
@@ -67,9 +68,9 @@ def workspace_root(start: Path | None = None) -> Path:
     Searched upward from this file so the project can be moved without a
     constant to edit, and overridable for tests and for a different checkout.
     """
-    env = os.environ.get("ONEIRO_WORKSPACE")
-    if env and (Path(env) / CATALOG_REL).exists():
-        return Path(env)
+    configured = settings.path("workspace")
+    if (configured / CATALOG_REL).exists():
+        return configured
     here = (start or Path(__file__)).resolve()
     for parent in [here, *here.parents]:
         if (parent / CATALOG_REL).exists():

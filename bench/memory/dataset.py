@@ -1,7 +1,7 @@
 """LongMemEval data: where it lives, how it is read, how a run samples it.
 
-The dataset stays outside the repository (15 MB oracle, 277 MB s-cleaned):
-``ONEIRO_LME_DIR`` or ``~/.openclaw/datasets/longmemeval``. The s file is
+The dataset stays outside the repository (15 MB oracle, 277 MB s-cleaned).
+Where it lives is the ``bench.lme_dir`` setting; the s file is
 decoded question by question from the raw text, so a sample never materialises
 the whole 277 MB as Python objects.
 
@@ -14,15 +14,24 @@ The canonical session dict used by every store and arm:
 from __future__ import annotations
 
 import json
-import os
 import random
 import re
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Iterator, Optional
 
-DEFAULT_DIR = Path(os.environ.get("ONEIRO_LME_DIR") or (Path.home() / ".openclaw" / "datasets" / "longmemeval"))
+# Imported both by the benchmark runner (which puts `python/` on the path) and
+# by the offline tests (which do not), so it finds the settings owner itself
+# instead of depending on whoever imported it.
+_PYTHON = Path(__file__).resolve().parents[2] / "python"
+if str(_PYTHON) not in sys.path:
+    sys.path.append(str(_PYTHON))
+
+from config import settings  # noqa: E402
+
+DEFAULT_DIR = settings.path("bench.lme_dir")
 ORACLE_FILE = "longmemeval_oracle.json"
 S_FILE = "longmemeval_s_cleaned.json"
 

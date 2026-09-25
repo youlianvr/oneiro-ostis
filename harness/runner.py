@@ -29,18 +29,26 @@ import re
 import shutil
 import subprocess
 import string
+import sys
 import time
 from collections import Counter
 from pathlib import Path
 
 HARNESS_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = HARNESS_DIR.parent
+
+# The settings owner lives in python/; the harness is a flat directory, so the
+# path goes to the END of the search path (python/replay is a package of the
+# world engine, harness/replay.py is this harness's judge, and the harness's own
+# modules must keep priority).
+sys.path.append(str(PROJECT_DIR / "python"))
+from config import settings  # noqa: E402
 WORKSPACE_DIR = PROJECT_DIR.parents[2]
 TASKS_DIR = HARNESS_DIR / "tasks"
 RUNS_DIR = HARNESS_DIR / "lab" / "runs"
 PROVIDER_TEMPLATE = HARNESS_DIR / "opencode.template.json"
 
-DEFAULT_MODEL = "auto/coding"
+DEFAULT_MODEL = settings.llm_model
 API_KEY_ENV = "OMNIROUTE_API_KEY"
 AGENT_TIMEOUT = 600.0
 

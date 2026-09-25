@@ -29,12 +29,15 @@ from datetime import datetime
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent
+sys.path.append(str(HERE / "python"))
+
+from config import settings  # noqa: E402
+
 SERVER = HERE / "host" / "ostis_mcp.py"
+# COW_WORKSPACE is the host application's own directory, not one of ours, so it
+# stays an environment variable read here and does not enter the settings page.
 DEFAULT_WORKSPACE = Path(os.environ.get("COW_WORKSPACE", Path.home() / "cow"))
-SOURCE_CONFIG = Path(os.environ.get(
-    "ONEIRO_MCP_SOURCE",
-    Path.home() / ".openclaw" / "workspace" / ".mcp.json",
-))
+SOURCE_CONFIG = settings.path("mcp.source")
 NAME = "oneiro"
 
 # Local first: a tool that only reads and writes this machine, and that works
@@ -88,8 +91,10 @@ def our_entry() -> dict:
         "command": sys.executable,
         "args": [str(SERVER)],
         "env": {
-            "ONEIRO_HOST": os.environ.get("ONEIRO_HOST", "localhost"),
-            "ONEIRO_PORT": os.environ.get("ONEIRO_PORT", "8090"),
+            # Written out rather than left to the server's own defaults, so the
+            # host entry stays correct even if the settings file is replaced.
+            "ONEIRO_HOST": settings.graph_host,
+            "ONEIRO_PORT": str(settings.graph_port),
         },
     }
 

@@ -35,17 +35,19 @@ from policy import HarnessPolicy, get_policy
 sys.path.append(str(Path(__file__).resolve().parents[1] / "python"))
 import mcp_client  # noqa: E402
 import skills_index  # noqa: E402
+from config import settings  # noqa: E402
 
-# The provider is any OpenAI-compatible endpoint; the key comes from the
-# environment (see runner.api_key). Since 2026-09-22 that endpoint is the local
+# The provider is any OpenAI-compatible endpoint; the address and the key come
+# from the settings owner (see runner.api_key). Since 2026-09-22 the default
+# endpoint is the local
 # OmniRoute proxy, and the model is a routing name rather than an upstream id:
 # concrete provider ids through the proxy were either rejecting credentials or
 # answering without honouring the tool schema, while the routing names answer
 # with real tool calls in seconds. The proxy reports which upstream actually
 # served each call, and that id is recorded per step, so an episode can always
 # be attributed to the model that produced it.
-DEFAULT_MODEL = "auto/coding"
-BASE_URL = os.environ.get("ONEIRO_BASE_URL", "http://127.0.0.1:20128/v1")
+DEFAULT_MODEL = settings.llm_model
+BASE_URL = settings.llm_base_url
 REQUEST_TIMEOUT = 120.0
 MAX_PLACEHOLDER_RETRIES = 8
 MAX_REQUEST_ATTEMPTS = 4

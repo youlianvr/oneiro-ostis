@@ -30,6 +30,7 @@ for extra in (PROJECT / "python", PROJECT / "bench" / "memory"):
     if str(extra) not in sys.path:
         sys.path.insert(0, str(extra))
 
+from config import settings  # noqa: E402
 from llm import ChatClient, ProviderError  # noqa: E402
 
 import arms as arms_module  # noqa: E402
@@ -37,14 +38,14 @@ import dataset as dataset_module  # noqa: E402
 import judge as judge_module  # noqa: E402
 from stores import FlatJournal, GraphStore, search_flat  # noqa: E402
 
-DEFAULT_BASE_URL = "http://127.0.0.1:20128/v1"
+DEFAULT_BASE_URL = settings.llm_base_url
 # Two live OmniRoute routing names, deliberately in opposite order: the answer
 # chain prefers the strong general model, the judge chain prefers the fast one,
 # so a cell's answer and its verdict come from different models. Routing names
 # survive provider churn; the record keeps the id that actually served the call.
 DEFAULT_ANSWER_MODELS = ("main", "auto/coding")
 DEFAULT_JUDGE_MODELS = ("auto/coding", "main")
-DEFAULT_BENCH_DIR = Path(os.environ.get("ONEIRO_BENCH_DIR") or (Path.home() / ".openclaw" / "bench-memory"))
+DEFAULT_BENCH_DIR = settings.path("bench.dir")
 
 
 def load_key(name: str) -> str:
@@ -262,7 +263,7 @@ def build_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--judge-models", default=",".join(DEFAULT_JUDGE_MODELS))
     parser.add_argument("--run-tag", default="")
     parser.add_argument("--out-dir", default="")
-    parser.add_argument("--ostis-port", type=int, default=8090)
+    parser.add_argument("--ostis-port", type=int, default=settings.graph_port)
     parser.add_argument("--no-ostis", action="store_true")
     parser.add_argument("--limit", type=int, default=0, help="smoke runs: keep only N questions")
     parser.add_argument("--dry", action="store_true", help="print the sample and exit")

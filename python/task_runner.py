@@ -32,6 +32,7 @@ if str(PROJECT / "python") not in sys.path:
 import approval  # noqa: E402
 import telegram_entry  # noqa: E402
 from bridge import OneiroBridge  # noqa: E402
+from config import settings  # noqa: E402
 from life_loop import LoopConfig, locate_paths, run_loop  # noqa: E402
 
 TASK_KIND = "task"
@@ -407,8 +408,7 @@ def runner_from_env(**kwargs) -> TaskRunner:
     owner = approval._walk_env(None, telegram_entry.OWNER_ENV)
     if not owner:
         raise SystemExit("no owner id: set TELEGRAM_CHAT_ID in the environment or a .env")
-    bridge = OneiroBridge(host=os.environ.get("ONEIRO_HOST", "localhost"),
-                          port=int(os.environ.get("ONEIRO_PORT", "8090")))
+    bridge = OneiroBridge(host=settings.graph_host, port=settings.graph_port)
     bridge.connect()
     gateway_session = None
     for record in reversed(bridge.load_life_sessions()):

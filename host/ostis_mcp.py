@@ -35,9 +35,10 @@ from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 import approval  # noqa: E402
 from bridge import OneiroBridge  # noqa: E402
+from config import settings  # noqa: E402
 
 HOST_SESSION_PREFIX = "host-cowagent"
-DEFAULT_WORKSPACE = Path(os.environ.get("ONEIRO_WORKSPACE", Path.home() / ".openclaw" / "workspace"))
+DEFAULT_WORKSPACE = settings.path("workspace")
 
 server = FastMCP("oneiro")
 
@@ -48,10 +49,7 @@ def graph() -> OneiroBridge:
     """One connection per process: the host calls tools in a background thread."""
     global _bridge
     if _bridge is None:
-        _bridge = OneiroBridge(
-            host=os.environ.get("ONEIRO_HOST", "localhost"),
-            port=int(os.environ.get("ONEIRO_PORT", "8090")),
-        )
+        _bridge = OneiroBridge(host=settings.graph_host, port=settings.graph_port)
         _bridge.connect()
     return _bridge
 

@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -31,10 +30,11 @@ import edits  # noqa: E402  (the ledger of edits, beside this file)
 import replay  # noqa: E402  (the judge, beside this file)
 import rsi  # noqa: E402
 from bridge import OneiroBridge  # noqa: E402
+from config import settings  # noqa: E402
 from policy import get_policy  # noqa: E402
 
-HOST = os.environ.get("ONEIRO_HOST", "localhost")
-PORT = int(os.environ.get("ONEIRO_PORT", "8090"))
+HOST = settings.graph_host
+PORT = settings.graph_port
 INCUMBENT = "baseline"
 
 

@@ -1,9 +1,9 @@
 """Strategy candidate generation: LLM adapter + deterministic offline sweep.
 
 The LLM adapter is OpenAI-compatible (base_url + api_key + model from the
-environment; no provider is hard-coded). It is strictly optional:
+settings owner; no provider is hard-coded). It is strictly optional:
 
-  - if ONEIRO_LLM_BASE_URL / ONEIRO_LLM_API_KEY / ONEIRO_LLM_MODEL are set,
+  - with a key present — the address and the model have working defaults —
     make_generator() returns the LLM generator;
   - otherwise the offline deterministic sweep runs;
   - any LLM failure (network, bad JSON, schema violations) falls back to the
@@ -16,11 +16,11 @@ candidate; invalid proposals are dropped, never repaired silently.
 from __future__ import annotations
 
 import json
-import os
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 
+from config import settings
 from strategy import Strategy, default_candidates, validate_descriptor
 
 DEFAULT_TIMEOUT = 45.0
@@ -68,9 +68,9 @@ class LLMStrategyGenerator:
     notes: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
-        self.base_url = (self.base_url or os.environ.get("ONEIRO_LLM_BASE_URL") or "").rstrip("/")
-        self.api_key = self.api_key or os.environ.get("ONEIRO_LLM_API_KEY") or ""
-        self.model = self.model or os.environ.get("ONEIRO_LLM_MODEL") or ""
+        self.base_url = (self.base_url or settings.llm_base_url or "").rstrip("/")
+        self.api_key = self.api_key or settings.llm_api_key or ""
+        self.model = self.model or settings.llm_model or ""
 
     @property
     def configured(self) -> bool:

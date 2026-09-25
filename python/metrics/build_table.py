@@ -24,12 +24,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python"))
 
 from agents import ContextOnlyAgent, FlatStoreAgent, OSTISMemoryAgent, RandomAgent
 from bridge import OneiroBridge
+from config import settings
 from metrics import MemoryScore, ROW_HEADER, make_results_table, order_accuracy
 from world import ExpeditionWorld
 
-HOST = os.environ.get("ONEIRO_HOST", "localhost")
-PORT = int(os.environ.get("ONEIRO_PORT", "8090"))
-WORLD_SEED = "oneiro-0"
+HOST = settings.graph_host
+PORT = settings.graph_port
+WORLD_SEED = settings.world_seed
 EPISODE_SEED = 7
 
 

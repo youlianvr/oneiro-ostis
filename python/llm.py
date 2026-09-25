@@ -25,7 +25,6 @@ No prompts, no role logic, no OSTIS code: those live beside this module.
 from __future__ import annotations
 
 import json
-import os
 import time
 import urllib.error
 import urllib.request
@@ -33,7 +32,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-DEFAULT_BASE_URL = "http://127.0.0.1:20128/v1"
+from config import settings
+
+# The address lives in the settings registry; this name survives because the
+# chat client takes it as a dataclass default. API_KEY_ENV is the name the
+# workspace .env uses, kept for the last-resort search below.
+DEFAULT_BASE_URL = settings.llm_base_url
 API_KEY_ENV = "OMNIROUTE_API_KEY"
 REQUEST_TIMEOUT = 180.0
 MAX_REQUEST_ATTEMPTS = 4
@@ -78,15 +82,18 @@ def _retry_after(exc: urllib.error.HTTPError) -> float:
 
 
 def load_api_key(env_path_hint: Optional[Path] = None) -> str:
-    """Find the provider key: environment first, then a nearby ``.env``.
+    """Find the provider key: the settings layer first, then a nearby ``.env``.
 
-    The KeyError message is the first thing a morning reader sees when the
-    key moved, so it names the exact variable and both places searched.
+    The settings layer already answers for every name this key has ever had
+    and for the file the settings page writes, so one lookup covers the saved
+    value and the environment together. The ``.env`` search stays as the last
+    resort for a checkout nobody has configured. The error message is the
+    first thing a morning reader sees when the key moved, so it names both
+    places it could be.
     """
-    for name in ("ONEIRO_API_KEY", API_KEY_ENV):
-        value = os.environ.get(name)
-        if value:
-            return value.strip()
+    saved = str(settings.llm_api_key).strip()
+    if saved:
+        return saved
     start = env_path_hint or Path(__file__).resolve()
     for parent in list(start.parents)[:8]:
         env_file = parent / ".env"
@@ -99,8 +106,8 @@ def load_api_key(env_path_hint: Optional[Path] = None) -> str:
                 if value:
                     return value
     raise ProviderError(
-        f"no provider key: set {API_KEY_ENV} in the environment or keep it in a "
-        f".env above {start}"
+        f"no provider key: save llm.api_key in the settings page, export "
+        f"{API_KEY_ENV}, or keep it in a .env above {start}"
     )
 
 
@@ -233,7 +240,7 @@ class ModelPool:
         if not self.api_key:
             self.api_key = load_api_key()
         if not self.base_url:
-            self.base_url = os.environ.get("ONEIRO_BASE_URL", DEFAULT_BASE_URL)
+            self.base_url = settings.llm_base_url
 
     def reply(
         self,

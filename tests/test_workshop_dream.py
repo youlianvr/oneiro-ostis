@@ -19,6 +19,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python"))
 
 from bridge import OneiroBridge
+from config import settings
 from dream import dream
 from loop_workshop import run_workshop_episode
 from replay.engine import ExperienceTree
@@ -30,8 +31,8 @@ from strategy_workshop import (
     workshop_signature,
 )
 
-HOST = os.environ.get("ONEIRO_HOST", "localhost")
-PORT = int(os.environ.get("ONEIRO_PORT", "8090"))
+HOST = settings.graph_host
+PORT = settings.graph_port
 
 
 @pytest.fixture(scope="module")
