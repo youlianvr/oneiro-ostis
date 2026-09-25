@@ -363,33 +363,12 @@ def act_stop():
 # `python/config.py` owns the settings file; these routes are a door to it, not
 # a second copy of it. The panel and the web console both write through here,
 # so a value saved in either place is the value the runtime reads.
-
-
-def _local_origin(origin: str) -> bool:
-    """True for a page served from this machine, whatever port it chose."""
-    return origin.startswith(("http://127.0.0.1:", "http://localhost:", "http://[::1]:"))
-
-
-@app.after_request
-def _allow_local_console(response):
-    """Let the console, served from its own local port, reach this API.
-
-    Only a local origin is echoed back; a page from anywhere else is given no
-    permission at all. Secrets never leave through GET anyway — the settings
-    description carries the fact that a key is set, never the key.
-    """
-    origin = request.headers.get("Origin", "")
-    if origin and _local_origin(origin):
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Vary"] = "Origin"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    return response
-
-
-@app.route("/api/settings", methods=["OPTIONS"])
-def settings_preflight():
-    return ("", 204)
+#
+# No CORS and no preflight: the console serves the panel's page and proxies
+# /oneiro/ to this app, so the page and these routes share one origin and the
+# browser never makes a cross-origin request. A page from anywhere else gets
+# nothing - and secrets never leave through GET anyway, since the settings
+# description carries the fact that a key is set, never the key.
 
 
 @app.get("/api/settings")
