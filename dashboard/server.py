@@ -25,6 +25,7 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "python"))
 
+from bridge import OneiroBridge  # noqa: E402
 from config import (  # noqa: E402
     describe as describe_settings,
     reset as reset_settings,
