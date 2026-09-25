@@ -37,6 +37,9 @@ from dataclasses import replace
 from pathlib import Path
 
 import agent
+import critic
+import edits
+import noise
 import replay
 import runner
 from policy import VARIANTS, HarnessPolicy, get_policy
@@ -189,9 +192,67 @@ CRITERIA_V5 = {
     },
 }
 
+# Version 6 regularises the search trajectory itself. Versions 1 to 5 kept saying
+# what a candidate had to prove; none of them said what the search was allowed to
+# try, so eleven rounds could circle one component and read as exploration.
+
+CRITERIA_V6 = {
+    **CRITERIA_V5,
+    "version": 6,
+    "search": {
+        "edit_budget": {
+            "decay": 0.9,
+            "min_fields": 2,
+            "note": "fields one candidate may move in a round. It starts at every "
+                    "field and anneals by round towards two, so a later verdict is "
+                    "attributable to one change instead of to a bundle. The floor is "
+                    "two and not one because the only edit this search ever deployed "
+                    "moved two fields of what the agent is shown and worked only as "
+                    "a pair",
+        },
+        "stall_window": 5,
+        "pruned_after": 2,
+        "note": "every candidate is recorded as an edit: the component of the harness "
+                "it changes, the hypothesis behind it, what the judge predicted, what a "
+                "run measured, and the verdict. That ledger is what says which "
+                "components the search has never touched and which it has worn out",
+    },
+    "noise": {
+        "alpha": 0.05,
+        "min_runs_per_task": 2,
+        "resamples": 2000,
+        "runs_from": ["reference-baseline", "base"],
+        "note": "the floor is bootstrapped from several runs of one policy on the same "
+                "tasks; a hand-picked delta is a number nobody has to defend",
+    },
+    "critic": {
+        "min_max_steps": 3,
+        "max_single_task_share": 0.9,
+        "note": "the screen before a run is spent: a policy that cannot work, or that "
+                "moves more fields than the round budget allows, is refused while it "
+                "is still free; everything else is flagged and measured",
+    },
+    "revision": {
+        "from_version": 5,
+        "reason": "version 5 demanded three runs per task to separate a saving from "
+                  "noise, which reduces the noise without saying how large a saving has "
+                  "to be. It also recorded, per candidate, only what the judge predicted "
+                  "and whether the gate let it through: nothing in a round said which "
+                  "component of the harness a candidate had changed, so eleven rounds of "
+                  "this search cannot be read as a trajectory",
+        "evidence": "round 9 read -3.4% from one run per task and +4.0% from three, so "
+                    "the floor has to be measured rather than chosen; and the one edit "
+                    "of 29 that ever survived a measurement changed two fields of what "
+                    "the agent is shown, which no round file states",
+        "unchanged": "min_predicted_saving 0.15, max_tasks_lost 1, "
+                     "min_decision_replayable 0.5, the online path, the trajectory rule, "
+                     "three runs per task",
+    },
+}
+
 CRITERIA_HISTORY = {1: CRITERIA_V1, 2: CRITERIA_V2, 3: CRITERIA_V3, 4: CRITERIA_V4,
-                    5: CRITERIA_V5}
-DEFAULT_CRITERIA = CRITERIA_V5
+                    5: CRITERIA_V5, 6: CRITERIA_V6}
+DEFAULT_CRITERIA = CRITERIA_V6
 
 # The proposer is a different job from the agent under test: it reasons about
 # trajectories rather than acting, so it may be a different model. The agent
@@ -249,7 +310,7 @@ system prompt, whether the failing test output is shown at the start, how much
 of the earlier conversation is kept, how long tool output may be, how many
 steps the loop may take, and whether a failing test sends the agent back in.
 
-You will get a JSON object with four keys:
+You will get a JSON object with these keys:
   base_policy     the policy in use now; your proposals are variations of it
   policy_fields   the exact fields allowed, with their types and ranges
   criteria        frozen acceptance rules (savings threshold, tolerance)
@@ -267,6 +328,12 @@ You will get a JSON object with four keys:
                   judge at all: read it before proposing, because a policy whose
                   prompts diverge from the recording at step 0 cannot be judged
                   and can only be measured online at the cost of real runs
+  search_state    the ledger of past edits, read back: every component of the
+                  harness that has been changed and how it went, which components
+                  have never been touched, which have been edited and refused, and
+                  search_state.round_budget, the number of fields one candidate may
+                  move this round. A candidate that moves more than that is refused
+                  before it is measured, so split it instead of bundling it
 
 Propose policies that make the agent cheaper (fewer prompt tokens) or more
 reliable (more tasks solved) by acting on what the trajectories actually show:
@@ -274,15 +341,31 @@ files read twice without an edit in between, the same command run again, long
 observations nobody needed afterwards, a step budget too small to recover from
 a failing test.
 
-Reply with ONLY a JSON array of 2 to 4 objects. Each object is a policy: it
-must carry a unique short "name" and the same keys as base_policy, nothing
-else. Never return the episodes or the criteria back. No prose, no markdown.
+Every candidate you return is recorded as one edit: the component of the harness
+it changes, the hypothesis behind it, what the judge predicted, what a real run
+measured, and whether it was kept. The components are
+
+  context   what the model is shown before it starts
+  history   what is kept from earlier steps
+  control   when the loop stops and whether it verifies itself
+
+A component the ledger shows as edited and refused is still allowed. Say what is
+different this time.
+
+Reply with ONLY a JSON array of 2 to 4 objects. Each object has exactly two
+keys: "policy", the descriptor (a unique short "name" and the same keys as
+base_policy, nothing else), and "hypothesis", one sentence naming the component
+you are changing, what you expect it to do, and which trajectories you were
+shown led you there. Never return the episodes or the criteria back. No prose,
+no markdown.
 
 Example shape:
-[{"name": "lean_window", "include_file_list": true, "include_initial_tests": false,
-  "context_mode": "window", "window_steps": 6, "observation_chars": 800,
-  "read_lines": 80, "max_steps": 12, "verify_before_finish": true,
-  "max_verify_nudges": 1, "temperature": 0.2}]"""
+[{"policy": {"name": "lean_window", "include_file_list": true,
+   "include_initial_tests": false, "context_mode": "window", "window_steps": 6,
+   "observation_chars": 800, "read_lines": 80, "max_steps": 12,
+   "verify_before_finish": true, "max_verify_nudges": 1, "temperature": 0.2},
+  "hypothesis": "history: keep six steps instead of all of them, because the "
+  "trajectories show files read twice with no edit between them"}]"""
 
 POLICY_FIELDS = {
     "name": "string, unique and short",
@@ -355,8 +438,15 @@ def deployment_history(rounds: list[dict]) -> list[dict]:
 
 
 def proposer_context(records: list[dict], history: list[dict], criteria: dict,
-                     trace_budget: int = 7000, deployments: list[dict] | None = None) -> dict:
-    """Everything the proposer is allowed to see: full traces, not summaries."""
+                     trace_budget: int = 7000, deployments: list[dict] | None = None,
+                     search_state: dict | None = None) -> dict:
+    """Everything the proposer is allowed to see: full traces, not summaries.
+
+    `search_state` is the edit ledger read back: what has been changed, what was
+    kept, what was refused, and how much of the harness the search has never been
+    to. Without it the proposer sees proposals and verdicts but not the shape of
+    its own search, and walks back into the same component round after round.
+    """
     traces = []
     for record in records:
         step_lines = []
@@ -383,11 +473,18 @@ def proposer_context(records: list[dict], history: list[dict], criteria: dict,
         "past_deployments": deployments,
         "measured_references": reference_measurements(),
         "judge": judge_briefing(history, criteria),
+        "search_state": search_state,
     }
 
 
-def propose(context: dict, model: str, count: int = 3) -> tuple[list[HarnessPolicy], list[str]]:
-    """Ask the model for new policies; validate hard, drop what does not fit."""
+def propose(context: dict, model: str, count: int = 3) -> tuple[list[edits.Proposal], list[str]]:
+    """Ask the model for new policies; validate hard, drop what does not fit.
+
+    Two shapes are accepted. `{"policy": {...}, "hypothesis": "..."}` is what
+    the prompt asks for, because a candidate is worth more with its reason
+    attached; a bare descriptor is still read, so a round that loses the reason
+    loses only the reason and not the candidate.
+    """
     provider = agent.Provider(model, runner.api_key(), temperature=0.7)
     messages = [
         {"role": "system", "content": PROPOSER_SYSTEM},
@@ -398,20 +495,27 @@ def propose(context: dict, model: str, count: int = 3) -> tuple[list[HarnessPoli
     if text.startswith("```"):
         text = text.strip("`").split("\n", 1)[-1].rsplit("```", 1)[0]
     try:
-        proposals = json.loads(text)
+        answer = json.loads(text)
     except json.JSONDecodeError as exc:
         return [], [f"proposer returned unparseable JSON: {exc}"]
-    if not isinstance(proposals, list):
+    if not isinstance(answer, list):
         return [], ["proposer did not return an array"]
 
-    policies: list[HarnessPolicy] = []
+    proposals: list[edits.Proposal] = []
     notes: list[str] = []
-    for proposal in proposals[:count]:
+    for item in answer[:count]:
+        if not isinstance(item, dict):
+            notes.append("dropped a proposal that is not an object")
+            continue
+        wrapped = "policy" in item
         try:
-            policies.append(HarnessPolicy.from_descriptor(proposal))
-        except (ValueError, TypeError) as exc:
+            policy = HarnessPolicy.from_descriptor(item["policy"] if wrapped else item)
+        except (ValueError, TypeError, KeyError) as exc:
             notes.append(f"dropped invalid proposal: {exc}")
-    return policies, notes
+            continue
+        reason = str(item.get("hypothesis") or "").strip() if wrapped else ""
+        proposals.append(edits.Proposal(policy, reason))
+    return proposals, notes
 
 
 def proposer_chain(preferred: str) -> list[str]:
@@ -420,7 +524,7 @@ def proposer_chain(preferred: str) -> list[str]:
 
 
 def propose_with_fallback(context: dict, models: list[str],
-                          notes: list[str]) -> tuple[list[HarnessPolicy], list[str], str | None]:
+                          notes: list[str]) -> tuple[list[edits.Proposal], list[str], str | None]:
     """Ask each model in turn; every refusal is recorded in the round.
 
     Losing a round to a capacity refusal would waste the recordings the round
@@ -429,13 +533,13 @@ def propose_with_fallback(context: dict, models: list[str],
     """
     for model in models:
         try:
-            candidates, model_notes = propose(context, model)
+            proposals, model_notes = propose(context, model)
         except RuntimeError as exc:
             notes.append(f"{model}: provider refused ({str(exc)[:160]})")
             continue
         notes.extend(model_notes)
-        if candidates:
-            return candidates, notes, model
+        if proposals:
+            return proposals, notes, model
         notes.append(f"{model}: returned no valid candidate")
     return [], notes, None
 
@@ -671,18 +775,134 @@ def load_rounds() -> list[dict]:
             for path in sorted(RSI_DIR.glob("round-*.json"))]
 
 
-def first_by_path(verdicts: list[dict], candidates: list[HarnessPolicy], path: str):
-    """The best candidate the gate sent down a given path (verdicts arrive sorted)."""
+def first_by_path(verdicts: list[dict], candidates: list[HarnessPolicy], path: str,
+                  exclude: set[str] | None = None):
+    """The best candidate the gate sent down a path, skipping what the screen refused.
+
+    Verdicts arrive sorted best first, so skipping a screened candidate here hands
+    the slot to the next one on the same path. The screen removes a proposal; it
+    does not close a route.
+    """
+    excluded = exclude or set()
     for verdict in verdicts:
-        if verdict["path"] == path:
+        if verdict["path"] == path and verdict["policy"] not in excluded:
             return next((c for c in candidates if c.name == verdict["policy"]), None)
     return None
+
+
+def _state_for_record(search_state: dict) -> dict:
+    """The search state without the edit rows, which the round carries separately."""
+    return {key: value for key, value in search_state.items() if key != "past_edits"}
+
+
+def incumbent_runs(tasks: list[str], criteria: dict) -> tuple[str, dict[str, list[int]]]:
+    """The incumbent's own runs per task: the side a candidate is measured against.
+
+    The recorded corpus holds one episode per task under `base`, and the same
+    hand-written policy was then run three more times as a control. A comparison
+    against a single episode is a comparison against the noisiest baseline
+    available, so every run of the incumbent is used and the families are named in
+    the round.
+    """
+    families = list((criteria.get("noise") or {}).get("runs_from")
+                    or ["base", "reference-baseline"])
+    return ", ".join(families), noise.runs_by_task(replay.load_records(), families, tasks)
+
+
+def attach_noise(payload: dict, tasks: list[str], results: list[dict],
+                 criteria: dict) -> dict:
+    """Draw the interval over the runs this round just made, and record it in the round.
+
+    Called where a measurement exists rather than before it, because one side of
+    the interval is that measurement: the floor is not a property of the loop, it
+    is a property of this comparison.
+    """
+    rules = criteria.get("noise") or {}
+    source, before = incumbent_runs(tasks, criteria)
+    after = {row["task"]: list(row.get("samples") or []) for row in results
+             if row.get("samples")}
+    floor = noise.bootstrap_interval(before, after,
+                                     alpha=float(rules.get("alpha", 0.05)),
+                                     resamples=int(rules.get("resamples", 2000)))
+    payload["noise_floor"] = {"incumbent_runs_from": source, **floor}
+    return floor
+
+
+def recorded_edits(payload: dict, base: HarnessPolicy,
+                   hypotheses: dict[str, str] | None = None,
+                   screen: dict | None = None) -> list[dict]:
+    """This round's candidates as ledger rows, each with the outcome it actually got.
+
+    The outcome is read from the round's own decision rather than recomputed: a
+    round cut short by a provider refusal and a round that measured a policy and
+    found it worse are different rows about the world, and only the round knows
+    which of them happened.
+    """
+    hypotheses = hypotheses or {}
+    blocked = set((screen or {}).get("blocked") or [])
+    proposed = {p.get("name"): p for p in payload.get("proposed") or []}
+    deployed = ((payload.get("deployed") or {}).get("policy") or {})
+    deployed_name = deployed.get("name")
+    deployed_search = (((payload.get("deployed") or {}).get("comparison") or {})
+                       .get("search") or {})
+    online = (payload.get("online_ab") or {}).get("comparison") or {}
+    online_delta = online.get("token_delta")
+    online_scope = len(online.get("token_scope_tasks") or [])
+    online_lost = online.get("tasks_lost")
+
+    rows = []
+    for verdict in payload.get("verdicts") or []:
+        name = verdict["policy"]
+        descriptor = proposed.get(name)
+        if descriptor is None:
+            continue
+        try:
+            candidate = HarnessPolicy.from_descriptor(descriptor)
+        except (ValueError, TypeError):
+            continue
+        if name in blocked:
+            outcome, measured, scope, lost = "critic_blocked", None, None, None
+        elif name == deployed_name:
+            outcome, measured = "deployed", deployed_search.get("token_delta")
+            scope = len(deployed_search.get("token_scope_tasks") or [])
+            lost = deployed_search.get("tasks_lost")
+        elif verdict.get("path") == "online" and payload.get("online_ab"):
+            outcome = "measured_incomplete" if online_delta is None else "measured_worse"
+            measured, scope, lost = online_delta, online_scope, online_lost
+        elif verdict.get("path") == "refused":
+            outcome, measured, scope, lost = "refused_by_gate", None, None, None
+        else:
+            outcome, measured, scope, lost = "not_deployed", None, None, None
+        rows.append(edits.record(
+            payload["round"], candidate, base, verdict=outcome,
+            hypothesis=hypotheses.get(name, ""),
+            predicted_saving=verdict.get("predicted_saving"),
+            decision_replayable=verdict.get("decision_replayable"),
+            path=verdict.get("path"), measured_saving=measured,
+            measured_scope=scope, tasks_lost=lost,
+            reason="; ".join(verdict.get("reasons") or [])[:400]))
+    return rows
+
+
+def close_round(payload: dict, index: int, *, base: HarnessPolicy,
+                hypotheses: dict[str, str] | None = None,
+                screen: dict | None = None) -> dict:
+    """Finish a round: attach its edit records, write the file, hand it back.
+
+    Every path a round can take ends here, so a round that refused everything
+    records its edits too. Those are exactly the rounds worth reading back, and
+    an early return that skipped the ledger would lose them.
+    """
+    payload["edits"] = recorded_edits(payload, base, hypotheses, screen)
+    round_path(index).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return payload
 
 
 def run_round(index: int, proposer_model: str = PROPOSER_MODEL,
               agent_model: str = agent.DEFAULT_MODEL) -> dict:
     criteria = load_criteria()
     search, held_out = criteria["search_tasks"], criteria["held_out_tasks"]
+    tolerance = criteria["capability"]["max_tasks_lost"]
     records = replay.load_records("base")
     search_records = [r for r in records if r["task"] in search]
     if not search_records:
@@ -699,14 +919,19 @@ def run_round(index: int, proposer_model: str = PROPOSER_MODEL,
         "status": "incumbent",
     })
 
+    base = get_policy("baseline")
+    search_state = edits.state(edits.ledger(previous, base=base), criteria, index)
     context = proposer_context(search_records, history, criteria,
-                               deployments=deployment_history(previous))
+                               deployments=deployment_history(previous),
+                               search_state=search_state)
     RSI_DIR.mkdir(parents=True, exist_ok=True)
     repeats = criteria.get("evidence", {}).get("repeats", {}).get("min_runs_per_task", 1)
     notes: list[str] = []
-    candidates, notes, answered_by = propose_with_fallback(
+    proposals, notes, answered_by = propose_with_fallback(
         context, proposer_chain(proposer_model), notes)
     proposer_model = answered_by
+    candidates = [proposal.policy for proposal in proposals]
+    hypotheses = {proposal.policy.name: proposal.hypothesis for proposal in proposals}
 
     if not candidates:
         payload = {"round": index, "criteria_version": criteria["version"],
@@ -714,15 +939,20 @@ def run_round(index: int, proposer_model: str = PROPOSER_MODEL,
                    "evidence": "no model answered or none returned a valid candidate",
                    "proposer_model": proposer_model,
                    "agent_model": agent_model,
+                   "search_regularisation": {"state": _state_for_record(search_state)},
                    "replay_verification": [replay.verify_reconstruction(r) for r in search_records]}
-        round_path(index).write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        return payload
+        return close_round(payload, index, base=base, hypotheses=hypotheses, screen=None)
 
     estimates = replay.judge(search_records, candidates)
     verdicts = gate(candidates, estimates, criteria)
-    winner = first_by_path(verdicts, candidates, "replay")
-    verify_candidate = first_by_path(verdicts, candidates, "verify")
-    online_candidate = first_by_path(verdicts, candidates, "online")
+    # The screen runs after the judge and before any run: a candidate the judge
+    # refused is already decided, and a candidate that cannot work or that bundles
+    # more than the round budget should not cost a run to find that out.
+    screen = critic.screen_round(candidates, base, verdicts, estimates, criteria, search_state)
+    refused_by_critic = set(screen["blocked"])
+    winner = first_by_path(verdicts, candidates, "replay", exclude=refused_by_critic)
+    verify_candidate = first_by_path(verdicts, candidates, "verify", exclude=refused_by_critic)
+    online_candidate = first_by_path(verdicts, candidates, "online", exclude=refused_by_critic)
 
     payload = {
         "round": index,
@@ -732,6 +962,7 @@ def run_round(index: int, proposer_model: str = PROPOSER_MODEL,
         "proposed": [c.descriptor() for c in candidates],
         "notes": notes,
         "verdicts": verdicts,
+        "search_regularisation": {"state": _state_for_record(search_state), "screen": screen},
         "evidence": ("judged by replay over the recorded episodes" if winner
                      else "no candidate the judge could judge"),
         "proposer_model": proposer_model,
@@ -762,17 +993,18 @@ def run_round(index: int, proposer_model: str = PROPOSER_MODEL,
                  else f"rsi-r{index}-online-search")
         search_results = measure(winner, search, agent_model, label, repeats=repeats)
         online_comparison = compare(incumbent_results(search), search_results)
-        tolerance = criteria["capability"]["max_tasks_lost"]
         payload["online_ab"] = {"results_search": search_results, "comparison": online_comparison}
         predicted = next(v["predicted_saving"] for v in verdicts if v["policy"] == winner.name)
+        floor = attach_noise(payload, search, search_results, criteria)
+        noise_call = noise.verdict(floor)
+        payload["noise_verdict"] = noise_call
         if online_comparison.get("unmeasured_tasks"):
             payload["deployed"] = None
             payload["outcome"] = (
                 "online path: measurement incomplete. The provider refused "
                 f"{len(online_comparison['unmeasured_tasks'])} of {len(search)} runs, so "
                 "capability was not settled and nothing was deployed")
-            round_path(index).write_text(json.dumps(payload, indent=2), encoding="utf-8")
-            return payload
+            return close_round(payload, index, base=base, hypotheses=hypotheses, screen=screen)
         if online_comparison["token_delta"] >= 0 or online_comparison["tasks_lost"] > tolerance:
             # The measurement contradicts the estimate, and the measurement wins.
             payload["deployed"] = None
@@ -782,18 +1014,53 @@ def run_round(index: int, proposer_model: str = PROPOSER_MODEL,
                 f"{len(online_comparison['token_scope_tasks'])} comparable tasks, "
                 f"{online_comparison['tasks_lost']} of {online_comparison['tasks']} tasks lost "
                 f"(tolerance {tolerance}); held-out tasks were never touched")
-            round_path(index).write_text(json.dumps(payload, indent=2), encoding="utf-8")
-            return payload
+            return close_round(payload, index, base=base, hypotheses=hypotheses, screen=screen)
+        if noise_call["conclusion"] == "unclear":
+            # Right direction, and still not a difference: the interval of the
+            # comparison covers zero, so these runs cannot tell the two policies
+            # apart whatever the point estimate says.
+            payload["deployed"] = None
+            payload["outcome"] = (
+                f"online path: measured and refused. Predicted {predicted:+.1%}, measured "
+                f"{online_comparison['token_delta']:+.1%} prompt tokens, and {noise_call['note']}. "
+                "A difference whose interval straddles zero is the spread of these runs, "
+                "not a saving; held-out tasks were never touched")
+            return close_round(payload, index, base=base, hypotheses=hypotheses, screen=screen)
 
     if winner is None:
         payload["outcome"] = "no candidate passed the efficiency gate; nothing deployed"
     else:
         # the online path already paid for the search-set run; reuse it rather
         # than spending the same budget twice on one candidate
-        search_results = (payload["online_ab"]["results_search"]
-                          if payload.get("online_ab") else
-                          measure(winner, search, agent_model, f"rsi-r{index}-search",
-                                  repeats=repeats))
+        reused = (payload.get("online_ab") or {}).get("results_search")
+        search_results = reused or measure(winner, search, agent_model,
+                                           f"rsi-r{index}-search", repeats=repeats)
+        if reused:
+            # a run this round already made and already paid for: reuse it with
+            # the interval drawn over it rather than measuring the same policy
+            # twice. A record rebuilt from its runs may hold the comparison
+            # without the runs, and then the measurement is simply made again
+            comparison = payload["online_ab"]["comparison"]
+            floor = payload["noise_floor"]
+        else:
+            comparison = compare(incumbent_results(search), search_results)
+            payload["online_ab"] = {"results_search": search_results,
+                                    "comparison": comparison}
+            floor = attach_noise(payload, search, search_results, criteria)
+        noise_call = noise.verdict(floor)
+        payload["noise_verdict"] = noise_call
+        if (comparison["tasks_lost"] > criteria["capability"]["max_tasks_lost"]
+                or noise_call["conclusion"] == "unclear"):
+            # The judge replays prompts, not runs. When the runs do not show the
+            # saving the replay predicted, the deployment is withdrawn before the
+            # held-out set is touched, and both numbers stay in the record.
+            payload["deployed"] = None
+            payload["outcome"] = (
+                "deployed on a replay verdict and withdrawn by its own measurement: "
+                f"predicted {comparison['token_delta']:+.1%} on the search set, "
+                f"{comparison['tasks_lost']} tasks lost, and {noise_call['note']}. "
+                "Held-out tasks were never touched")
+            return close_round(payload, index, base=base, hypotheses=hypotheses, screen=screen)
         held_out_results = measure(winner, held_out, agent_model, f"rsi-r{index}-heldout",
                                    repeats=repeats)
         payload["deployed"] = {
@@ -809,7 +1076,6 @@ def run_round(index: int, proposer_model: str = PROPOSER_MODEL,
         }
         comparison = payload["deployed"]["comparison"]
         payload["generalisation"] = generalisation(comparison["search"], comparison["held_out"])
-        tolerance = criteria["capability"]["max_tasks_lost"]
         lost = comparison["search"]["tasks_lost"]
         verdict = ("deployed and within capability tolerance"
                    if lost <= tolerance else
@@ -824,8 +1090,7 @@ def run_round(index: int, proposer_model: str = PROPOSER_MODEL,
             verdict += "; deployed on its online measurement, not on a judged estimate"
         payload["outcome"] = verdict
 
-    round_path(index).write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    return payload
+    return close_round(payload, index, base=base, hypotheses=hypotheses, screen=screen)
 
 
 def generalisation(search: dict, held_out: dict) -> dict:
@@ -1285,8 +1550,10 @@ def render_repeat(data: dict) -> str:
 def state() -> dict:
     """The whole loop as JSON, so every report renders from the same source."""
     criteria = load_criteria()
+    recorded = load_rounds()
+    edit_rows = edits.ledger(recorded)
     rounds = []
-    for payload in load_rounds():
+    for payload in recorded:
         deployed = payload.get("deployed") or {}
         verification = payload.get("replay_verification") or []
         rounds.append({
@@ -1333,6 +1600,8 @@ def state() -> dict:
         "recheck": recheck(),
         "references": reference_measurements(),
         "ledger": ledger(),
+        "edits": edits.summary(edit_rows),
+        "search_state": _state_for_record(edits.state(edit_rows, criteria)),
         "replayability": replay_health(),
         "incumbent": {
             "search": summarise(incumbent_results(criteria["search_tasks"])),
@@ -1350,8 +1619,12 @@ def show() -> None:
           "transferred | outcome |")
     print("|---|---|---|---|---|---|---|---|---|")
     for payload in rounds:
-        deployed = payload.get("deployed")
-        held = deployed["online_held_out"] if deployed else None
+        # a round whose record was rebuilt from its runs may carry the policy and
+        # its comparison without the summaries derived from them. The table shows
+        # what the record holds instead of failing on what it does not: one
+        # incomplete round must not cost the reading of the other ten.
+        deployed = payload.get("deployed") or {}
+        held = deployed.get("online_held_out")
         general = payload.get("generalisation")
         judged = sum(1 for v in payload.get("verdicts") or []
                      if v.get("passed_gate", v.get("passed_efficiency")))
@@ -1361,7 +1634,7 @@ def show() -> None:
                  or ("none" if name else "-"))
         held_solved = f"{held['solved']}/{held['tasks']}" if held else "-"
         print(f"| {payload['round']} | {len(payload.get('proposed') or [])} | {judged} | "
-              f"{(deployed or {}).get('policy', {}).get('name', '-') if deployed else '-'} | "
+              f"{deployed.get('policy', {}).get('name', None) or '-'} | "
               f"{route} | {held_solved} | {held['prompt_tokens'] if held else '-'} | "
               f"{('yes' if general['transferred'] else 'no') if general else '-'} | "
               f"{payload.get('outcome', '-')} |")
@@ -1379,6 +1652,11 @@ def main() -> None:
                         help="what the loop spent online, against an online sweep")
     parser.add_argument("--state", action="store_true",
                         help="the whole loop as JSON for reports and the dashboard")
+    parser.add_argument("--edits", action="store_true",
+                        help="the edit ledger: what each candidate changed, and whether "
+                             "it was kept")
+    parser.add_argument("--noise", action="store_true",
+                        help="the measured noise floor a saving has to beat")
     parser.add_argument("--reference", action="store_true",
                         help="judge the hand-written policies from the recordings")
     parser.add_argument("--measure-reference", metavar="NAME",
@@ -1419,6 +1697,23 @@ def main() -> None:
             print(json.dumps(payload["deployed"]["comparison"], indent=2))
     elif args.state:
         print(json.dumps(state(), indent=2, ensure_ascii=False))
+    elif args.edits:
+        print(edits.render(edits.ledger(load_rounds())))
+    elif args.noise:
+        criteria = load_criteria()
+        source, before = incumbent_runs(criteria["search_tasks"], criteria)
+        for label in sorted({base_label(r.get("label") or "") for r in replay.load_records()
+                             if r["task"] in criteria["search_tasks"]}):
+            after = noise.runs_by_task(replay.load_records(), [label], criteria["search_tasks"])
+            if not after:
+                continue
+            floor = noise.bootstrap_interval(
+                before, after,
+                alpha=float((criteria.get("noise") or {}).get("alpha", 0.05)),
+                resamples=int((criteria.get("noise") or {}).get("resamples", 2000)))
+            print(f"--- {label} against the incumbent")
+            print(noise.render(floor, source=source))
+            print()
     elif args.reference:
         print(render_reference(reference_table()))
     elif args.repeat_round:
