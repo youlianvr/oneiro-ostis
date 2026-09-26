@@ -62,6 +62,10 @@ of asking — the console's own config, the panel's settings API, a TCP connect
 to sc-machine — so when the environment later breaks, the chat bar and the
 setup page come back on their own and name the piece that broke.
 
+The graph panel at `/oneiro/` reads its snapshot in the background: the first
+open shows a live count of the read (minutes on a graph as large as this one's)
+instead of an error, then the numbers, and later visits are instant.
+
 What the installer deliberately does not do: overwrite a console file someone
 else has since edited (it refuses and says which), touch a config that already
 exists, or download anything it already has.

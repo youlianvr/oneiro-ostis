@@ -50,6 +50,8 @@ _swarm_cache: dict = {}           # the organization feed, seconds-fresh
 SWARM_CACHE_SECONDS = 5.0
 SWARM_RECORD_LIMIT = 80
 _building: dict = {}              # subject -> True while a snapshot builds
+_build_error: dict = {}           # subject -> {"at": ..., "message": ...} of the last failure
+BUILD_RETRY_PAUSE = 5.0           # seconds before a failed build is attempted again
 
 
 def _parse_results_md() -> dict:
@@ -240,32 +242,64 @@ def index():
     return send_from_directory(os.path.dirname(os.path.abspath(__file__)), "index.html")
 
 
+def _build_state(subject: str | None, message: str = "") -> dict:
+    """The honest answer while there is no snapshot to show yet.
+
+    `building` tells the page to render progress instead of data: an empty
+    memory and a memory still being read must never look alike. When a build
+    has failed, `error` carries the fact - without it, a graph that cannot be
+    read at all would keep the page on "progress" forever.
+
+    The shape is complete on purpose (benchmarks included), so a client that
+    renders this payload without looking at `building` sees empty sections, not
+    exceptions.
+    """
+    payload = {
+        "subject": subject,
+        "building": not message,
+        "strategies": [],
+        "episodes": {},
+        "consistency": {"episodes": 0, "steps": 0, "transitions": 0, "conflicts": 0},
+        "subjects": [],
+        "job": {"running": _job["running"], "name": _job["name"]},
+        "benchmarks": {"memory": {"rows": []},
+                       "series": {"domains": [], "improved": 0, "seeds": 0},
+                       "harness": None},
+    }
+    if message:
+        payload["error"] = message
+    return payload
+
+
 @app.get("/api/state")
 def state():
     args = request.args
     subject = args.get("subject") or None
-    # Keep the original stale-while-revalidate behavior: serve the last snapshot
-    # immediately and refresh it in the background while it is still useful.
+    # A request never waits for the snapshot: reading it cold takes minutes,
+    # which is more than a page - or a person - waits before calling the panel
+    # dead. Instead: serve whatever exists (stale included) and build the fresh
+    # copy in the background; with nothing to serve, say the build is running.
     key = subject or ""
     with _state_lock:
         cached = _state_cache.get(key)
         building = _building.get(key)
-    if cached and time.time() - cached[0] < 60.0:
-        if not building and time.time() - cached[0] > 5.0:
+        failed = _build_error.get(key)
+    if cached:
+        if not building and time.time() - cached[0] > 5.0 and not _failure_recent(failed):
             _rebuild_async(key, subject)
         return jsonify(cached[1])
     if not building:
-        data = _snapshot(subject)
-        with _state_lock:
-            _state_cache[key] = (time.time(), data)
-        return jsonify(data)
-    # A rebuild is already running: show the last copy, or an honest empty
-    # initial state until the first full snapshot is ready.
-    return jsonify(cached[1] if cached else {
-        "subject": subject, "strategies": [], "episodes": {},
-        "consistency": {"episodes": 0, "steps": 0, "transitions": 0, "conflicts": 0},
-        "subjects": [], "job": {"running": _job["running"], "name": _job["name"]},
-    })
+        if _failure_recent(failed):
+            # A build that just failed is not retried on every poll, and its
+            # reason is reported instead of being dressed up as progress.
+            return jsonify(_build_state(subject, failed["message"]))
+        _rebuild_async(key, subject)
+    return jsonify(_build_state(subject))
+
+
+def _failure_recent(failed: dict | None) -> bool:
+    return bool(failed) and time.time() - failed.get("at", 0.0) < BUILD_RETRY_PAUSE
+
 
 def _rebuild_async(key: str, subject: str | None):
     # The claim is atomic: two simultaneous cache misses must not both launch a
@@ -280,8 +314,12 @@ def _rebuild_async(key: str, subject: str | None):
             data = _snapshot(subject)
             with _state_lock:
                 _state_cache[key] = (time.time(), data)
-        except Exception:
-            pass
+                _build_error.pop(key, None)
+        except Exception as exc:
+            # Kept, not swallowed: with requests no longer blocking, a failure
+            # has to be able to say so on the next poll.
+            with _state_lock:
+                _build_error[key] = {"at": time.time(), "message": str(exc)[:200]}
         finally:
             with _state_lock:
                 _building.pop(key, None)

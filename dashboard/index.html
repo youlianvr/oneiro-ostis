@@ -594,24 +594,64 @@ async function refreshMemoryBench(){
 
 /* ---------- состояние ---------- */
 /* Сбор полного снимка из памяти занимает минуты, поэтому панель никогда не
-   ждёт его молча: пока данных нет, на месте чисел честно написано, что идёт
-   сбор, а не нули и не «записей нет». */
+   ждёт его молча: на месте чисел идёт честный ход подготовки — сколько уже
+   собирается — а не нули, не «записей нет» и не ошибка. Пока снимок читается,
+   лента и оценка памяти не опрашиваются: их запросы всё равно встали бы в
+   очередь за тем же чтением графа и только удлинили бы первую загрузку. */
 const BUILDING_TEXT = "подготавливаю данные из памяти; это может занять несколько минут";
+let buildingSince = null, buildingTimer = null, haveData = false;
+
+function showBuilding(){
+  if(buildingSince === null) buildingSince = Date.now();
+  setConn(true, BUILDING_TEXT);
+  // Когда на экране уже есть настоящие данные (идёт лишь догрузка выбранного
+  // набора опыта), прогресс остаётся в строке связи и не затирает их.
+  if(haveData) return;
+  if(buildingTimer) return;
+  const paint = () => {
+    const secs = Math.round((Date.now() - buildingSince) / 1000);
+    $("stats").innerHTML = '<div class="stat"><div class="v">…</div>'
+      + `<div class="l">${BUILDING_TEXT} (прошло ${secs} с)</div></div>`;
+  };
+  paint();
+  buildingTimer = setInterval(paint, 1000);
+}
+
+function hideBuilding(){
+  if(buildingTimer){ clearInterval(buildingTimer); buildingTimer = null; }
+  buildingSince = null;
+}
 
 async function refresh(){
-  refreshSwarm();
-  refreshMemoryBench();
+  if(buildingSince === null){
+    refreshSwarm();
+    refreshMemoryBench();
+  }
+  await refreshState();
+}
+
+async function refreshState(){
   try{
     const d = await api("api/state" + (SUBJECT ? "?subject=" + encodeURIComponent(SUBJECT) : ""));
-    if(d.building){ setConn(true, BUILDING_TEXT); return; }
+    if(d.error){ hideBuilding(); setConn(false, "нет связи с памятью"); return; }
+    if(d.building){ showBuilding(); return; }
+    hideBuilding();
     setConn(true, "связь с памятью есть");
-    render(d);
+    render(d);                           // что уже прочитано — показываем сразу
+    if(!SUBJECT && (d.subjects || []).length){
+      // Эпизодов выбранного набора опыта в этом снимке ещё нет: их принесёт
+      // следующий, а пока на экране остаётся всё остальное.
+      SUBJECT = d.subjects[0];
+      refreshState();
+    }
   }catch(e){
+    hideBuilding();
     setConn(false, "нет связи с памятью");
   }
 }
 
 function render(d){
+  haveData = true;
   // статус задачи приходит с сервера: завершённая работа гасит индикацию
   setUI(d.job.running, d.job.name || "");
 
@@ -1060,17 +1100,11 @@ function scheduleReset(){
 }
 
 /* ---------- старт ---------- */
-(async () => {
-  try{
-    const d = await api("api/state");
-    if(d.building){ setConn(true, BUILDING_TEXT); return; }
-    SUBJECT = d.subjects[0] || "";
-    render(d);
-    setConn(true, "связь с памятью есть");
-  }catch(e){
-    setConn(false, "нет связи с памятью");
-  }
-})();
+/* Отсчёт стартует вместе со страницей, а не с первого ответа: пока неизвестно,
+   есть ли готовый снимок, лента и оценка памяти не опрашиваются — их запросы
+   ждали бы в очереди за тем же чтением графа. */
+buildingSince = Date.now();
+refresh();
 setInterval(refresh, 4000);
 </script>
 </body>
