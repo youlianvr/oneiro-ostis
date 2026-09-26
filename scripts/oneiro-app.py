@@ -18,8 +18,8 @@ programmer; comments and the code stay English like the rest of the project.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import os
-import platform
 import runpy
 import socket
 import subprocess
@@ -31,7 +31,32 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent          # the project
 WORKSPACE = HERE.parent.parent.parent                  # .openclaw/workspace
-CONSOLE = WORKSPACE / "tools" / "upstream" / "cowagent"
+
+
+def find_console() -> Path:
+    """Where the console tree lives.
+
+    The installer unpacks it inside the project, which is what makes a fresh
+    clone self-contained. A machine that already ran the product out of the
+    workspace vendor tree keeps working from there, so both are searched.
+
+    A runnable console is one with its environment: unpacking without the
+    virtualenv is a half-finished install, and the vendor tree is a better
+    answer than a tree that cannot start. The check mirrors scripts/oneiro-app.cmd,
+    so the shim and this script never disagree about which tree the product is.
+    """
+    candidates = [HERE / ".runtime" / "cowagent",
+                  WORKSPACE / "tools" / "upstream" / "cowagent"]
+    for candidate in candidates:
+        if (candidate / "app.py").exists() and (candidate / ".venv" / "Scripts" / "python.exe").exists():
+            return candidate
+    for candidate in candidates:
+        if (candidate / "app.py").exists():
+            return candidate
+    return candidates[0]
+
+
+CONSOLE = find_console()
 CONSOLE_PYTHON = CONSOLE / ".venv" / "Scripts" / "python.exe"
 STATE = HERE / "state"
 
@@ -40,29 +65,63 @@ DEFAULT_CONSOLE_PORT = 9899
 PANEL_START_TIMEOUT = 60.0
 
 
+WMI_SEED = HERE / "scripts" / "wmi-seed" / "sitecustomize.py"
+
+
 def seed_platform_cache() -> None:
     """Answer `platform` from memory instead of asking WMI, which can hang.
 
     cheroot - the WSGI server both the console and the panel sit on - calls
-    platform.system() while it imports, and on this machine that call reaches
+    `platform.system()` while it imports, and on this machine that call reaches
     WMI and never comes back: the console then stops at "Starting channels"
-    with no port ever bound. The uname cache is what platform consults first,
-    so filling it from the already-known Windows facts removes the dependency
-    on a system service that is allowed to be unhealthy.
+    with no port ever bound. Measured: `import cheroot.server` does not return
+    within 45 seconds without the seed and takes 0.19 seconds with it.
 
-    Measured here: `import cheroot.server` does not return within 45 seconds
-    without this, and takes 0.2 seconds with it.
+    The answer itself lives in `scripts/wmi-seed/sitecustomize.py`, which is
+    also the copy every installed environment gets (see `scripts/install.py`),
+    so the console process and everything it starts agree. Loaded by path
+    rather than imported by name, because outside a virtualenv it has no
+    importable name of its own.
     """
-    if sys.platform != "win32" or getattr(platform, "_uname_cache", None):
+    if not WMI_SEED.exists():
+        print(f"Нет обхода зависшего WMI ({WMI_SEED}) — консоль может не подняться.")
         return
-    version = sys.getwindowsversion()
-    platform._uname_cache = platform.uname_result(
-        system="Windows",
-        node=socket.gethostname(),
-        release=str(version.major),
-        version=f"{version.major}.{version.minor}.{version.build}",
-        machine=os.environ.get("PROCESSOR_ARCHITECTURE") or "AMD64",
-    )
+    spec = importlib.util.spec_from_file_location("oneiro_wmi_seed", WMI_SEED)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.seed()
+
+
+def mount_panel(spec: str) -> None:
+    """Make the console serve /oneiro/* from the panel process.
+
+    Done by wrapping the console's WSGI application from the outside rather
+    than by editing the console's source. The vendor tree is upstream's, and an
+    edit inside it is lost the moment that release is unpacked again; this
+    lives in the one repository that is the product, so reinstalling upstream
+    cannot take the mount away.
+
+    `wsgifunc` is what builds the WSGI callable the console hands to its
+    server, and it is called exactly once per application, which makes it a
+    stable seam to wrap. In web.py `web.application` is the class itself, not
+    the module of the same name.
+
+    This raises rather than degrading: a product whose settings page and graph
+    panel are silently missing is not the product, and a window that says why
+    is worth more than one that half works.
+    """
+    import web
+    sys.path.insert(0, str(HERE))
+    from oneiro_proxy import wrap
+
+    application_class = web.application
+    original = application_class.wsgifunc
+
+    def wsgifunc(self, *middleware):
+        return wrap(original(self, *middleware), spec)
+
+    application_class.wsgifunc = wsgifunc
+    print("Панель графа будет отдаваться этой же консолью на /oneiro/.")
 
 
 def port_of(env_name: str, default: int) -> int:
@@ -196,6 +255,7 @@ def run(panel_port: int, console_port: int) -> int:
     )
     os.environ.setdefault("COW_WEB_PORT", str(console_port))
 
+    mount_panel(os.environ["ONEIRO_PROXY"])
     panel = start_panel(panel_port)
     print(f"Адрес продукта: http://127.0.0.1:{console_port}  (панель графа на нём же: /oneiro/)")
     print("Остановить: Ctrl+C в этом окне.")
@@ -234,6 +294,8 @@ def main() -> int:
 
     if not CONSOLE_PYTHON.exists():
         print(f"Не найдено окружение консоли: {CONSOLE_PYTHON}")
+        print("Похоже, Oneiro ещё не установлен в этой копии проекта.")
+        print("Запустите один раз:  python scripts/install.py")
         return 2
     if args.check:
         return check(panel_port, console_port)

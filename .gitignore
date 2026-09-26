@@ -2,6 +2,11 @@
 kb.bin/
 logs/
 
+# Installed product: the console tree and its virtualenv, built by
+# scripts/install.py (CowAgent archive is in console/vendor/, the product's own
+# files in console/overlay/). Never committed - a clone installs it.
+.runtime/
+
 # Build outputs
 build/
 install/
