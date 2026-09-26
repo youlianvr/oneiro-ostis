@@ -45,6 +45,7 @@ from agent.permission import (
     normalize_mode as permission_normalize_mode,
 )
 from channel.web.openai_api import OpenAIChatCompletionsHandler
+from channel.web import oneiro_setup
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"}
 VIDEO_EXTENSIONS = {".mp4", ".webm", ".avi", ".mov", ".mkv"}
@@ -2293,6 +2294,10 @@ class WebChannel(ChatChannel):
             '/stream', 'StreamHandler',
             '/cancel', 'CancelHandler',
             '/chat', 'ChatHandler',
+            '/setup', 'SetupHandler',
+            '/setup/status', 'SetupStatusHandler',
+            '/setup/verify', 'SetupVerifyHandler',
+            '/setup/graph', 'SetupGraphHandler',
             '/v1/chat/completions', 'OpenAIChatCompletionsHandler',
             '/config', 'ConfigHandler',
             '/api/models', 'ModelsHandler',
@@ -2941,6 +2946,65 @@ class ChatHandler:
         # Inject the backend-resolved default language for first-load fallback.
         html = html.replace("{{COW_DEFAULT_LANG}}", i18n.get_language())
         return html
+
+
+class SetupHandler:
+    """The first-run page: what is missing, and where to supply it."""
+
+    def GET(self):
+        # Same explicit content type as the chat page: behind a proxy that sends
+        # X-Content-Type-Options: nosniff a missing type renders as source text.
+        web.header('Content-Type', 'text/html; charset=utf-8')
+        web.header('Cache-Control', 'no-cache, no-store, must-revalidate')
+        web.header('Pragma', 'no-cache')
+        file_path = os.path.join(os.path.dirname(__file__), 'setup.html')
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return f.read()
+
+
+class SetupStatusHandler:
+    """Is the product usable, answered from live state every time it is asked.
+
+    The chat page asks the same route on load (and again later), so the answer
+    coming back to "not ready" after something breaks is not a special case -
+    it is the same code path that first showed the problem.
+    """
+
+    def GET(self):
+        _require_auth()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        payload = oneiro_setup.status(conf(), os.environ.get('ONEIRO_PROXY', ''))
+        return json.dumps(payload, ensure_ascii=False)
+
+
+class SetupVerifyHandler:
+    """Check a model before saving it; a stored key never comes back out."""
+
+    def POST(self):
+        _require_auth()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            data = json.loads(web.data() or b"{}")
+        except (TypeError, ValueError):
+            data = {}
+        config = conf()
+        current = oneiro_setup.model_state(config)
+        base_url = str(data.get('base_url') or current.get('base_url') or '')
+        model = str(data.get('model') or current.get('model') or '')
+        api_key = str(data.get('api_key') or '') or oneiro_setup.stored_key(config)
+        result = oneiro_setup.verify_model(base_url, api_key, model)
+        result['checked'] = {'base_url': base_url, 'model': model}
+        return json.dumps(result, ensure_ascii=False)
+
+
+class SetupGraphHandler:
+    """Raise the graph stack, the way the installer does, on the owner's word."""
+
+    def POST(self):
+        _require_auth()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        result = oneiro_setup.start_graph(os.environ.get('ONEIRO_PROJECT', ''))
+        return json.dumps(result, ensure_ascii=False)
 
 
 class ConfigHandler:

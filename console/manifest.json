@@ -33,7 +33,19 @@
       "path": "channel/web/chat.html",
       "kind": "changed",
       "pristine_sha256": "6918ef20f34efaeed585910e596e63b4ea663f5e4fa86ff34ad10120e73d44a0",
-      "product_sha256": "d785c434489fe54c13151ed034cec7072cefbdec4a24739c8386fd870ca3c8bc"
+      "product_sha256": "a992f072318833da4cc2e78cadb3f170ee7a5074d7a0bdb6c35e44162cc266ee"
+    },
+    {
+      "path": "channel/web/oneiro_setup.py",
+      "kind": "new",
+      "pristine_sha256": null,
+      "product_sha256": "8e2fb7c3df8d7fd4c43b2fa11f22eadfcacf96207f9e8367123e3618b4842172"
+    },
+    {
+      "path": "channel/web/setup.html",
+      "kind": "new",
+      "pristine_sha256": null,
+      "product_sha256": "c087f43ceccb33fce80821a131ead0e02ee2f92a281bde189ef1b3f461c81581"
     },
     {
       "path": "channel/web/static/css/console.css",
@@ -63,7 +75,7 @@
       "path": "channel/web/web_channel.py",
       "kind": "changed",
       "pristine_sha256": "401ad2956aa1da36eef7aadc669659aedab860ae390310680ff18815bc58c38f",
-      "product_sha256": "47a4dce343b7a38502e4c3715f676bbcc39e9ac6ab5cc34c2013dbab578e3ffd"
+      "product_sha256": "c4126e8eecc2dcf52e0da186c5db98674c5cc6342674749a9f38f5840e0f8f1b"
     },
     {
       "path": "common/i18n.py",

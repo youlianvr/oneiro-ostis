@@ -48,6 +48,20 @@ After that there is one address: **http://127.0.0.1:9899** — the chat, the
 The model and its API key are set on the settings page; nothing answers in the
 chat until they are.
 
+## First run
+
+An unconfigured product says so instead of pretending: while the model, the
+graph stack or the panel is not answering, the chat carries a red bar naming
+what is missing, and **http://127.0.0.1:9899/setup** is the page that reads
+live state and offers to fix each piece — the model credentials (saved into the
+console *and* into the Oneiro panel settings, checked against the provider with
+one real one-token call), and the graph stack (`docker compose up -d`).
+
+It is not a one-time wizard. Every answer comes from state read at the moment
+of asking — the console's own config, the panel's settings API, a TCP connect
+to sc-machine — so when the environment later breaks, the chat bar and the
+setup page come back on their own and name the piece that broke.
+
 What the installer deliberately does not do: overwrite a console file someone
 else has since edited (it refuses and says which), touch a config that already
 exists, or download anything it already has.
