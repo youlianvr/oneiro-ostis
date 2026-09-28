@@ -13,11 +13,15 @@ sys.path.insert(0, str(PROJECT / "python"))
 
 from approval import (  # noqa: E402
     APPROVE,
+    FREE_TEXT,
     REJECT,
+    Answer,
     ApprovalError,
     Decision,
     Proposal,
     TelegramApprovalChannel,
+    answer_from_decision,
+    answer_from_text,
     keyboard,
     render,
 )
@@ -307,3 +311,60 @@ def test_a_refused_press_is_recorded_too(tmp_path):
     assert records[-1][0] == "proposal_refused"
     assert records[-1][1]["reason"] == "not_the_owner"
     assert records[-1][1]["by_user_id"] == STRANGER
+
+
+# --- the three answers of one question: confirm, reject, or the owner's words ---
+
+
+def test_words_are_an_answer_but_never_an_approval():
+    spoken = answer_from_text(proposal().proposal_id, "да, только не сейчас",
+                              by_user_id=OWNER, at=1)
+    assert spoken.outcome == FREE_TEXT
+    assert spoken.approves is False
+    assert spoken.answered is False
+
+
+def test_a_free_text_answer_carries_the_words_and_the_re_ask_hint():
+    spoken = answer_from_text("p05-free-text", "не сейчас, я занят", by_user_id=OWNER, at=7)
+    view = spoken.for_manager()
+    assert view["answered"] is False
+    assert view["text"] == "не сейчас, я занят"
+    assert view["instruction"]
+    assert "never an approval" in view["instruction"]
+
+
+def test_a_press_is_an_answer_and_carries_no_words():
+    pressed = answer_from_decision(
+        Decision(proposal_id="p05-free-text", verdict=APPROVE, by_user_id=OWNER, at=9))
+    assert pressed.approves is True
+    assert pressed.answered is True
+    assert pressed.for_manager() == {"proposal_id": "p05-free-text",
+                                     "outcome": APPROVE, "answered": True}
+
+
+def test_a_reject_is_an_answer_but_not_an_approval():
+    pressed = answer_from_decision(
+        Decision(proposal_id="p05-free-text", verdict=REJECT, by_user_id=OWNER, at=9))
+    assert pressed.answered is True
+    assert pressed.approves is False
+
+
+def test_an_empty_text_answer_is_refused():
+    with pytest.raises(ApprovalError):
+        answer_from_text("p05-free-text", "   ", by_user_id=OWNER, at=1)
+
+
+def test_a_button_answer_cannot_smuggle_text():
+    with pytest.raises(ApprovalError):
+        Answer(proposal_id="p05-free-text", outcome=APPROVE, by_user_id=OWNER, at=1,
+               text="и ещё вот что")
+
+
+def test_an_unknown_outcome_is_refused():
+    with pytest.raises(ApprovalError):
+        Answer(proposal_id="p05-free-text", outcome="maybe", by_user_id=OWNER, at=1)
+
+
+def test_an_unusable_proposal_id_is_refused():
+    with pytest.raises(ApprovalError):
+        answer_from_text("не годится", "ок", by_user_id=OWNER, at=1)

@@ -145,5 +145,11 @@ behavior — not as a rename pass that hides whether the behavior changed.
 ## State
 
 - Branch `v2` exists on the remote, at `1a9b9a9b`.
-- No code has been changed yet on this branch.
-- Nothing about this branch has been published beyond its creation.
+- **Unit 1 done**: `approval.py` carries the third outcome (`free_text`), the
+  rule that only a press approves, and `Answer.for_manager()`, which is the exact
+  shape the question tool will hand back. `tests/test_approval.py` went from 21
+  to 29 passing tests; the full local suite is 277 passed with the same 10
+  sc-server connection errors it has without a running graph stack.
+- Units 2 to 6 are not started.
+- Nothing on this branch is published beyond its creation: the commits below sit
+  in the workspace until the owner asks for a publish.
