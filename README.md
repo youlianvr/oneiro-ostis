@@ -28,6 +28,48 @@ interface/          sc-web — the knowledge graph as live proof
 tests/              determinism, replay exactness, core loop, dream improvement
 ```
 
+## Install (one command, from a fresh clone)
+
+```bash
+python scripts/install.py          # the whole path; safe to run again
+python scripts/install.py --check  # what is already in place, changes nothing
+```
+
+The console is CowAgent 2.1.9, whose archive ships in `console/vendor/`; the
+installer unpacks it into `.runtime/cowagent` inside the project, builds its
+virtualenv, applies the product's own console files from `console/overlay/`
+(the Oneiro chat page, the settings page, the sidebar entry, the Russian
+strings, the server routes they call), seeds the console config for the web
+channel, wires the graph memory into the host, brings up the graph stack with
+Docker, and puts an **Oneiro** shortcut on the desktop.
+
+After that there is one address: **http://127.0.0.1:9899** — the chat, the
+*Настройки Oneiro* page and the graph panel at `/oneiro/` on a single origin.
+The model and its API key are set on the settings page; nothing answers in the
+chat until they are.
+
+## First run
+
+An unconfigured product says so instead of pretending: while the model, the
+graph stack or the panel is not answering, the chat carries a red bar naming
+what is missing, and **http://127.0.0.1:9899/setup** is the page that reads
+live state and offers to fix each piece — the model credentials (saved into the
+console *and* into the Oneiro panel settings, checked against the provider with
+one real one-token call), and the graph stack (`docker compose up -d`).
+
+It is not a one-time wizard. Every answer comes from state read at the moment
+of asking — the console's own config, the panel's settings API, a TCP connect
+to sc-machine — so when the environment later breaks, the chat bar and the
+setup page come back on their own and name the piece that broke.
+
+The graph panel at `/oneiro/` reads its snapshot in the background: the first
+open shows a live count of the read (minutes on a graph as large as this one's)
+instead of an error, then the numbers, and later visits are instant.
+
+What the installer deliberately does not do: overwrite a console file someone
+else has since edited (it refuses and says which), touch a config that already
+exists, or download anything it already has.
+
 ## Principles
 
 - **No facades.** Demo and deliverables contain nothing the system does not actually do.

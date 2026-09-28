@@ -1,6 +1,6 @@
 {
-  "frozen_at": "2026-09-20T02:46:00",
-  "version": 5,
+  "frozen_at": "2026-09-25T20:47:32",
+  "version": 6,
   "search_tasks": [
     "t01-start-total",
     "t02-clamp-bounds",
@@ -25,10 +25,10 @@
     "note": "three runs per search task, three per held-out task, when a round deploys"
   },
   "revision": {
-    "from_version": 4,
-    "reason": "version 4 accepted a deployment on one run per task, and the first policy deployed under it did not survive repeats",
-    "evidence": "round 9 read -3.4% on the search set from single runs; with three runs per task the same policy reads +4.0% overall and no transfer, with per-task spreads of 34% and 91% of the baseline",
-    "unchanged": "min_predicted_saving 0.15, max_tasks_lost 1, min_decision_replayable 0.5, the online path, the trajectory rule"
+    "from_version": 5,
+    "reason": "version 5 demanded three runs per task to separate a saving from noise, which reduces the noise without saying how large a saving has to be. It also recorded, per candidate, only what the judge predicted and whether the gate let it through: nothing in a round said which component of the harness a candidate had changed, so eleven rounds of this search cannot be read as a trajectory",
+    "evidence": "round 9 read -3.4% from one run per task and +4.0% from three, so the floor has to be measured rather than chosen; and the one edit of 29 that ever survived a measurement changed two fields of what the agent is shown, which no round file states",
+    "unchanged": "min_predicted_saving 0.15, max_tasks_lost 1, min_decision_replayable 0.5, the online path, the trajectory rule, three runs per task"
   },
   "evidence": {
     "unjudgeable_path": {
@@ -56,5 +56,30 @@
       "min_runs_per_task": 3,
       "note": "a saving is a claim about a distribution. One run per task cannot separate a three percent saving from variance, and the spread across runs of one policy reached 90% of the baseline here, so every online claim is averaged over at least this many runs per task"
     }
+  },
+  "search": {
+    "edit_budget": {
+      "decay": 0.9,
+      "min_fields": 2,
+      "note": "fields one candidate may move in a round. It starts at every field and anneals by round towards two, so a later verdict is attributable to one change instead of to a bundle. The floor is two and not one because the only edit this search ever deployed moved two fields of what the agent is shown and worked only as a pair"
+    },
+    "stall_window": 5,
+    "pruned_after": 2,
+    "note": "every candidate is recorded as an edit: the component of the harness it changes, the hypothesis behind it, what the judge predicted, what a run measured, and the verdict. That ledger is what says which components the search has never touched and which it has worn out"
+  },
+  "noise": {
+    "alpha": 0.05,
+    "min_runs_per_task": 2,
+    "resamples": 2000,
+    "runs_from": [
+      "reference-baseline",
+      "base"
+    ],
+    "note": "the floor is bootstrapped from several runs of one policy on the same tasks; a hand-picked delta is a number nobody has to defend"
+  },
+  "critic": {
+    "min_max_steps": 3,
+    "max_single_task_share": 0.9,
+    "note": "the screen before a run is spent: a policy that cannot work, or that moves more fields than the round budget allows, is refused while it is still free; everything else is flagged and measured"
   }
 }

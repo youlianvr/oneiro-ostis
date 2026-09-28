@@ -19,25 +19,59 @@
 
 ## Как это поднимается с нуля
 
+Обновление 2026-09-26: ставит сам репозиторий — `scripts/install.py`. Архив
+консоли лежит в нём же (`console/vendor/cowagent-2.1.9.zip`), файлы продукта —
+в `console/overlay/`; после установки консоль живёт в `.runtime/cowagent`
+(в git не попадает). Вендорное дерево `tools/upstream/cowagent` остаётся на
+этой машине деревом разработки: лаунчер предпочитает установленную консоль и
+падает на него только там, где установленной нет.
+
 ```bash
-# 1. исходники релиза
-cd tools/upstream && curl -sL -o cowagent.zip \
-  "https://api.github.com/repos/zhayujie/CowAgent/zipball/2.1.9" && unzip -q cowagent.zip \
-  && mv zhayujie-CowAgent-* cowagent
-
-# 2. окружение (то, что нужно для веб-канала и агентского режима)
-cd cowagent && python -m venv --system-site-packages .venv
-./.venv/Scripts/python.exe -m pip install numpy markdown-it-py "aiohttp>=3.10" requests \
-  chardet Pillow python-dotenv PyYAML croniter click qrcode json-repair regex \
-  websocket-client legacy-cgi "web.py @ git+https://github.com/webpy/webpy.git"
-
-# 3. подключить нашу память и вопрос человеку (в том же формате, что читает хост)
-cd <проект>/oneiro-ostis && python scripts/host-wire.py --apply
-
-# 4. запуск и остановка
-cd tools/upstream/cowagent && COW_DATA_DIR="$HOME/cow/instance" ./.venv/Scripts/python.exe app.py
-# остановка: закрыть процесс, который слушает 9899 (pid виден в netstat)
+cd <клонированный проект>
+python scripts/install.py            # весь путь: распаковка архива, окружение,
+                                     # оверлей продукта, конфиг, память в MCP,
+                                     # стек графа, ярлык на рабочем столе
+python scripts/install.py --check    # что уже стоит, без изменений
 ```
+
+Что установщик не делает: не перезаписывает файл консоли с чужими правками
+(скажет, какой именно), не трогает готовый конфиг, не скачивает то, что уже
+есть. Повторный запуск идемпотентен.
+
+```bash
+# запуск и остановка — ярлык Oneiro на рабочем столе, или вручную:
+cd <проект> && scripts\oneiro-app.cmd        # поднять (панель 8130 + консоль 9899)
+cd <проект> && scripts\oneiro-app.cmd --check # что работает, без запуска
+cd <проект> && scripts\oneiro-app.cmd --stop  # остановить оба
+
+# отладка одной консоли, без панели и без прокси:
+cd <проект>/.runtime/cowagent && COW_DATA_DIR="$HOME/cow/instance" ./.venv/Scripts/python.exe app.py
+# остановка: Stop-Process по pid из netstat; taskkill на этой машине виснет сам по себе
+```
+
+Первый запуск. Пока не задана модель (или не отвечает стек графа, или панель),
+чат показывает сверху полосу «Oneiro ещё не готов: …» со ссылкой «Настроить», а
+страница http://127.0.0.1:9899/setup читает живое состояние — конфиг консоли,
+`/api/settings` панели, TCP-коннект к sc-machine — и перечисляет, чего не
+хватает. Реквизиты модели со страницы уходят в два места сразу (консоль чата и
+настройки Oneiro), проверяются настоящим запросом `/chat/completions`
+(`max_tokens=1`) и сохраняются; кнопка «Поднять стек графа» делает
+`docker compose up -d` в папке проекта. Настроенность не запоминается флагом:
+та же проверка выполняется при каждой загрузке чата и на самой странице, поэтому
+упавшая позже панель или граф возвращают полосу сами.
+
+По шагам — то же, что делает установщик, на случай разбора:
+
+```bash
+python console/overlay.py apply --vendor .runtime/cowagent --dry-run  # что применится
+python scripts/host-wire.py --apply                                   # память в ~/cow/mcp.json
+docker compose up -d                                                  # sc-web 8000, sc-machine 8090
+```
+
+Адрес продукта — http://127.0.0.1:9899: чат, настройки Oneiro
+(`/oneiro/api/settings`) и панель графа (`/oneiro/`) живут на одном origin.
+Панель запускается лаунчером отдельным процессом на 8130 и остаётся
+самостоятельной; почему не один интерпретатор — `PLAN-ONE-PROCESS.md`.
 
 ## Интеграции: что включено и что нет
 

@@ -24,13 +24,14 @@ from dataclasses import dataclass, field
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "python"))
 
 from bridge import OneiroBridge
+from config import settings
 from dream import DreamResult, dream, dream_table
 from episode import EpisodeResult, episode_id_for, run_episode
 from strategy import Strategy, strategy_survey, strategy_survey_reverse, strategy_weak_incumbent
 
-HOST = os.environ.get("ONEIRO_HOST", "localhost")
-PORT = int(os.environ.get("ONEIRO_PORT", "8090"))
-WORLD_SEED = "oneiro-0"
+HOST = settings.graph_host
+PORT = settings.graph_port
+WORLD_SEED = settings.world_seed
 
 
 @dataclass
@@ -152,7 +153,7 @@ def main() -> int:
     bridge.connect()
     subject = f"oneiro_loop_{int(__import__('time').time())}"
 
-    report = run_loop(bridge, subject=subject, rounds=int(os.environ.get("ONEIRO_ROUNDS", "4")))
+    report = run_loop(bridge, subject=subject, rounds=settings.loop_rounds)
 
     print("# Oneiro-OSTIS — recursive loop rounds")
     print()

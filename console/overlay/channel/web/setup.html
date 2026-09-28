@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Первый запуск Oneiro</title>
+<style>
+/* Светлая «редакторская» тема, как у панели: страницу читает владелец на
+   первом запуске, часто на проекторе. */
+:root{--ink:#16202e;--muted:#5b6b7f;--line:#d8e0ea;--card:#fff;--bg:#f4f7fb;
+      --ok:#1e7f4f;--bad:#b3322c;--warn:#a86a12;--accent:#2458a8}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+main{max-width:780px;margin:0 auto;padding:28px 20px 60px}
+h1{font-size:24px;margin:0 0 6px}
+h2{font-size:16px;margin:0 0 4px}
+p.sub{color:var(--muted);margin:0 0 18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:0 0 14px}
+.row{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:0}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--muted);margin-top:6px;flex:none}
+.dot.ok{background:var(--ok)}.dot.bad{background:var(--bad)}
+.row .what{font-weight:600}
+.row .detail{color:var(--muted);font-size:13px}
+label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+input{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:7px;font-size:14px;background:#fff;color:var(--ink)}
+button{cursor:pointer;border-radius:8px;padding:9px 14px;font-size:14px;border:1px solid var(--line);background:#fff;color:var(--ink)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:disabled{opacity:.55;cursor:default}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.msg{margin-top:12px;padding:10px 12px;border-radius:8px;font-size:14px;display:none;white-space:pre-wrap}
+.msg.show{display:block}
+.msg.ok{background:#e8f5ee;color:var(--ok);border:1px solid #bfe3d0}
+.msg.bad{background:#fdecec;color:var(--bad);border:1px solid #f2c9c7}
+.msg.info{background:#eef3fb;color:var(--accent);border:1px solid #cfdff5}
+.missing{list-style:none;padding:0;margin:0}
+.missing li{padding:10px 0;border-top:1px solid var(--line)}
+.missing li:first-child{border-top:0}
+.missing .fix{color:var(--muted);font-size:13px}
+.links{margin-top:6px}
+.links a{color:var(--accent);text-decoration:none;margin-right:16px}
+.ready{background:#e8f5ee;border:1px solid #bfe3d0;border-radius:10px;padding:14px 18px;margin:0 0 14px}
+.ready h2{color:var(--ok)}
+.hidden{display:none}
+code{background:#eef1f5;border-radius:4px;padding:1px 5px;font-size:13px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Первый запуск Oneiro</h1>
+  <p class="sub">Одна проверка настоящего состояния: что уже работает, чего не хватает и что с этим делать.
+     Эта страница открывается снова всегда, когда что-то ломается.</p>
+
+  <div class="ready hidden" id="readyBox">
+    <h2>Продукт готов</h2>
+    <div id="readyDetail"></div>
+    <div class="links" style="margin-top:10px">
+      <a href="/chat">Открыть чат</a>
+      <a href="/oneiro/">Открыть панель Oneiro</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Состояние</h2>
+    <div id="stateRows"></div>
+    <div class="actions">
+      <button id="refresh">Обновить</button>
+      <button id="graphBtn">Поднять стек графа</button>
+    </div>
+    <div class="msg" id="stateMsg"></div>
+  </div>
+
+  <div class="card" id="missingCard">
+    <h2>Чего не хватает</h2>
+    <ul class="missing" id="missingList"></ul>
+  </div>
+
+  <div class="card">
+    <h2>Модель для чата</h2>
+    <p class="sub" style="margin-bottom:4px">OpenAI-совместимый провайдер: адрес, ключ и имя модели.
+       Значения сохраняются и в консоль (чат), и в настройки Oneiro (панель) — это одни и те же реквизиты.</p>
+    <label for="base_url">Адрес провайдера</label>
+    <input id="base_url" placeholder="http://127.0.0.1:20128/v1" autocomplete="off" spellcheck="false">
+    <label for="api_key">Ключ</label>
+    <input id="api_key" type="password" placeholder="sk-…" autocomplete="new-password" spellcheck="false">
+    <label for="model">Модель</label>
+    <input id="model" placeholder="auto/coding" autocomplete="off" spellcheck="false">
+    <div class="actions">
+      <button class="primary" id="save">Сохранить</button>
+      <button id="verify">Проверить связь</button>
+    </div>
+    <div class="msg" id="modelMsg"></div>
+  </div>
+
+  <p class="sub">Если что-то не сходится: <code>scripts\oneiro-app.cmd --check</code> показывает, что
+     запущено, а <code>scripts\install.py --check</code> — что установлено.</p>
+</main>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const NAME = 'Oneiro';
+  const PROVIDER_ID = 'oneiro';
+
+  let status = null;
+  // The console owns provider ids and generates one on create, so an id the
+  // page invents is not something it can be told: the page asks for the
+  // current id and remembers the one it got back, or every Save would add
+  // another provider.
+  let providerId = '';
+
+  function show(box, kind, text){
+    box.className = 'msg show ' + kind;
+    box.textContent = text;
+  }
+  function hide(box){ box.className = 'msg'; }
+
+  function row(ok, what, detail){
+    return '<div class="row"><span class="dot ' + (ok ? 'ok' : 'bad') + '"></span><div>' +
+           '<div class="what">' + what + '</div><div class="detail">' + (detail || '') + '</div></div></div>';
+  }
+
+  function render(){
+    if(!status) return;
+    const m = status.model, g = status.graph, p = status.panel;
+
+    $('stateRows').innerHTML =
+      row(m.configured, 'Модель для чата', m.detail) +
+      row(g.reachable, 'Стек графа (sc-machine ' + g.host + ':' + g.port + ')', g.detail +
+          (g.web_reachable ? '' : ' · sc-web на порту ' + 8000 + ' не отвечает')) +
+      row(p.reachable, 'Панель Oneiro', p.detail + (p.settings_path ? ' · ' + p.settings_path : ''));
+
+    const missing = status.missing || [];
+    $('missingCard').classList.toggle('hidden', missing.length === 0);
+    $('missingList').innerHTML = missing.map(item =>
+      '<li><div class="what">' + item.title + '</div><div class="detail">' + item.detail + '</div>' +
+      '<div class="fix">' + item.fix + '</div></li>').join('');
+
+    $('readyBox').classList.toggle('hidden', !status.ready);
+    if(status.ready){
+      $('readyDetail').textContent = 'Чат отвечает через ' + (m.provider || 'настроенного провайдера') +
+        ', память графа доступна, панель открывается на этом же адресе.';
+    }
+    if(status.ready) show($('stateMsg'), 'ok', 'Всё на месте.');
+  }
+
+  async function loadStatus(){
+    try{
+      const r = await fetch('setup/status', {cache:'no-store'});
+      status = await r.json();
+      render();
+      if(status.model.base_url) $('base_url').value = status.model.base_url;
+      if(status.model.model)    $('model').value = status.model.model;
+      $('api_key').placeholder = status.model.key_set ? 'ключ уже сохранён — оставьте пустым' : 'sk-…';
+    }catch(e){
+      show($('stateMsg'), 'bad', 'Не удалось прочитать состояние: ' + e);
+    }
+  }
+
+  async function post(url, body){
+    const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'},
+                                body: JSON.stringify(body || {})});
+    const text = await r.text();
+    try{ return {code:r.status, data: JSON.parse(text)}; }
+    catch(e){ return {code:r.status, data:{detail:text}}; }
+  }
+
+  function labelOf(provider){
+    // Custom cards carry a localized label object: {zh: …, en: …}.
+    if(typeof provider.label === 'string') return provider.label;
+    if(provider.label && typeof provider.label === 'object')
+      return provider.label.en || provider.label.ru || provider.label.zh || '';
+    return '';
+  }
+
+  async function consoleProviderId(){
+    try{
+      const r = await fetch('api/models', {cache:'no-store'});
+      const d = await r.json();
+      const found = (d.providers || []).find(p => p.is_custom && labelOf(p) === NAME);
+      return found ? String(p.id || '').replace(/^custom:/, '') : '';
+    }catch(e){ return ''; }
+  }
+
+  $('refresh').addEventListener('click', async () => { hide($('stateMsg')); await loadStatus(); });
+
+  $('graphBtn').addEventListener('click', async () => {
+    const button = $('graphBtn'); button.disabled = true;
+    show($('stateMsg'), 'info', 'Поднимаю стек графа: docker compose up -d…');
+    try{
+      const {data} = await post('setup/graph', {});
+      show($('stateMsg'), data.ok ? 'ok' : 'bad', (data.ok ? 'Стек поднят: ' : 'Не получилось: ') + data.detail);
+      await loadStatus();
+    }catch(e){ show($('stateMsg'), 'bad', 'Ошибка вызова: ' + e); }
+    button.disabled = false;
+  });
+
+  $('verify').addEventListener('click', async () => {
+    const button = $('verify'); button.disabled = true;
+    show($('modelMsg'), 'info', 'Проверяю провайдера одним коротким запросом…');
+    try{
+      const {data} = await post('setup/verify', {base_url: $('base_url').value.trim(),
+                                                 api_key: $('api_key').value.trim(),
+                                                 model: $('model').value.trim()});
+      show($('modelMsg'), data.ok ? 'ok' : 'bad',
+           (data.ok ? 'Связь есть (' + data.via + '): ' : 'Не получилось: ') + data.detail);
+    }catch(e){ show($('modelMsg'), 'bad', 'Ошибка вызова: ' + e); }
+    button.disabled = false;
+  });
+
+  $('save').addEventListener('click', async () => {
+    const button = $('save'); button.disabled = true;
+    const base_url = $('base_url').value.trim();
+    const api_key  = $('api_key').value.trim();
+    const model    = $('model').value.trim();
+    const notes = [];
+    show($('modelMsg'), 'info', 'Сохраняю…');
+    try{
+      // api_key is only sent when the owner typed one: an explicit empty
+      // string would clear the stored key, not keep it.
+      const payload = {action:'set_custom_provider', name:NAME, api_base:base_url,
+                       model:model, make_active:true};
+      const activeId = (status && status.model && status.model.provider_id) || '';
+      const existing = providerId || activeId || await consoleProviderId();
+      if(existing) payload.id = existing;
+      if(api_key)  payload.api_key = api_key;
+      const console_part = await post('api/models', payload);
+      if(console_part.data.status === 'success' && console_part.data.id) providerId = console_part.data.id;
+      notes.push('консоль (чат): ' + (console_part.data.status === 'success' ? 'сохранено'
+                 : 'ошибка — ' + (console_part.data.message || console_part.code)));
+
+      const values = {'llm.base_url': base_url, 'llm.model': model};
+      if(api_key) values['llm.api_key'] = api_key;
+      const panel_part = await post('oneiro/api/settings', {values:values});
+      notes.push('настройки Oneiro (панель): ' + (panel_part.data.status === 'ok' ? 'сохранено'
+                 : 'ошибка — ' + (panel_part.data.message || panel_part.code)));
+
+      show($('modelMsg'), 'info', notes.join('\n'));
+      $('api_key').value = ''; $('api_key').placeholder = 'ключ уже сохранён — оставьте пустым';
+
+      const check = await post('setup/verify', {});
+      show($('modelMsg'), check.data.ok ? 'ok' : 'bad',
+           notes.join('\n') + '\n' + (check.data.ok ? 'Проверка: ' : 'Проверка не прошла: ')
+           + check.data.detail);
+      await loadStatus();
+    }catch(e){ show($('modelMsg'), 'bad', 'Ошибка: ' + e); }
+    button.disabled = false;
+  });
+
+  loadStatus();
+  // Состояние перечитывается само: то же самое увидят чат и панель, если
+  // что-то отвалится после первого запуска.
+  setInterval(loadStatus, 30000);
+})();
+</script>
+</body>
+</html>

@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -27,13 +26,15 @@ ROOT = Path(__file__).resolve().parent.parent
 # and would shadow `harness/replay.py`, the judge this script publishes from.
 sys.path.append(str(ROOT / "python"))
 
+import edits  # noqa: E402  (the ledger of edits, beside this file)
 import replay  # noqa: E402  (the judge, beside this file)
 import rsi  # noqa: E402
 from bridge import OneiroBridge  # noqa: E402
+from config import settings  # noqa: E402
 from policy import get_policy  # noqa: E402
 
-HOST = os.environ.get("ONEIRO_HOST", "localhost")
-PORT = int(os.environ.get("ONEIRO_PORT", "8090"))
+HOST = settings.graph_host
+PORT = settings.graph_port
 INCUMBENT = "baseline"
 
 
@@ -85,6 +86,13 @@ def round_record(payload: dict, criteria: dict) -> dict:
         "online_search": deployed.get("online_search"),
         "online_held_out": deployed.get("online_held_out"),
         "generalisation": payload.get("generalisation"),
+        # what each candidate changed and why, the state the search was in when it
+        # chose, and the interval its measurement was held to. The graph is the
+        # memory this project is about, so the ledger of edits belongs in it and
+        # not only in the round's own file on disk
+        "edits": payload.get("edits") or edits.backfill([payload]),
+        "search_state": (payload.get("search_regularisation") or {}).get("state"),
+        "noise_floor": payload.get("noise_floor"),
         "outcome": payload.get("outcome", "-"),
     }
 

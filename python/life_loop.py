@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Callable, Mapping, Optional
 
 from bridge import LifeSession, OneiroBridge
+from config import settings
 from heartbeat import HeartbeatRunner
 from llm import BudgetExhausted, CallBudget, ModelPool, ProviderError
 from roles import SchemaError, manager as manager_role, researcher as researcher_role
@@ -483,8 +484,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--interval", type=float, default=60.0)
     parser.add_argument("--model-calls-per-cycle", type=int, default=36)
     parser.add_argument("--worker-steps", type=int, default=24)
-    parser.add_argument("--host", default=os.environ.get("ONEIRO_HOST", "localhost"))
-    parser.add_argument("--port", type=int, default=int(os.environ.get("ONEIRO_PORT", "8090")))
+    parser.add_argument("--host", default=settings.graph_host)
+    parser.add_argument("--port", type=int, default=settings.graph_port)
     parser.add_argument("--worktrees-root", type=Path,
                         default=Path.home() / ".openclaw" / "worktrees")
     parser.add_argument("--run-tag", default="")

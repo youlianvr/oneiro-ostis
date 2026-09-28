@@ -4,14 +4,13 @@ Requires a live stack (docker compose up of oneiro-ostis).
 Run: pytest tests/test_core_loop.py -v
 """
 
-import os
-
 import pytest
 
 from bridge import OneiroBridge
+from config import settings
 
-HOST = os.environ.get("ONEIRO_HOST", "localhost")
-PORT = int(os.environ.get("ONEIRO_PORT", "8090"))
+HOST = settings.graph_host
+PORT = settings.graph_port
 
 
 @pytest.fixture(scope="module")

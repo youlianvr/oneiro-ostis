@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "python"))
 
 from bridge import OneiroBridge
+from config import settings
 from dream import DreamResult, dream
 from episode import EpisodeResult, episode_id_for, run_episode_on
 from strategy_workshop import (
@@ -31,8 +32,10 @@ from strategy_workshop import (
 )
 from world.workshop import WorkshopWorld
 
-HOST = os.environ.get("ONEIRO_HOST", "localhost")
-PORT = int(os.environ.get("ONEIRO_PORT", "8090"))
+HOST = settings.graph_host
+PORT = settings.graph_port
+# The workshop domain keeps its own seed prefix: the island's seed names an
+# island, and two domains must never share one experiment's identity.
 WORLD_SEED = "workshop-0"
 
 
@@ -167,7 +170,7 @@ def main() -> int:
     bridge.connect()
     subject = f"workshop_loop_{int(__import__('time').time())}"
 
-    report = run_workshop_loop(bridge, subject=subject, rounds=int(os.environ.get("ONEIRO_ROUNDS", "3")))
+    report = run_workshop_loop(bridge, subject=subject, rounds=settings.loop_rounds)
 
     print("# Oneiro-OSTIS — recursive loop on the workshop domain (second world)")
     print()

@@ -26,12 +26,18 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "python"))
 
 from bridge import OneiroBridge  # noqa: E402
+from config import (  # noqa: E402
+    describe as describe_settings,
+    reset as reset_settings,
+    save as save_settings,
+    settings,
+)
 from replay.engine import ExperienceTree, island_signature  # noqa: E402
 
-HOST = os.environ.get("ONEIRO_HOST", "localhost")
-PORT = int(os.environ.get("ONEIRO_PORT", "8090"))
-DASH_PORT = int(os.environ.get("ONEIRO_DASH_PORT", "8130"))
-WORLD_SEED = os.environ.get("ONEIRO_SEED", "oneiro-0")
+HOST = settings.graph_host
+PORT = settings.graph_port
+DASH_PORT = settings.dashboard_port
+WORLD_SEED = settings.world_seed
 
 app = Flask(__name__, static_folder=None)
 
@@ -44,6 +50,8 @@ _swarm_cache: dict = {}           # the organization feed, seconds-fresh
 SWARM_CACHE_SECONDS = 5.0
 SWARM_RECORD_LIMIT = 80
 _building: dict = {}              # subject -> True while a snapshot builds
+_build_error: dict = {}           # subject -> {"at": ..., "message": ...} of the last failure
+BUILD_RETRY_PAUSE = 5.0           # seconds before a failed build is attempted again
 
 
 def _parse_results_md() -> dict:
@@ -234,37 +242,71 @@ def index():
     return send_from_directory(os.path.dirname(os.path.abspath(__file__)), "index.html")
 
 
+def _build_state(subject: str | None, message: str = "") -> dict:
+    """The honest answer while there is no snapshot to show yet.
+
+    `building` tells the page to render progress instead of data: an empty
+    memory and a memory still being read must never look alike. When a build
+    has failed, `error` carries the fact - without it, a graph that cannot be
+    read at all would keep the page on "progress" forever.
+
+    The shape is complete on purpose (benchmarks included), so a client that
+    renders this payload without looking at `building` sees empty sections, not
+    exceptions.
+    """
+    payload = {
+        "subject": subject,
+        "building": not message,
+        "strategies": [],
+        "episodes": {},
+        "consistency": {"episodes": 0, "steps": 0, "transitions": 0, "conflicts": 0},
+        "subjects": [],
+        "job": {"running": _job["running"], "name": _job["name"]},
+        "benchmarks": {"memory": {"rows": []},
+                       "series": {"domains": [], "improved": 0, "seeds": 0},
+                       "harness": None},
+    }
+    if message:
+        payload["error"] = message
+    return payload
+
+
 @app.get("/api/state")
 def state():
     args = request.args
     subject = args.get("subject") or None
-    # The bridge round-trip for a full snapshot takes ~10s cold; dashboard
-    # polling must stay instant. stale-while-revalidate: serve the cached copy
-    # immediately (however old) and rebuild in the background; the UI picks
-    # the fresh data on its next 4s poll.
+    # A request never waits for the snapshot: reading it cold takes minutes,
+    # which is more than a page - or a person - waits before calling the panel
+    # dead. Instead: serve whatever exists (stale included) and build the fresh
+    # copy in the background; with nothing to serve, say the build is running.
     key = subject or ""
     with _state_lock:
         cached = _state_cache.get(key)
         building = _building.get(key)
-    if cached and time.time() - cached[0] < 60.0:
-        if not building and time.time() - cached[0] > 5.0:
+        failed = _build_error.get(key)
+    if cached:
+        if not building and time.time() - cached[0] > 5.0 and not _failure_recent(failed):
             _rebuild_async(key, subject)
         return jsonify(cached[1])
     if not building:
-        data = _snapshot(subject)
-        with _state_lock:
-            _state_cache[key] = (time.time(), data)
-        return jsonify(data)
-    # a rebuild is already running: show what we have (possibly nothing yet)
-    return jsonify(cached[1] if cached else {
-        "subject": subject, "strategies": [], "episodes": {},
-        "consistency": {"episodes": 0, "steps": 0, "transitions": 0, "conflicts": 0},
-        "subjects": [], "job": {"running": _job["running"], "name": _job["name"]},
-    })
+        if _failure_recent(failed):
+            # A build that just failed is not retried on every poll, and its
+            # reason is reported instead of being dressed up as progress.
+            return jsonify(_build_state(subject, failed["message"]))
+        _rebuild_async(key, subject)
+    return jsonify(_build_state(subject))
+
+
+def _failure_recent(failed: dict | None) -> bool:
+    return bool(failed) and time.time() - failed.get("at", 0.0) < BUILD_RETRY_PAUSE
 
 
 def _rebuild_async(key: str, subject: str | None):
+    # The claim is atomic: two simultaneous cache misses must not both launch a
+    # full snapshot, or the second one wastes minutes and delays the first.
     with _state_lock:
+        if _building.get(key):
+            return
         _building[key] = True
 
     def work():
@@ -272,8 +314,12 @@ def _rebuild_async(key: str, subject: str | None):
             data = _snapshot(subject)
             with _state_lock:
                 _state_cache[key] = (time.time(), data)
-        except Exception:
-            pass
+                _build_error.pop(key, None)
+        except Exception as exc:
+            # Kept, not swallowed: with requests no longer blocking, a failure
+            # has to be able to say so on the next poll.
+            with _state_lock:
+                _build_error[key] = {"at": time.time(), "message": str(exc)[:200]}
         finally:
             with _state_lock:
                 _building.pop(key, None)
@@ -304,8 +350,9 @@ def _run_job(name: str, fn, subject: str | None):
     def work():
         try:
             fn()
-        except Exception as e:  # surface any pipeline failure in the UI
-            _log_event(f"Сбой: {e}")
+        except Exception:  # keep internal exception details out of the human-facing panel
+            app.logger.error("Oneiro: не удалось выполнить этап панели. Подробности не показаны в интерфейсе.")
+            _log_event("Oneiro не удалось выполнить этот этап. Попробуйте позже.")
         finally:
             _invalidate_cache()  # the graph just changed; refresh honestly
             _job.update(running=False, name=None, subject=None)
@@ -349,6 +396,42 @@ def act_stop():
     return jsonify({"stop_requested": bool(_stop_requested)})
 
 
+# ---------- settings ----------
+#
+# `python/config.py` owns the settings file; these routes are a door to it, not
+# a second copy of it. The panel and the web console both write through here,
+# so a value saved in either place is the value the runtime reads.
+#
+# No CORS and no preflight: the console serves the panel's page and proxies
+# /oneiro/ to this app, so the page and these routes share one origin and the
+# browser never makes a cross-origin request. A page from anywhere else gets
+# nothing - and secrets never leave through GET anyway, since the settings
+# description carries the fact that a key is set, never the key.
+
+
+@app.get("/api/settings")
+def get_settings():
+    return jsonify(describe_settings())
+
+
+@app.post("/api/settings")
+def post_settings():
+    """Save the given settings, or forget the given ones."""
+    payload = request.get_json(silent=True) or {}
+    try:
+        if (payload.get("action") or "save") == "reset":
+            result = reset_settings(payload.get("keys") or None)
+        else:
+            values = payload.get("values")
+            if not isinstance(values, dict) or not values:
+                return jsonify({"status": "error", "message": "нечего сохранять"}), 400
+            result = save_settings(values)
+    except ValueError as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 400
+    result["status"] = "ok"
+    return jsonify(result)
+
+
 # ---------- job implementations ----------
 
 _event_q: queue.Queue = queue.Queue()
@@ -372,11 +455,11 @@ def _start(kind: str):
     else:
         subject = f"dash_{int(time.time())}" if kind != "reset" else None
     actions = {
-        "day": (_do_day, subject, "День"),
-        "explore": (_do_explore, subject, "Разведка"),
-        "dream": (_do_dream, subject, "Оценка (повтор по записям)"),
-        "cycle": (_do_cycle, subject, "Полный цикл"),
-        "reset": (_do_reset, None, "Сброс базы"),
+        "day": (_do_day, subject, "Проверка текущей стратегии"),
+        "explore": (_do_explore, subject, "Сбор дополнительного опыта"),
+        "dream": (_do_dream, subject, "Оценка вариантов поведения"),
+        "cycle": (_do_cycle, subject, "Полный цикл работы"),
+        "reset": (_do_reset, None, "Обновление базы знаний"),
     }
     if kind not in actions:
         return jsonify({"error": "неизвестное действие"}), 400
@@ -410,11 +493,11 @@ def _do_day():
     subject = _job["subject"]
     with _lock:
         b = _bridge()
-        _log_event("Эпизод по текущей стратегии: каждый шаг записывается в память")
+        _log_event("Проверка текущей стратегии: каждый шаг сохраняется в памяти")
         _check_stop()
         result = run_episode(b, subject, strategy_weak_incumbent(), episode_id=episode_id_for("day", "weak_wander"))
         b.mark_strategy_online_score("weak_wander", result.total_score)
-    _log_event(f"День завершён: счёт {result.total_score:.1f}, в память записано {result.recorded} действий")
+    _log_event(f"Проверка завершена: результат {result.total_score:.1f}, записано шагов {result.recorded}")
 
 
 def _do_explore():
@@ -426,9 +509,9 @@ def _do_explore():
         b = _bridge()
         for strat in (strategy_survey(), strategy_survey_reverse()):
             _check_stop()
-            _log_event(f"Разведка маршрутом «{_strategy_ru(strat.name)}»: помощник намеренно ходит иначе, чтобы опыт был богаче")
+            _log_event(f"Дополнительный опыт: проверяется вариант «{_strategy_ru(strat.name)}»")
             result = run_episode(b, subject, strat, episode_id=episode_id_for("explore", strat.name))
-            _log_event(f"Маршрут «{_strategy_ru(strat.name)}» завершён: счёт {result.total_score:.1f}")
+            _log_event(f"Дополнительный опыт собран: результат {_strategy_ru(strat.name)} — {result.total_score:.1f}")
 
 
 def _do_dream():
@@ -440,7 +523,7 @@ def _do_dream():
     subject = _job["subject"] or _find_any_subject()
     if not subject:
         raise RuntimeError("Нет записанного опыта: сначала запустите день")
-    _log_event("Оценка кандидатов: точный повтор по записям опыта")
+    _log_event("Воспроизведение по сохранённым траекториям: оценка вариантов поведения")
     with _lock:
         b = _bridge()
         _check_stop()
@@ -455,9 +538,9 @@ def _do_dream():
         )
         elapsed = time.perf_counter() - t0
     ranked = sorted(result.results, key=lambda p: p[1].estimated_score, reverse=True)
-    _log_event(f"Повтор по записям проверил {len(result.results)} вариантов стратегии за {elapsed:.1f} сек, мир не запускался ни разу")
+    _log_event(f"По сохранённым траекториям оценено вариантов поведения: {len(result.results)}; затрачено секунд: {elapsed:.1f}; испытательная среда не запускалась")
     for cand, rr in ranked[:3]:
-        _log_event(f"   вариант: прогноз {rr.estimated_score:.1f} (покрытие {rr.coverage:.2f})")
+        _log_event(f"Вариант поведения: прогноз результата {rr.estimated_score:.1f} (охват записей {rr.coverage:.2f})")
     _log_event(f"Лучший вариант: прогноз "
                f"{result.results and sorted(result.results, key=lambda p: p[1].estimated_score, reverse=True)[0][1].estimated_score or 0:.1f},"
                " он будет измерен в следующем эпизоде")
@@ -468,14 +551,13 @@ def _do_cycle():
     from loop import run_loop
 
     subject = _job["subject"]
-    _log_event("Полный цикл: эпизод, разведка, оценка, выкатка")
+    _log_event("Полный цикл работы: проверка, сбор опыта, оценка вариантов и испытание")
     with _lock:
         b = _bridge()
         report = run_loop(b, subject=subject, rounds=2, max_steps=40, limit=24,
                           generator=None, exploration=True)
     for r in report.rounds:
-        _log_event(f"Раунд {r.round_index}: онлайн-счёт {r.online.total_score:.1f}, "
-                   "лучший вариант выбран, он проверяется в следующем дне")
+        _log_event(f"Цикл {r.round_index}: результат рабочего испытания {r.online.total_score:.1f}; вариант отобран для дальнейшей проверки")
 
 
 def _bash_exe() -> str:
@@ -492,7 +574,7 @@ def _bash_exe() -> str:
 
 
 def _do_reset():
-    _log_event("Сброс памяти: база знаний собирается заново из описания онтологии")
+    _log_event("Обновление базы знаний: память собирается заново из её описания")
     script = os.path.join(ROOT, "scripts", "reset_stack.sh")
     proc = subprocess.run(
         [_bash_exe(), script, "--yes"],
@@ -503,9 +585,9 @@ def _do_reset():
     # на английском, и человеку они ничего не решают. Важен исход.
     if proc.returncode != 0:
         # Техническая причина остаётся в консоли сервера, на экран идёт исход.
-        print(f"сброс не удался: {(proc.stderr or '').strip()[-300:]}", file=sys.stderr)
-        raise RuntimeError("Сброс не удался")
-    _log_event("Память отвечает, база знаний собрана заново")
+        print("не удалось обновить базу знаний", file=sys.stderr)
+        raise RuntimeError("Не удалось обновить базу знаний")
+    _log_event("Память доступна, база знаний обновлена")
 
 
 def _find_any_subject() -> str | None:
@@ -643,5 +725,5 @@ def events():
 
 
 if __name__ == "__main__":
-    print(f"панель открыта на http://localhost:{DASH_PORT} (память помощника на {HOST}:{PORT})")
+    print("Панель Oneiro открыта.")
     app.run(host="127.0.0.1", port=DASH_PORT, threaded=True)

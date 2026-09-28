@@ -413,8 +413,10 @@ python -m pytest tests -q --ignore=tests/test_core_loop.py   # the project's own
 |---|---|
 | Agent model (real track) | `auto/coding` (routing name; upstream id is recorded per episode) |
 | Proposer model (dream/search) | `main`, with `auto/coding:reliable` behind it when the proxy refuses |
-| Provider | `http://127.0.0.1:20128/v1`, env `OMNIROUTE_API_KEY` |
-| Ports | sc-web 8000, sc-machine SCTP 8090, dashboard 8130 (`ONEIRO_DASH_PORT`), bridge default 8090 |
+| Provider | `http://127.0.0.1:20128/v1`, key `llm.api_key` (`OMNIROUTE_API_KEY`, `ONEIRO_API_KEY` or `ONEIRO_LLM_API_KEY`) |
+| Ports | sc-web 8000, sc-machine SCTP 8090, bridge default 8090. The product is one address: the console on 9899 serves the chat, the settings page (`/oneiro/api/settings`) and the panel (`/oneiro/`). The panel itself listens on 8130 (`ONEIRO_DASH_PORT`) and stays usable on its own |
+| Launch | `scripts/oneiro-app.cmd` (the desktop `Oneiro` shortcut) starts the panel and runs the console in one process, and stops the panel on exit; `--check` / `--stop` report and stop. `docs/PLAN-ONE-PROCESS.md` records why the panel keeps its own process (module names colliding with the console's `config`/`bridge`) and why `platform._uname_cache` is seeded first (a WMI query that hangs on this machine blocks `cheroot`'s import) |
+| Settings | `python/config.py` is the single owner: it declares every setting (key, environment name and older aliases, type, default, label, help), resolves **file → environment → default** and writes `~/.openclaw/oneiro/settings.json` atomically. The panel exposes it at `GET/POST /api/settings`; the console's `Настройки Oneiro` page is a view over that API |
 | Containers | `ostis/sc-web:0.9.0` from the registry; `sc-machine` built locally from a GitHub release binary distribution (no conan; `conan.ostis.net` is unreachable) |
 | Recordings | `harness/lab/runs/<task>-<label>-r<N>-<stamp>/record.json`; rounds in `harness/lab/rsi/round-*.json`; criteria in `harness/lab/rsi/criteria.json` |
 | Repo | Only `projects/ostis/oneiro-ostis/` is tracked; the vendor OSTIS stack stays outside git |

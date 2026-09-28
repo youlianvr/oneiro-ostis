@@ -20,12 +20,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python"))
 
 from adapter_llm import OfflineStrategyGenerator
 from bridge import OneiroBridge
+from config import settings
 from dream import dream, dream_table
 from episode import run_episode
 from strategy import strategy_survey, strategy_weak_incumbent
 
-HOST = os.environ.get("ONEIRO_HOST", "localhost")
-PORT = int(os.environ.get("ONEIRO_PORT", "8090"))
+HOST = settings.graph_host
+PORT = settings.graph_port
 
 
 @pytest.fixture(scope="module")

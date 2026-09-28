@@ -147,13 +147,13 @@ search rather than after the next disappointment.
    tasks, at least three runs per task. Held-out numbers are the only ones
    quoted as results.
 
-## The acceptance rules, and why they have five versions
+## The acceptance rules, and why they have six versions
 
-Four revisions happened during the search. None of them moved a numeric
-threshold. Each one repaired a way the gate could have claimed more than it knew,
-and each was forced by a measurement, not by taste. The rules that applied to a
-round are stored *in that round*, so a later revision never relabels an earlier
-result.
+Four revisions happened during the search, and a fifth came after it by reading
+the search back. None of them moved a numeric threshold. Each one repaired a way
+the loop could have claimed more than it knew, and each was forced by a
+measurement, not by taste. The rules that applied to a round are stored *in that
+round*, so a later revision never relabels an earlier result.
 
 | version | change | evidence that forced it |
 |---|---|---|
@@ -162,10 +162,84 @@ result.
 | v3 | the online path: a candidate the judge cannot replay is measured online inside the round budget instead of being silently banned, and the proposer is told which families the judge cannot judge | round 4 proposed three candidates at +22..27% predicted saving, all with 0% replayed decisions, and the round measured nothing at all |
 | v4 | a policy that changes what the agent is shown or how long it may run is measured online before it may be deployed, whatever its replay coverage | the control measurement of the hand-written `window3`: predicted to save 7.5% at 73% coverage, measured **12.4% more** prompt tokens over three runs per task, because with less history the agent took more steps on five of six tasks |
 | v5 | at least three runs per task, averaged, before any online number is quoted | round 9 deployed on a single run per task: the search set read **-3.4%**; with three runs per task the same policy reads **+4.0%** overall and no transfer, with per-task spreads of 34% and 91% of the baseline |
+| v6 | every candidate is recorded as an edit and the search trajectory is regularised: the round budget on fields, the screen before a run, and the bootstrap interval a saving has to clear | round 8 measured the round-11 edit at **+1.5%** and refused it; the same two fields were proposed again in round 11 and read **−13.3%**. Nothing in the loop could tell those two numbers apart, because nothing asked how far apart two measurements of a policy can land |
 
 `python harness/rsi.py --recheck` re-applies the frozen rules to what the rounds
 recorded. Under v2, **3 of the verdicts recorded before it would be refused, and
 both deployments are among them.**
+
+## Regularising the search, not only the gate
+
+Versions 1 to 5 said what a candidate had to prove. None of them said what the
+search was allowed to try, so eleven rounds could circle one component of the
+harness and still read as exploration. Version 6 is the other half of RRSI
+(arXiv 2609.24972): the unit of accounting is the *edit*, and the trajectory is
+regularised by reading its own ledger back.
+
+Every candidate is recorded as one edit — the component of the harness it
+changes, the hypothesis behind it, what the judge predicted, what a run measured,
+and the verdict. The ledger lives inside the round file that produced it, under
+`edits`, so a round stays one self-contained record of what was decided and why.
+`python harness/rsi.py --edits` reads the eleven recorded rounds back:
+
+| component | edits | accepted |
+|---|---|---|
+| context | 13 | 4 |
+| history | 24 | 2 |
+| control | 7 | 0 |
+
+Three things fall out of that table, and none of them was visible in the round
+files before it existed:
+
+- **The search wore out `control` and never noticed.** Seven edits there across
+  rounds 1, 5, 6 and 7, not one accepted. The ledger names it, and the proposer
+  is told which components have never been touched and which have been edited
+  and refused. It is a fact to argue with, not a ban.
+- **Round 11's edit is round 8's edit.** `no_initial_tests_obs1500` — the same
+  two fields — was proposed in round 8, measured at **+1.5%** and refused, then
+  proposed again in round 11, measured at **−13.3%** and deployed. One edit, two
+  measurements, opposite verdicts.
+- **Bundling buys an unattributable verdict.** `history` took 24 edits for 2
+  acceptances, and the one edit that ever worked moved two fields of `context`
+  and only as a pair.
+
+**The budget** (`search.edit_budget`) anneals from every field in the first round
+towards two, so a later verdict belongs to one change instead of to a mixture. The
+floor is two and not one because the deployed edit needed two.
+
+**The screen** (`harness/critic.py`) runs after the judge and before any run. It
+blocks only what provably cannot work — no steps, no visible tool output, a
+history window of zero — or provably cannot be attributed: more fields than the
+round budget allows, refused with the instruction to split it. Everything else is
+flagged and measured: a saving that sits in one task, a raised temperature, a knob
+turned while the mode that reads it is off. It would not have refused the edit
+that worked.
+
+**The interval** (`harness/noise.py`) answers the round-8/round-11 contradiction.
+Both sides are runs that already exist — the incumbent's recorded runs on one
+side, the runs the round just made on the other — and 2,000 resamples say how far
+apart two measurements of *these two* policies land. The rule is the strict
+reading: the whole interval has to sit on the saving side of zero. A side
+measured once has no spread to estimate, so the interval is refused rather than
+guessed. Against the runs on disk:
+
+| policy | point | interval at α 0.05 | conclusion |
+|---|---|---|---|
+| `reference-baseline`, against itself (4 v 3 runs per task) | +4.5% | [−14.0%, +26.5%] | unclear |
+| `window3`, the judge's favourite | −2.7% | [−17.1%, +12.7%] | unclear |
+| `windowed` | −12.3% | [−24.8%, −0.3%] | saving |
+| `window2` | +31.2% | [+12.8%, +48.0%] | cost |
+| round 11's policy | −24.9% | [−35.1%, −13.9%] | saving |
+
+The baseline against itself comes out unclear, as it must, and `window3` — the
+hand-written policy the judge liked best and version 4 was revised over — comes
+out **unclear**: it never had a measurable effect.
+
+Round 11's policy is held against every incumbent run on disk rather than the
+single recorded episode, and reads **−24.9% [−35.1%, −13.9%]**. The round's own
+record says −13.3%, because that comparison used the one-episode baseline; both
+numbers stay in the record. The saving survives either way, and it is the only
+one in the eleven rounds.
 
 ## Results so far
 
@@ -304,7 +378,9 @@ python harness/rsi.py --round 10                        # propose, judge, gate, 
 python harness/rsi.py --show --recheck --ledger          # what the rounds established
 python harness/rsi.py --reference                        # judge the hand-written policies
 python harness/rsi.py --measure-reference window3 --times 3   # measure a control, three runs per task
-python harness/rsi.py --repeat-round 9 --times 3         # check a claim against the noise floor
+python harness/rsi.py --repeat-round 9 --times 3         # check a claim against one policy's own noise
+python harness/rsi.py --edits                            # the ledger: what each candidate changed, and why
+python harness/rsi.py --noise                            # every measured policy against the incumbent, with intervals
 python harness/rsi.py --state                            # the whole loop as JSON (the dashboard reads this)
 python harness/publish.py                               # the search tree into the OSTIS graph
 python -m pytest harness/tests -q                       # judge, gate and accounting, offline

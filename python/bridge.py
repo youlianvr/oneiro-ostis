@@ -35,6 +35,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
+from config import settings
+
 from sc_client.client import (
     connect as _client_connect,
     disconnect as _client_disconnect,
@@ -261,9 +263,11 @@ class OrganizationRecord:
 class OneiroBridge:
     """Python facade over the oneiro-module agents."""
 
-    def __init__(self, host: str = "localhost", port: int = 8090):
-        self.host = host
-        self.port = port
+    def __init__(self, host: Optional[str] = None, port: Optional[int] = None):
+        # Defaults come from the settings owner, so the graph address a user
+        # saves in the settings page is the address every caller reaches.
+        self.host = host or settings.graph_host
+        self.port = int(port or settings.graph_port)
         self._addr_to_idtf: dict[int, str] = {}
         self._episodes_classified: set[str] = set()
         self._runtime_keynodes: dict[str, ScAddr] = {}

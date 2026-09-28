@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Oneiro-OSTIS: пульт управления</title>
+<title>Oneiro: панель результатов</title>
 <style>
 /* Светлая «редакторская» тема (R-29): чернильный navy + зелёный роста +
    янтарный акцент сна. Причина: зал жюри и проектор яркие, тёмный «техно»
@@ -160,92 +160,91 @@ footer code{background:var(--card);border:1px solid var(--line);border-radius:4p
 </head>
 <body>
 <header>
-  <h1><span class="hl">Oneiro-OSTIS</span>: самоулучшение агента по записям в графе знаний</h1>
+  <h1><span class="hl">Oneiro</span>: оценка и улучшение поведения по накопленному опыту в графе знаний</h1>
   <span class="conn"><span class="dot" id="connDot"></span><span id="connTxt">подключение</span></span>
   <span class="spacer"></span>
   <span class="subj">
-    <label for="subjectSel">Субъект опыта:</label>
+    <label for="subjectSel">Набор опыта:</label>
     <select id="subjectSel"><option value="">загрузка…</option></select>
   </span>
 </header>
 
 <div class="pipeline" id="pipeline">
-  <div class="stage" data-stage="day"><div class="n">этап 1 · исполнение</div><div class="t">День</div>
-    <div class="d">стратегия действует в детерминированном мире, каждый шаг пишется в граф</div><div class="info" id="i-day"></div></div>
-  <div class="stage" data-stage="explore"><div class="n">этап 2 · сбор данных</div><div class="t">Разведка</div>
-    <div class="d">дополнительные эпизоды расширяют покрытие опыта для судьи</div><div class="info" id="i-explore"></div></div>
-  <div class="stage" data-stage="dream"><div class="n">этап 3 · оценка</div><div class="t">Повтор по записям</div>
-    <div class="d">точный повтор по записям: кандидаты оцениваются без запуска мира</div><div class="info" id="i-dream"></div></div>
-  <div class="stage" data-stage="deploy"><div class="n">этап 4 · измерение</div><div class="t">Выкатка</div>
-    <div class="d">победитель проверяется в мире, оценка сверяется с прогнозом</div><div class="info" id="i-deploy"></div></div>
+  <div class="stage" data-stage="day"><div class="n">этап 1 · рабочий эпизод</div><div class="t">Проверка стратегии</div>
+    <div class="d">стратегия действует в воспроизводимой среде, каждый шаг сохраняется в памяти</div><div class="info" id="i-day"></div></div>
+  <div class="stage" data-stage="explore"><div class="n">этап 2 · расширение данных</div><div class="t">Сбор дополнительного опыта</div>
+    <div class="d">дополнительные эпизоды расширяют охват ситуаций, на которых работает оценщик</div><div class="info" id="i-explore"></div></div>
+  <div class="stage" data-stage="dream"><div class="n">этап 3 · оценка по данным</div><div class="t">Воспроизведение решений по записям</div>
+    <div class="d">варианты поведения проверяются на сохранённых траекториях без запуска среды</div><div class="info" id="i-dream"></div></div>
+  <div class="stage" data-stage="deploy"><div class="n">этап 4 · проверка результата</div><div class="t">Проверка в рабочем прогоне</div>
+    <div class="d">лучший вариант испытывается в среде; измеренный результат сравнивается с прогнозом</div><div class="info" id="i-deploy"></div></div>
 </div>
 
 <div class="deck">
-  <button class="btn-primary" id="btnDay">Эпизод: текущая стратегия</button>
-  <button id="btnExplore">Эпизоды: разведка</button>
-  <button class="btn-dream" id="btnDream">Оценка кандидатов (повтор по записям)</button>
-  <button class="btn-primary" id="btnCycle">Полный цикл (эпизод + разведка + оценка + выкатка)</button>
-  <button class="btn-danger" id="btnReset">Сброс базы знаний</button>
-  <button id="btnStop" disabled>Остановить</button>
-  <span class="job" id="jobTxt">простаивает</span>
+  <button class="btn-primary" id="btnDay">Проверить текущую стратегию</button>
+  <button id="btnExplore">Собрать дополнительный опыт</button>
+  <button class="btn-dream" id="btnDream">Оценить варианты поведения</button>
+  <button class="btn-primary" id="btnCycle">Выполнить полный цикл</button>
+  <button class="btn-danger" id="btnReset">Пересоздать базу знаний</button>
+  <button id="btnStop" disabled>Остановить после этапа</button>
+  <span class="job" id="jobTxt">работа не запущена</span>
 </div>
 
 <div class="stats" id="stats"></div>
 
 <div class="grid" style="grid-template-columns:1fr">
   <div class="card">
-    <h2>Организация: рой агентов</h2>
-    <div class="sub">исследователь, менеджер и работник на живых моделях: что предложили, что решили, что сделали и где остановились</div>
+    <h2>Рабочий журнал Oneiro</h2>
+    <div class="sub">исследователь, координатор и исполнитель: какие варианты предложены, что решено, что выполнено и на каком этапе работа остановилась</div>
     <div class="swarm-status" id="swarmStatus"></div>
-    <div class="feed" id="swarmBody"><div class="empty">загрузка журнала организации…</div></div>
+    <div class="feed" id="swarmBody"><div class="empty">загрузка записей о работе…</div></div>
   </div>
 </div>
 
 <div class="grid" style="grid-template-columns:1fr">
   <div class="card">
-    <h2>Память: внешний набор вопросов</h2>
-    <div class="sub"><span id="memSetName" title="LongMemEval">внешний набор вопросов</span>: вопросы из чужой работы, тот же помощник отвечает на них с разными видами памяти</div>
-    <div class="sub">один и тот же вопрос задаётся четырём видам памяти: полный контекст, типизированный граф (сначала время, потом похожесть), плоский журнал слов и вовсе без памяти. Судья вопроса и вердикта это разные модели, каждое решение это запись в графе</div>
-    <div class="body" id="memoryBench"><div class="empty">загрузка записей замера…</div></div>
+    <h2>Оценка долговременной памяти</h2>
+    <div class="sub"><span id="memSetName">внешний набор вопросов для оценки долговременной памяти</span>: один помощник отвечает на одни и те же вопросы при разных способах хранения и поиска опыта</div>
+    <div class="sub">сравниваются полный контекст, графовая память с учётом времени и смыслового сходства, текстовый журнал и режим без памяти. Ответы проверяет отдельная модель; вопросы, ответы и оценки сохраняются в памяти</div>
+    <div class="body" id="memoryBench"><div class="empty">загрузка результатов измерения…</div></div>
   </div>
 </div>
 
 <div class="grid" id="evidence" style="grid-template-columns:1fr">
   <div class="card">
-    <h2>Что здесь доказывается</h2>
+    <h2>Результаты измерений</h2>
     <div class="body" id="claimsBody"><div class="empty">загрузка результатов измерений…</div></div>
   </div>
   <div class="card">
-    <h2>Обвязка агента: что ищет цикл и что он доказал</h2>
-    <div class="sub">цикл предлагает правила обвязки, судья решает по записям прогонов, онлайн измеряется только то, что прошло ворота</div>
-    <div class="body" id="harnessBody"><div class="empty">загрузка отчёта цикла…</div></div>
+    <h2>Самоулучшение Oneiro: отбор изменений по измерениям</h2>
+    <div class="sub">цикл предлагает изменения, оценщик проверяет их по прошлым записям; в рабочей среде испытываются только прошедшие отбор варианты</div>
+    <div class="body" id="harnessBody"><div class="empty">загрузка результатов цикла…</div></div>
   </div>
 </div>
 
 <div class="grid">
   <div class="card">
-    <h2>Рост счёта в мире</h2>
+    <h2>Изменение результата между циклами</h2>
     <div class="body" id="ascent"></div>
     <div class="verdict" id="ascentVerdict"></div>
   </div>
   <div class="card">
-    <h2>Оценка стратегий судьёй (повтор по записям)</h2>
+    <h2>Сравнение стратегий по сохранённому опыту</h2>
     <div class="body" style="max-height:340px;overflow:auto" id="dreamTable"></div>
   </div>
   <div class="card">
-    <h2>Опыт в графе</h2>
+    <h2>Записанный опыт</h2>
     <div class="ep-tabs" id="epTabs"></div>
     <div class="steps" id="epBody"></div>
   </div>
   <div class="card">
-    <h2>Живой журнал</h2>
-    <div class="log" id="log"><div class="empty">нажмите кнопку выше: здесь появится настоящий журнал пайплайна</div></div>
+    <h2>Ход работы Oneiro</h2>
+    <div class="log" id="log"><div class="empty">выберите действие выше, чтобы увидеть записи о ходе работы</div></div>
   </div>
 </div>
 
 <footer>
-  Память помощника живёт в графе <span title="остов системы знаний, платформа памяти">OSTIS</span>:
-  каждое число на этой странице прочитано из записей, а не посчитано отдельно.
+  Память Oneiro организована как граф знаний. Каждое число на этой странице прочитано из записей, а не вычислено отдельно.
 </footer>
 
 <script>
@@ -254,6 +253,9 @@ const $ = id => document.getElementById(id);
 let SUBJECT = "";
 
 /* ---------- помощники ---------- */
+/* Пути к API — относительные, без ведущего слэша, нарочно: страница живёт
+   и самостоятельно на корне панели, и как раздел /oneiro/ внутри консоли
+   (там её отдаёт прокси). Один и тот же файл работает в обоих местах. */
 async function api(path, opts){ const r = await fetch(path, opts); return r.json(); }
 
 function setConn(ok, txt){
@@ -273,158 +275,180 @@ function resetStages(){
   ["day","explore","dream","deploy"].forEach(s => setStage(s, null, ""));
 }
 
-/* ---------- лента организации: роли, предложения, решение, PR ---------- */
+/* ---------- журнал работы: роли, предложения и решения ---------- */
 const KIND_RU = {
-  loop_start: "цикл запущен",
-  loop_resumed: "цикл продолжен после перезапуска",
-  loop_end: "цикл завершён",
-  loop_frozen: "работа заморожена",
-  loop_interrupted: "цикл прерван",
-  process_restart: "процесс перезапущен",
-  heartbeat_start: "шаг работы начат",
-  heartbeat_end: "шаг работы закончен",
-  heartbeat_result: "итог шага работы",
-  heartbeat_error: "шаг работы сорвался",
+  gateway_error: "не удалось записать сведения о запуске Oneiro",
+  stop_requested: "помощнику поручено остановиться после текущего шага",
+  entry_refused: "чужое обращение оставлено без ответа",
+  entry_failed: "не удалось принять задачу",
+  loop_start: "цикл работы начат",
+  loop_resumed: "работа продолжена после перезапуска",
+  loop_end: "цикл работы завершён",
+  loop_frozen: "работа приостановлена",
+  loop_interrupted: "работа прервана",
+  process_restart: "помощник запущен повторно",
+  heartbeat_start: "шаг автономной работы начат",
+  heartbeat_end: "шаг автономной работы завершён",
+  heartbeat_result: "результат шага автономной работы",
+  heartbeat_error: "шаг автономной работы завершился с ошибкой",
   task: "владелец поставил задачу",
   task_taken: "задача принята",
-  task_started: "взялся за задачу",
+  task_started: "работа над задачей начата",
   task_question: "задан вопрос владельцу",
   task_done: "владелец ответил, задача закрыта",
-  task_failed: "задача не вышла",
-  proposal_sent: "вопрос отправлен в Телеграм",
-  proposal_decision: "владелец нажал кнопку",
-  proposal_decided: "владелец нажал кнопку",
-  smoke: "проверка связи",
+  task_failed: "не удалось подготовить изменение",
+  proposal_sent: "запрос решения отправлен",
+  proposal_decision: "решение владельца получено",
+  proposal_decided: "решение владельца получено",
+  smoke: "проверка доступности",
   research_proposal: "предложение исследователя",
   research_options: "варианты исследователя",
-  manager_decision: "решение менеджера",
-  model_evidence: "кто из моделей отвечал",
-  worktree_created: "изолированная копия создана",
-  pr_packet: "изменение подготовлено, не влито",
-  cycle_finished: "цикл закрыт",
-  cycle_failed: "цикл сорвался",
-  cycle_schema_error: "ответ модели не по схеме",
-  gateway_start: "хост помощника запущен",
-  gateway_stop: "хост помощника остановлен",
-  gateway_service_start: "служба помощника запущена",
-  gateway_service_stop: "служба помощника остановлена",
-  life_process_finished: "прогон жизни завершён",
-  life_process_exit: "прогон жизни упал",
-  life_process_restart: "прогон жизни перезапущен",
-  life_process_gave_up: "прогон жизни сдался",
+  manager_decision: "решение координатора",
+  model_evidence: "отчёт о работе моделей",
+  worktree_created: "подготовлена отдельная копия работы",
+  pr_packet: "изменение подготовлено для рассмотрения",
+  cycle_finished: "цикл работы завершён",
+  cycle_failed: "цикл работы завершился с ошибкой",
+  cycle_schema_error: "ответ модели не удалось разобрать",
+  gateway_start: "сервер Oneiro запущен",
+  gateway_stop: "сервер Oneiro остановлен",
+  gateway_service_start: "служба Oneiro запущена",
+  gateway_service_stop: "служба Oneiro остановлена",
+  life_process_finished: "цикл помощника завершён",
+  life_process_exit: "цикл помощника завершился с ошибкой",
+  life_process_restart: "цикл помощника запущен повторно",
+  life_process_gave_up: "помощник прекратил повторные попытки",
 };
-const ROLE_RU = {researcher:"исследователь", manager:"менеджер", worker:"работник",
-                 gateway:"шлюз", rule:"система", system:"система", human:"владелец",
-                 agent:"помощник"};
-const ACTION_RU = {assign_worker:"назначить работника", escalate:"спросить владельца",
-                   external_review:"отдать на внешнюю проверку", reject:"отклонить",
+const ACTION_RU = {assign_worker:"передать исполнителю", escalate:"запросить решение владельца",
+                   external_review:"запросить независимую проверку", reject:"отклонить варианты",
                    stop:"остановить цикл"};
-const actionRu = a => ACTION_RU[a] || (a ? tip("решение помощника", a) : "решение");
+const actionRu = a => ACTION_RU[a] || "решение помощника";
+const ROLE_LABEL = {researcher:"исследователь", manager:"координатор", worker:"исполнитель",
+                    gateway:"служба Oneiro", rule:"автоматическое правило", system:"система",
+                    human:"владелец", agent:"помощник"};
+const ROLE_STYLE = {researcher:"researcher", manager:"manager", worker:"worker", gateway:"gateway"};
+const roleStyle = value => ROLE_STYLE[value] || "";
 const STATUS_RU = {running:"работает", finished:"завершена", frozen:"заморожена",
                    waiting_owner:"ждёт решения владельца", interrupted:"прервана"};
+const statusRu = value => STATUS_RU[value] || "состояние не указано";
+const roleRu = value => ROLE_LABEL[value] || "помощник";
+const eventRu = value => KIND_RU[value] || "событие работы";
 
 /* ---------- слова для человека ----------
-   Панель читают владелец и жюри: подписи русские, а исходное имя остаётся в
-   подсказке при наведении, чтобы любую строку можно было сверить с записью в
-   памяти. Путей к файлам, команд, отпечатков моделей и номеров процессов на
-   экране нет: это адресовано программисту, а не тому, кто смотрит работу. */
-const tip = (label, id) => id
-  ? `<span title="${String(id).replace(/"/g, "&quot;")}">${label}</span>` : label;
+   В подсказке оставляем только короткие термины, нужные для сверки чисел.
+   Тексты моделей, файлы, внутренние ключи и длинные пояснения не раскрываем. */
+const tip = (label, explanation) => explanation
+  ? `<span title="${String(explanation).replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]))}">${label}</span>` : label;
+const TERM_TIP = {
+  "held-out": ["отложенные задачи", "Набор задач, не использовавшийся при подборе варианта."],
+  "decision_replayable": ["воспроизводимость решения", "Доля решений, которые удалось точно восстановить по сохранённым данным."],
+  recall: ["полнота поиска", "Доля нужных записей, найденных при поиске."],
+  provenance: ["происхождение", "Сведения об источнике записи."],
+};
+const termTip = id => {
+  const term = TERM_TIP[id];
+  return term ? tip(term[0], term[1]) : "";
+};
 
 const CHECK_RU = {"unit-tests": "быстрые проверки", "offline-suite": "весь набор проверок",
-                  "harness-suite": "проверки обвязки", "memory-suite": "проверки памяти"};
-/* Мир и его прогоны названы словами: в записях они зовутся island, workshop,
-   oneiro-0, и это имена для программы, а не для человека. */
+                  "harness-suite": "проверки режима работы", "memory-suite": "проверки памяти"};
+const ROLE_CHECK = {researcher:"исследователь", manager:"координатор", worker:"исполнитель", gateway:"служба Oneiro"};
+const roleClass = value => ROLE_CHECK[value] || "служба Oneiro";
+/* Машинные названия сред не выводятся на экран: здесь остаются русские подписи. */
 const WORLD_RU = {island: "остров", workshop: "мастерская"};
-const worldRu = name => tip(WORLD_RU[name] || "мир помощника", name);
+const worldRu = name => WORLD_RU[name] || "мир помощника";
 const seedRu = name => {
   const raw = String(name || "").replace(/`/g, "");
   const m = raw.match(/-?(\d+)$/);
-  return m ? tip(`прогон №${m[1]}`, raw) : tip("прогон", raw);
+  return m ? `испытание №${m[1]}` : "испытание";
 };
 const taskRu = id => {
   const raw = String(id || "");
   const m = raw.match(/^t(\d+)/);
-  return m ? tip(`задача №${Number(m[1])}`, raw) : tip("задача", raw);
+  return m ? `задача №${Number(m[1])}` : "задача";
 };
-const checkRu = id => tip(CHECK_RU[id] || "проверки помощника", id);
+const checkRu = id => CHECK_RU[id] || "проверки помощника";
 
-/* Имена политик харнесса читаются из harness/policy.py: это их смысл, не догадка. */
-const POLICY_RU = {baseline: "исходная политика", blind: "без списка файлов",
-                   windowed: "окно в 6 шагов", window3: "окно в 3 шага",
-                   window2: "окно в 2 шага", window4_terse: "окно в 4 шага, короткие подсказки",
-                   terse: "короткие подсказки",
-                   cautious: "осторожная: меньше шагов, больше проверок",
-                   catalog: "с каталогом умений"};
-const policyRu = name => POLICY_RU[name] ? tip(POLICY_RU[name], name) : tip("политика помощника", name);
+/* Подписи описывают смысл вариантов настроек без их внутренних имён. */
+const POLICY_RU = {baseline: "исходные настройки", blind: "без перечня файлов",
+                   windowed: "учитываются последние 6 шагов", window3: "последние 3 шага",
+                   window2: "последние 2 шага", window4_terse: "последние 4 шага, краткие результаты",
+                   window4_obs800: "последние 4 шага, выдержки до 800 знаков",
+                   terse: "краткие результаты",
+                   cautious: "осторожный режим: меньше шагов, больше проверок",
+                   catalog: "с поиском по каталогу умений"};
+const policyRu = name => POLICY_RU[name] || "вариант с изменёнными настройками";
+const candidateRu = (name, index) => POLICY_RU[name] || `изменённый вариант №${index + 1}`;
 
 const ORDER_RU = {nearest: "ближние места", farthest: "дальние места", alpha: "по алфавиту",
                   reverse_alpha: "в обратном алфавитном порядке", coastal: "береговые места"};
 const PLACE_RU = {camp: "лагерь", beach: "пляж", cove: "бухта", jungle: "джунгли",
                   ruins: "развалины", cave: "пещера", cliff: "утёс", peak: "вершина",
                   swamp: "болото"};
-const placeRu = name => PLACE_RU[name] ? tip(PLACE_RU[name], name) : "неизвестное место";
+const placeRu = name => PLACE_RU[name] || "неизвестное место";
 const ACTION_WORLD_RU = {travel: "переход", dig: "раскопки", deliver: "сдача находки"};
-const OUTCOME_RU = {success: "получилось", failure: "не вышло"};
+const OUTCOME_RU = {success: "получилось", failure: "не вышло", illegal: "недопустимое действие"};
 const DELIVER_RU = {cbc: "бухта, пляж, лагерь", ccb: "бухта, лагерь, пляж",
                     bcc: "пляж, бухта, лагерь"};
 
-/* Имена стратегий читаются из python/strategy.py: обходы мест, предел раскопок,
-   порядок сдачи находок. Исходное имя остаётся в подсказке. */
-function strategyRu(name){
+/* Варианты стратегий выводятся описанием поведения; машинные имена не показываются. */
+function strategyRu(name, index = 0){
   const raw = String(name || "");
-  if(!raw) return "(без имени)";
+  if(!raw) return "без названия";
   if(POLICY_RU[raw]) return policyRu(raw);
   const dl = raw.match(/^cand_([a-z_]+)_dl_([a-z]+)$/);
-  if(dl) return tip(`кандидат: ${ORDER_RU[dl[1]] || "обход"}, сдача находок: ` +
-    (DELIVER_RU[dl[2]] || "в порядке, выбранном помощником"), raw);
+  if(dl)    return `кандидат: ${ORDER_RU[dl[1]] || "обход"}, сдача находок: ` +
+    (DELIVER_RU[dl[2]] || "в порядке, выбранном помощником");
   const digs = raw.match(/^cand_([a-z_]+)_d(\d+)$/);
-  if(digs) return tip(`кандидат: ${ORDER_RU[digs[1]] || "обход"}, до ${digs[2]} раскопок в месте`, raw);
+  if(digs) return `кандидат: ${ORDER_RU[digs[1]] || "обход"}, до ${digs[2]} раскопок в месте`;
   const known = {survey: "полный обход всех мест, сначала ближние",
                  survey_reverse: "полный обход всех мест, сначала дальние",
-                 weak_wander: "первый день: по одному месту наскоро"};
-  return tip(known[raw] || "стратегия помощника", raw);
+                 weak_wander: "исходный вариант: по одному месту за раз"};
+  return known[raw] || `вариант поведения №${index + 1}`;
 }
 
-/* Субъект опыта и эпизод названы по дате и дню, а не отпечатком записи. */
-// В записях субъект опыта зовётся dream_<отпечаток> или dash_<отпечаток>:
-// на экране он называется датой, а отпечаток остаётся в подсказке.
-function subjectText(id){
+/* Субъект опыта и эпизод названы по типу записи и времени, а не по внутреннему имени. */
+function subjectText(id, index = 0){
   const raw = String(id || "");
-  const m = raw.match(/^(dream|dash)_(\d+)$/);
-  if(!m) return "опыт помощника";
+  const m = raw.match(/^([a-z_]+)_(\d{10})$/);
+  if(!m) return `запись опыта №${index + 1}`;
+  const labels = {dream:"испытание", dash:"испытание из панели", exactness:"проверка воспроизведения",
+                  tworounds:"проверка нескольких циклов", wsdream:"испытание в мастерской",
+                  oneiro_loop:"испытание помощника", workshop_loop:"испытание в мастерской"};
+  const label = labels[m[1]] || `запись опыта №${index + 1}`;
   const at = new Date(Number(m[2]) * 1000);
   const when = at.toLocaleDateString("ru-RU", {day: "2-digit", month: "long"}) +
                ", " + at.toLocaleTimeString("ru-RU", {hour: "2-digit", minute: "2-digit"});
-  return (m[1] === "dash" ? "опыт из панели от " : "опыт от ") + when;
+  return `${label}, ${when}`;
 }
 
 
 function episodeLabel(id){
   const raw = String(id || "");
-  const m = raw.match(/^(dream_\d+)-(d\d+|explore|online.*)$/);
-  if(!m) return tip("эпизод", raw);
-  const kind = m[2] === "explore" ? "разведка"
-             : /^online/.test(m[2]) ? "измерено онлайн"
-             : "день " + m[2].slice(1);
-  return tip(kind.charAt(0).toUpperCase() + kind.slice(1), raw);
+  const m = raw.match(/^(?:dream_\d+|[a-z_]+_\d+)-(d\d+|explore|online.*)$/);
+  if(!m) return "эпизод";
+  const suffix = m[1];
+  const kind = suffix === "explore" ? "сбор опыта"
+             : /^online/.test(suffix) ? "рабочее испытание"
+             : `рабочий день ${suffix.slice(1)}`;
+  return kind.charAt(0).toUpperCase() + kind.slice(1);
 }
 
-/* Заметка шага приходит из мира английскими словами: переводим разбором
-   известных образцов, а неизвестную формулировку показываем как есть, чтобы
-   не выдумывать факт. */
+/* Переводим известные заметки, а неизвестные заменяем нейтральной подписью,
+   чтобы не показывать машинный текст или несуществующий перевод. */
 function noteRu(note){
   const s = String(note || "");
   let m = s.match(/^at ([a-z]+)$/);
-  if(m) return "на месте: " + (PLACE_RU[m[1]] || m[1]);
+  if(m) return "на месте: " + (PLACE_RU[m[1]] || "неизвестное место");
   if(s === "site empty") return "место уже пустое";
   if(s === "illegal action") return "недопустимое действие";
   if(s === "budget exhausted") return "шаги закончились";
   m = s.match(/^found artefact_([a-z]+)_(\d+) worth ([\d.]+)$/);
-  if(m) return `находка в месте «${PLACE_RU[m[1]] || m[1]}» №${m[2]}, оценка ${m[3]}`;
+  if(m) return `находка в месте «${PLACE_RU[m[1]] || "неизвестное место"}» №${m[2]}, оценка ${m[3]}`;
   m = s.match(/^delivered for ([\d.]+)$/);
   if(m) return `находка сдана, выручка ${m[1]}`;
-  return s;
+  if(!s) return "";
+  return "дополнительные сведения о шаге сохранены";
 }
 
 const clip = (text, n) => { const s = String(text || ""); return s.length > n ? s.slice(0, n) + "…" : s; };
@@ -439,17 +463,16 @@ function feedDetail(r){
     // там же, а на экран идёт короткая подпись. Иначе на панели оказались бы
     // имена файлов и английские слова, которые модель написала для себя.
     case "research_proposal":
-      return [tip("предложение исследователя", p.title || ""),
+      return ["предложение исследователя",
               p.check_id ? "проверка: " + checkRu(p.check_id) : ""]
         .filter(Boolean).join(" · ");
     case "research_options": {
       const options = (p.options || p.proposals || p.items || []);
       if(!options.length) return "";
-      const raw = options.map(x => x.title || x.name || "").filter(Boolean).join(" | ");
-      return tip(`вариантов предложено: ${options.length}`, raw);
+      return `вариантов предложено: ${options.length}`;
     }
     case "manager_decision":
-      return actionRu(p.action) + (p.reason ? " · " + tip("обоснование в записи", p.reason) : "");
+      return actionRu(p.action) + (p.reason ? " · обоснование сохранено" : "");
     case "pr_packet": {
       const parts = (p.changed_paths || []).length;
       const merged = p.merged ? "да" : "нет";
@@ -460,22 +483,23 @@ function feedDetail(r){
     case "cycle_finished": {
       const w = p.worker || {};
       const pr = p.pr || {};
-      const workerText = w.status === "done" ? `работник закончил за ${w.steps} шагов`
-                       : w.status === "gave_up" ? `работник сдался (${clip(w.summary, 120)})` : "работника не было";
+      const workerText = w.status === "done" ? `исполнитель завершил работу: шагов ${w.steps}`
+                       : w.status === "gave_up" ? "исполнитель остановился, подробности сохранены" : "исполнитель не запускался";
       return `${workerText}${pr.pr_id ? " · изменение готово" : " · изменения нет"}`;
     }
     case "model_evidence": {
       const calls = p.calls || [];
       const worked = calls.filter(c => c.ok).length;
-      return `обращений к моделям: ${calls.length}, ответили: ${worked}` +
-        " · имена моделей видны в записи";
+      return `получено ответов от моделей: ${worked} из ${calls.length}`;
     }
+    case "gateway_error":
+      return "не удалось записать сведения о запуске Oneiro";
     case "loop_frozen": case "loop_interrupted":
-      return tip("причина в записи", p.reason || "");
+      return p.reason ? "причина сохранена в записи" : "";
     case "worktree_created":
       return "отдельная копия для этого изменения";
     case "task": case "task_taken":
-      return p.text ? `«${clip(p.text, 120)}»` : "";
+      return "текст задачи сохранён";
     case "task_started":
       return p.attempt ? `заход номер ${p.attempt}` : "";
     case "task_question":
@@ -495,7 +519,7 @@ function feedDetail(r){
 function renderSwarmFeed(d){
   const s = d.session;
   $("swarmStatus").innerHTML = s
-    ? `последняя сессия работы: <b>${STATUS_RU[s.status] || s.status}</b> · живых сессий в памяти: <b>${d.sessions_total}</b> · записей о работе: <b>${d.records_total}</b>`
+    ? `последняя сессия работы: <b>${statusRu(s.status)}</b> · сессий в памяти: <b>${d.sessions_total}</b> · записей о работе: <b>${d.records_total}</b>`
     : "в памяти пока нет ни одной сессии работы";
   const rows = (d.records || []).slice().reverse();
   if(!rows.length){
@@ -505,20 +529,20 @@ function renderSwarmFeed(d){
   $("swarmBody").innerHTML = rows.map(r => {
     const time = new Date((r.recorded_at || 0) * 1000)
       .toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit", second:"2-digit"});
-    const verified = r.verified ? "" : " (не подтверждено)";
+    const verified = r.verified ? "" : " (запись не проверена)";
     const detail = clean(feedDetail(r));
     return `<div class="feed-row">
       <div class="feed-time">${time}</div>
-      <div class="feed-role ${r.role}">${ROLE_RU[r.role] || r.role}</div>
-      <div><div class="feed-what">${KIND_RU[r.kind] || r.kind}${verified}</div>
-        ${detail ? `<div class="feed-detail mono">${detail}</div>` : ""}</div>
+      <div class="feed-role ${roleStyle(r.role)}">${roleRu(r.role)}</div>
+      <div><div class="feed-what">${eventRu(r.kind)}${verified}</div>
+        ${detail ? `      <div class="feed-detail">${detail}</div>` : ""}</div>
     </div>`;
   }).join("");
 }
 
 async function refreshSwarm(){
   try{
-    renderSwarmFeed(await api("/api/swarm"));
+    renderSwarmFeed(await api("api/swarm"));
   }catch(e){
     // лента не имеет права ломать основной экран
   }
@@ -526,13 +550,13 @@ async function refreshSwarm(){
 
 const ARM_RU = {
   full: "полный контекст",
-  graph: "граф: время, потом похожесть",
-  flat: "плоский журнал слов",
+  graph: "графовая память: время и смысловое сходство",
+  flat: "текстовый журнал",
   none: "без памяти"
 };
-/* Виды замера памяти: oracle — вся память под рукой, s — поиск по большому складу. */
-const STAGE_RU = {oracle: "вся память под рукой", s: "поиск по большому складу"};
-const stageRu = id => STAGE_RU[id] ? tip(STAGE_RU[id], id) : tip("замер памяти", id);
+/* Варианты исследования: полный контекст или поиск по всему набору записей. */
+const STAGE_RU = {oracle: "полный контекст", s: "поиск по полному набору записей"};
+const stageRu = id => STAGE_RU[id] || "исследование";
 
 function renderMemoryBench(d){
   const runs = d.runs || [];
@@ -544,44 +568,90 @@ function renderMemoryBench(d){
   const when = last.last_ts
     ? new Date(last.last_ts * 1000).toLocaleDateString("ru-RU", {day: "2-digit", month: "long"}) +
       ", " + new Date(last.last_ts * 1000).toLocaleTimeString("ru-RU", {hour: "2-digit", minute: "2-digit"})
-    : "дата в записи";
-  const head = `<div class="swarm-status">замеров: <b>${runs.length}</b> · записей в памяти: <b>${d.records_total}</b> · последний замер: ${tip("<b>" + when + "</b>", last.run_tag)}${last.stage ? " · " + stageRu(last.stage) : ""}</div>`;
+    : "дата не указана";
+  const head = `<div class="swarm-status">замеров: <b>${runs.length}</b> · записей в памяти: <b>${d.records_total}</b> · последний замер: <b>${when}</b>${last.stage ? " · " + stageRu(last.stage) : ""}</div>`;
   const rows = (last.arms || []).map(a => {
     const acc = a.accuracy == null ? "нет данных" : (a.accuracy * 100).toFixed(0) + "%";
-    const rec = a.mean_recall_at_k == null ? "задаёт контекст целиком" : (a.mean_recall_at_k * 100).toFixed(0) + "%";
-    const unj = a.unjudged ? `<span title="судья не дал ни да, ни нет">${a.unjudged}</span>` : "0";
-    return `<tr><td>${ARM_RU[a.arm] || a.arm}</td><td>${a.cells}</td><td>${unj}</td><td>${a.judged == null ? a.cells : a.passed}</td><td><b>${acc}</b></td><td>${rec}</td></tr>`;
+    const rec = a.mean_recall_at_k == null ? "вся история доступна целиком" : (a.mean_recall_at_k * 100).toFixed(0) + "%";
+    const unj = a.unjudged ? `<span title="оценщик не смог определить, верен ли ответ">${a.unjudged}</span>` : "0";
+    return `<tr><td>${ARM_RU[a.arm] || "способ хранения"}</td><td>${a.cells}</td><td>${unj}</td><td>${a.judged == null ? a.cells : a.passed}</td><td><b>${acc}</b></td><td>${rec}</td></tr>`;
   }).join("");
   const past = runs.length > 1
     ? `<div class="swarm-status" style="margin-top:10px">прошлых замеров: ${runs.length - 1}</div>`
     : "";
   $("memoryBench").innerHTML = head
-    + `<table><tr><th>вид памяти</th><th>клеток</th><th>без вердикта</th><th>верных</th><th>точность</th><th>нужные сессии найдены</th></tr>${rows}</table>`
+    + `<table><tr><th>способ хранения и поиска</th><th>ответов</th><th>ответов без оценки</th><th>верных ответов</th><th>точность</th><th>полнота поиска</th></tr>${rows}</table>`
     + past;
 }
 
 async function refreshMemoryBench(){
   try{
-    renderMemoryBench(await api("/api/memory-bench"));
+    renderMemoryBench(await api("api/memory-bench"));
   }catch(e){
     // блок памяти не имеет права ломать основной экран
   }
 }
 
 /* ---------- состояние ---------- */
+/* Сбор полного снимка из памяти занимает минуты, поэтому панель никогда не
+   ждёт его молча: на месте чисел идёт честный ход подготовки — сколько уже
+   собирается — а не нули, не «записей нет» и не ошибка. Пока снимок читается,
+   лента и оценка памяти не опрашиваются: их запросы всё равно встали бы в
+   очередь за тем же чтением графа и только удлинили бы первую загрузку. */
+const BUILDING_TEXT = "подготавливаю данные из памяти; это может занять несколько минут";
+let buildingSince = null, buildingTimer = null, haveData = false;
+
+function showBuilding(){
+  if(buildingSince === null) buildingSince = Date.now();
+  setConn(true, BUILDING_TEXT);
+  // Когда на экране уже есть настоящие данные (идёт лишь догрузка выбранного
+  // набора опыта), прогресс остаётся в строке связи и не затирает их.
+  if(haveData) return;
+  if(buildingTimer) return;
+  const paint = () => {
+    const secs = Math.round((Date.now() - buildingSince) / 1000);
+    $("stats").innerHTML = '<div class="stat"><div class="v">…</div>'
+      + `<div class="l">${BUILDING_TEXT} (прошло ${secs} с)</div></div>`;
+  };
+  paint();
+  buildingTimer = setInterval(paint, 1000);
+}
+
+function hideBuilding(){
+  if(buildingTimer){ clearInterval(buildingTimer); buildingTimer = null; }
+  buildingSince = null;
+}
+
 async function refresh(){
-  refreshSwarm();
-  refreshMemoryBench();
+  if(buildingSince === null){
+    refreshSwarm();
+    refreshMemoryBench();
+  }
+  await refreshState();
+}
+
+async function refreshState(){
   try{
-    const d = await api("/api/state" + (SUBJECT ? "?subject=" + encodeURIComponent(SUBJECT) : ""));
-    setConn(true, "связь с графом есть");
-    render(d);
+    const d = await api("api/state" + (SUBJECT ? "?subject=" + encodeURIComponent(SUBJECT) : ""));
+    if(d.error){ hideBuilding(); setConn(false, "нет связи с памятью"); return; }
+    if(d.building){ showBuilding(); return; }
+    hideBuilding();
+    setConn(true, "связь с памятью есть");
+    render(d);                           // что уже прочитано — показываем сразу
+    if(!SUBJECT && (d.subjects || []).length){
+      // Эпизодов выбранного набора опыта в этом снимке ещё нет: их принесёт
+      // следующий, а пока на экране остаётся всё остальное.
+      SUBJECT = d.subjects[0];
+      refreshState();
+    }
   }catch(e){
-    setConn(false, "нет связи со стеком");
+    hideBuilding();
+    setConn(false, "нет связи с памятью");
   }
 }
 
 function render(d){
+  haveData = true;
   // статус задачи приходит с сервера: завершённая работа гасит индикацию
   setUI(d.job.running, d.job.name || "");
 
@@ -589,14 +659,13 @@ function render(d){
   const sel = $("subjectSel");
   if(sel.dataset.loaded !== d.subjects.join(",")){
     sel.dataset.loaded = d.subjects.join(",");
-    // В списке — название опыта по дате; отпечаток записи виден подсказкой на
-    // самом списке: в пункте списка разметка не выводится.
+    // Для неизвестных серий показываем порядковый номер вместо внутреннего имени.
     sel.innerHTML = d.subjects.length
-      ? d.subjects.map(s => `<option value="${s}">${subjectText(s)}</option>`).join("")
-      : "<option value=\"\">пока никого</option>";
+      ? d.subjects.map((s, index) => `<option value="${s}">${subjectText(s, index)}</option>`).join("")
+      : "<option value=\"\">пока нет записей опыта</option>";
     if(d.subject && d.subjects.includes(d.subject)) sel.value = d.subject;
   }
-  sel.title = sel.value;
+  sel.title = "Выберите запись опыта по дате и времени";
 
   // статистика: крупные цифры, подпись мельче. Хронология раундов берётся
   // из идентификаторов эпизодов (r{N}-online-...), которые пишутся при каждом
@@ -615,14 +684,14 @@ function render(d){
   const gain = first ? "+" + Math.round(100 * (last - first) / first) + "%" : "0%";
   const c = d.consistency;
   const items = [
-    {l:"стратегий в графе", v:d.strategies.length, cls:""},
-    {l:"эпизодов в памяти", v:c.episodes, cls:""},
-    {l:"шагов записано", v:c.steps, cls:""},
-    {l:"переходов опыта", v:c.transitions, cls:""},
-    {l:"противоречий записей", v:c.conflicts, cls:c.conflicts === 0 ? "grow" : ""},
-    {l:"день 1 (раунд 1)", v:first ? first.toFixed(1) : "0", cls:""},
-    {l:"последний день", v:last ? last.toFixed(1) : "0", cls:"grow"},
-    {l:"рост за циклы", v:deployed.length ? gain : "0%", cls:"grow"},
+    {l:"вариантов поведения в памяти", v:d.strategies.length, cls:""},
+    {l:"эпизодов опыта", v:c.episodes, cls:""},
+    {l:"записанных шагов", v:c.steps, cls:""},
+    {l:"переходов между состояниями", v:c.transitions, cls:""},
+    {l:"противоречий в записях", v:c.conflicts, cls:c.conflicts === 0 ? "grow" : ""},
+    {l:"результат первого измерения", v:first ? first.toFixed(1) : "0", cls:""},
+    {l:"результат последнего измерения", v:last ? last.toFixed(1) : "0", cls:"grow"},
+    {l:"изменение результата", v:deployed.length ? gain : "0%", cls:"grow"},
   ];
   $("stats").innerHTML = items.map(it =>
     `<div class="stat"><div class="v ${it.cls}">${it.v}</div><div class="l">${it.l}</div></div>`).join("");
@@ -639,27 +708,26 @@ function render(d){
 /* Вердикт повторов пишет цикл; известные формулировки переводим. */
 function ruVerdict(v){
   const known = {
-    "no saving once repeats are counted": "экономии нет, если считать повторы",
-    "the saving survives repeats": "экономия выдерживает повторы",
-    "no comparable runs to repeat": "сопоставимых прогонов для повторов нет",
+    "no saving once repeats are counted": "сокращение числа токенов не подтвердилось с учётом повторов",
+    "the saving survives repeats": "сокращение числа токенов подтвердилось при повторах",
+    "no comparable runs to repeat": "нет сопоставимых измерений для повторения",
   };
-  return known[v] || v || "";
+  return known[v] || "итог повторного измерения";
 }
 
 function referenceHtml(refs){
   if(!refs || !refs.length) return "";
   const p = v => v == null ? "нет" : (100*v).toFixed(1) + "%";
-  const rows = refs.map(r => `<tr>
-      <td>${policyRu(r.policy)}</td>
+  const rows = refs.map((r, index) => `<tr>
+      <td>${candidateRu(r.policy, index)}</td>
       <td>${p(r.predicted_saving)}</td>
       <td>${r.decision_replayable == null ? "нет" : (100*r.decision_replayable).toFixed(0) + "%"}</td>
       <td class="${r.search_token_delta <= 0 ? "outcome-success" : "outcome-failure"}">${p(r.search_token_delta)}</td>
       <td>${p(r.held_out_token_delta)}</td>
-      <td>${r.transferred ? "перенеслась" : "нет"}</td></tr>`).join("");
-  return `<div class="claim">
-    <div class="ct">Контроль: политики, написанные вручную</div>
-    <div class="cn">судья оценивает их по записям, затем они измеряются онлайн. Расхождение прогноза с измерением здесь и есть предел повтора по записям: судья считает символы в запросе, а не то, сколько шагов сделает агент</div>
-    <table><tr><th>политика</th><th>прогноз экономии</th><th>${tip("воспроизводимость решения", "decision_replayable")}</th><th>измерено: поиск</th><th>измерено: ${tip("отложенные задачи", "held-out")}</th><th>перенос</th></tr>${rows}</table>
+      <td>${r.transferred ? "есть" : "нет"}</td></tr>`).join("");  return `<div class="claim">
+    <div class="ct">Контрольный опыт: вручную заданные варианты</div>
+    <div class="cn">прогноз по прошлым записям сравнивается с результатом в рабочей среде. Расхождение показывает ограничение оценки: она учитывает объём запроса, но не число действий, которые выполнит помощник</div>
+    <table><tr><th>вариант настроек</th><th>прогноз сокращения токенов</th><th>${termTip("decision_replayable")}</th><th>изменение числа токенов: поиск</th><th>изменение числа токенов: ${termTip("held-out")}</th><th>перенос на новые задачи</th></tr>${rows}</table>
   </div>`;
 }
 
@@ -671,46 +739,47 @@ function repeatHtml(rounds){
   return withCheck.map(r => {
     const rc = r.repeat_check, t = rc.totals || {};
     const rows = rc.rows.map(row => `<tr>
-        <td>${row.in_search_set ? "поиск" : tip("отложенные задачи", "held-out")} · ${taskRu(row.task)}</td>
+        <td>${row.in_search_set ? "поиск" : termTip("held-out")} · ${taskRu(row.task)}</td>
         <td>${row.baseline_tokens}</td>
         <td>${row.samples.join(", ")}</td>
         <td class="${row.delta_mean <= 0 ? "outcome-success" : "outcome-failure"}">${(100*row.delta_mean).toFixed(1)}%</td>
         <td>${(100*row.spread).toFixed(0)}%</td></tr>`).join("");
     return `<div class="claim">
-      <div class="ct">Проверка повторами: политика раунда ${rc.round}</div>
-      <div class="cn">${rc.samples_per_task} прогона на задачу вместо одного. Разброс внутри одной политики это шумовой пол: экономия меньше него ничего не значит</div>
-      <table><tr><th>набор и задача</th><th>базово, токенов</th><th>прогоны</th><th>среднее</th><th>разброс</th></tr>${rows}</table>
+      <div class="ct">Повторная проверка: цикл ${rc.round}</div>
+      <div class="cn">${rc.samples_per_task} повторных измерения на задачу вместо одного. Разброс показывает случайную вариативность: экономия меньше него неотличима от шума</div>
+      <table><tr><th>набор и задача</th><th>исходно, токенов</th><th>повторения</th><th>среднее</th><th>разброс</th></tr>${rows}</table>
       <div class="cn" style="margin-top:6px">итог по сопоставимым задачам: ${(100*(t.delta_mean||0)).toFixed(1)}% токенов; ${ruVerdict(rc.verdict)}</div>
     </div>`;
   }).join("");
 }
 
-/* Тексты исходов раунда пишет цикл (harness/rsi.py). Известные формулировки
-   переводим, незнакомую строку показываем как есть: лучше английская правда,
-   чем придуманный русский пересказ. */
+/* Переводим известные формулировки результата; неизвестный текст заменяем
+   нейтральной подписью, чтобы не выводить машинные сообщения и имена средств. */
 function ruOutcome(s){
-  if(!s) return "";    const rules = [
-    [/^no candidate passed the efficiency gate; nothing deployed$/, "ни один кандидат не прошёл ворота по эффективности: ничего не выкачено"],
-    [/^no model answered or none returned a valid candidate$/, "ни одна модель не ответила или не выдала годного кандидата"],
-    [/^deployed and within capability tolerance/, "выкачено, потеря задач в пределах допуска"],
-    [/^deployed but lost (\d+) tasks \(tolerance (\d+)\)/, "выкачено, но потеряно задач: $1 (допуск $2)"],
-    [/^online path: measured and refused\. The predicted saving of ([+-]?[\d.]+%) came with ([+-]?[\d.]+%) prompt tokens and (\d+) of (\d+) tasks lost \(tolerance (\d+)\); held-out tasks were never touched/, "онлайн-путь: измерено и отклонено. Прогноз экономии $1 обернулся $2 токенов промпта, потеряно задач $3 из $4 (допуск $5), отложенные задачи не трогались"],
-    [/^online path: measured and refused\. Predicted ([+-]?[\d.]+%), measured ([+-]?[\d.]+%) prompt tokens on (\d+) comparable tasks, (\d+) of (\d+) tasks lost \(tolerance (\d+)\); held-out tasks were never touched/, "онлайн-путь: измерено и отклонено. Прогноз $1, измерено $2 токенов промпта на $3 сопоставимых задачах, потеряно задач $4 из $5 (допуск $6); отложенные задачи не трогались"],
-    [/^online path: measurement incomplete\. The provider refused (\d+) of (\d+) runs, so capability was not settled and nothing was deployed/, "онлайн-путь: измерение неполное, провайдер отказал в $1 из $2 прогонов: способность не установлена, ничего не выкачено"],
-    [/; the saving did not transfer to the held-out tasks/, "; экономия не перенеслась на отложенные задачи"],
-    [/; deployed on its online measurement, not on a judged estimate/, "; выкачено по онлайн-измерению, а не по прогнозу судьи"],
-    [/; round incomplete: the provider refused (\d+) online runs \(recorded as unmeasured, not as failures\)/, "; раунд неполный: провайдер отказал в $1 онлайн-прогонах (они записаны как неизмеренные, а не как провалы)"],
+  if(!s) return "";
+  const rules = [
+    [/^no candidate passed the efficiency gate; nothing deployed$/, "ни один вариант не достиг порога эффективности; изменение не применено"],
+    [/^no model answered or none returned a valid candidate$/, "не удалось получить подходящий вариант от моделей"],
+    [/^deployed and within capability tolerance/, "вариант применён после рабочей проверки; число решённых задач в допустимых пределах"],
+    [/^deployed but lost (\d+) tasks \(tolerance (\d+)\)/, "вариант применён, но число решённых задач уменьшилось на $1 (допустимое изменение: $2)"],
+    [/^online path: measured and refused\. The predicted saving of ([+-]?[\d.]+%) came with ([+-]?[\d.]+%) prompt tokens and (\d+) of (\d+) tasks lost \(tolerance (\d+)\); held-out tasks were never touched/, "рабочее измерение не подтвердило прогноз: ожидалось сокращение на $1, фактическое изменение числа токенов составило $2; не решено $3 из $4 задач, допустимо не более $5. Отложенные задачи не проверялись"],
+    [/^online path: measured and refused\. Predicted ([+-]?[\d.]+%), measured ([+-]?[\d.]+%) prompt tokens on (\d+) comparable tasks, (\d+) of (\d+) tasks lost \(tolerance (\d+)\); held-out tasks were never touched/, "рабочее измерение не подтвердило прогноз: ожидалось сокращение на $1, фактическое изменение числа токенов составило $2 на $3 сопоставимых задачах; не решено $4 из $5 задач, допустимо не более $6. Отложенные задачи не проверялись"],
+    [/^online path: measurement incomplete\. The provider refused (\d+) of (\d+) runs, so capability was not settled and nothing was deployed/, "рабочее измерение не завершено: поставщик модели отказал в $1 из $2 запусков; возможности варианта не установлены, изменение не применено"],
+    [/; the saving did not transfer to the held-out tasks/, "; сокращение числа токенов не подтвердилось на отложенных задачах"],
+    [/; deployed on its online measurement, not on a judged estimate/, "; вариант применён по результатам рабочего измерения, а не по прогнозу"],
+    [/; round incomplete: the provider refused (\d+) online runs \(recorded as unmeasured, not as failures\)/, "; цикл не завершён: поставщик модели отказал в $1 запусках; они отмечены как неизмеренные, а не как неудачные"],
   ];
   let out = s;
   rules.forEach(([re, ru]) => { out = out.replace(re, ru); });
-  return out;
+  if(out !== s) return out;
+  return "итог сохранён в рабочем журнале";
 }
 
-/* ---------- харнесс агента: дерево поиска и его счёт ---------- */
+/* ---------- отбор улучшений: прогноз, точное воспроизведение и измерения ---------- */
 function renderHarness(h){
   const el = $("harnessBody");
   if(!h || !h.rounds){
-    el.innerHTML = `<div class="empty">${h && h.error ? "цикл не отчитался: " + h.error : "цикл ещё не запускался"}</div>`;
+    el.innerHTML = `<div class="empty">${h && h.error ? "цикл не отчитался: подробности сохранены в журнале" : "цикл ещё не запускался"}</div>`;
     return;
   }
   const cr = h.criteria || {}, eff = cr.efficiency || {}, cap = cr.capability || {};
@@ -723,14 +792,14 @@ function renderHarness(h){
   const deployedRefused = recheck.filter(r => r.passed_then && !r.passed_now && r.deployed_then).length;
 
   const roundsHtml = h.rounds.map(r => {
-    const rows = (r.verdicts || []).map(v => {
-      const tag = v.path === "replay" ? `<span class="tag win">судья</span>`
-        : v.path === "verify" ? `<span class="tag dep">онлайн-проверка</span>`
-        : v.path === "online" ? `<span class="tag dep">онлайн-сравнение</span>`
-        : v.path === "gate-v1" ? `<span class="tag dep">${tip("ворота, первое правило", "gate-v1")}</span>`
+    const rows = (r.verdicts || []).map((v, candidateIndex) => {
+      const tag = v.path === "replay" ? `<span class="tag win">оценка по записям</span>`
+        : v.path === "verify" ? `<span class="tag dep">испытание в рабочей среде</span>`
+        : v.path === "online" ? `<span class="tag dep">рабочее измерение</span>`
+        : v.path === "gate-v1" ? `<span class="tag dep">первые критерии отбора</span>`
         : `<span class="tag">отказ</span>`;
-      const dep = r.deployed === v.policy ? `<span class="tag dep">выкачено</span>` : "";
-      return `<tr><td>${policyRu(v.policy)} ${tag}${dep}</td>
+      const dep = r.deployed === v.policy ? `<span class="tag dep">принято после проверки</span>` : "";
+      return `<tr><td>${candidateRu(v.policy, candidateIndex)} ${tag}${dep}</td>
         <td><span class="bar-wrap"><span class="bar green" style="width:0" data-hw="${Math.max(3, Math.round(120 * Math.abs(v.predicted_saving)))}"></span>${pct(v.predicted_saving)}</span></td>
         <td><span class="bar-wrap"><span class="bar" style="width:0" data-hw="${Math.max(3, Math.round(120 * (v.decision_replayable || 0)))}"></span>${pct(v.decision_replayable)}</span></td></tr>`;
     }).join("");
@@ -738,48 +807,48 @@ function renderHarness(h){
     const online = r.online_search;
     const corr = r.comparison_corrected;
     const measured = held && online
-      ? `<div class="cn">измерено онлайн: поиск ${online.solved}/${online.tasks} задач, ${online.prompt_tokens} токенов промпта · ${tip("отложенные задачи", "held-out")} ${held.solved}/${held.tasks} задач, ${held.prompt_tokens} токенов</div>`
+      ? `<div class="cn">измерение в рабочей среде: для задач поиска решено ${online.solved}/${online.tasks}, затрачено ${online.prompt_tokens} токенов запроса · ${termTip("held-out")} решено ${held.solved}/${held.tasks}, затрачено ${held.prompt_tokens} токенов</div>`
       : "";
     const corrected = corr
-      ? `<div class="cn">пересчёт по честной базовой линии: поиск ${(100*corr.search.token_delta).toFixed(0)}% токенов на ${corr.search.token_scope_tasks.length} сопоставимых задачах, ${tip("отложенные задачи", "held-out")} ${(100*corr.held_out.token_delta).toFixed(0)}% на ${corr.held_out.token_scope_tasks.length}</div>`
+      ? `<div class="cn">пересчёт относительно исходного уровня: поиск ${(100*corr.search.token_delta).toFixed(0)}% токенов на ${corr.search.token_scope_tasks.length} сопоставимых задачах, ${termTip("held-out")} ${(100*corr.held_out.token_delta).toFixed(0)}% на ${corr.held_out.token_scope_tasks.length}</div>`
       : "";
     const ab = r.online_ab;
     const abLine = ab && !r.deployed
-      ? `<div class="cn">онлайн-проверка перед выкаткой: ${(100*ab.token_delta).toFixed(1)}% токенов промпта на ${ab.token_scope_tasks.length} сопоставимых задачах, решено ${ab.solved_after} из ${ab.tasks}</div>`
+      ? `<div class="cn">проверка в рабочей среде перед выбором: изменение числа токенов запроса ${(100*ab.token_delta).toFixed(1)}% на ${ab.token_scope_tasks.length} сопоставимых задачах; решено ${ab.solved_after} из ${ab.tasks}</div>`
       : "";
     const v1note = r.criteria_version === 1
       ? `<div class="cn">первое правило приёмки: решение принималось по прогнозу, требования воспроизводимости ещё не было</div>` : "";
     return `<div class="claim">
-      <div class="ct">Раунд ${r.round}: кандидатов ${r.candidates}, ${r.deployed ? tip("выкачено новое правило обвязки", r.deployed) : "ничего не выкачено"}</div>
+      <div class="ct">Цикл ${r.round}: рассмотрено вариантов ${r.candidates}, ${r.deployed ? "вариант выбран для дальнейшей работы" : "вариант не принят"}</div>
       ${v1note}
       ${measured}
       ${corrected}
       ${abLine}
-      <table><tr><th>кандидат</th><th>прогноз экономии</th><th>воспроизводимость решения</th></tr>${rows}</table>
+      <table><tr><th>вариант настроек</th><th>прогноз сокращения токенов</th><th>${termTip("decision_replayable")}</th></tr>${rows}</table>
       ${r.outcome ? `<div class="cn" style="margin-top:6px">${ruOutcome(r.outcome)}</div>` : ""}</div>`;
   }).join("");
 
   el.innerHTML = `<div class="claims">
     <div class="claim">
-      <div class="ct">Экономия онлайн-прогонов</div>
-      <div><span class="big">${led.online_runs_spent} прогонов</span> против ${led.online_sweep_counterfactual} при переборе (${factor}x)</div>
-      <div class="cn">${led.refused_from_recordings_alone} из ${led.candidates_proposed} кандидатов отклонены по записям прогонов, без единого онлайн-запуска</div>
+      <div class="ct">Сокращение числа рабочих испытаний</div>
+      <div><span class="big">${led.online_runs_spent} испытаний модели</span> вместо ${led.online_sweep_counterfactual} при полном переборе (в ${factor} раза меньше)</div>
+      <div class="cn">${led.refused_from_recordings_alone} из ${led.candidates_proposed} вариантов отклонены по прошлым записям, без рабочего испытания</div>
     </div>
     <div class="claim">
-      <div class="ct">Правила приёмки (${tip("действующая редакция", "версия " + cr.version)})</div>
-      <div class="cn">порог прогнозируемой экономии ${pct(eff.min_predicted_saving)} · порог воспроизводимости решения ${pct(cap.min_decision_replayable)} · онлайн-потеря задач не больше ${cap.max_tasks_lost} · онлайн-путь для непроигрываемых кандидатов: ${path.enabled ? "включён" : "выключен"}</div>
-      <div class="cn">базовый уровень: поиск ${h.incumbent.search.solved}/${h.incumbent.search.tasks} задач, ${h.incumbent.search.prompt_tokens} токенов промпта · ${tip("отложенные задачи", "held-out")} ${h.incumbent.held_out.solved}/${h.incumbent.held_out.tasks} задач, ${h.incumbent.held_out.prompt_tokens} токенов</div>
+      <div class="ct">Действующие критерии отбора</div>
+      <div class="cn">минимальное прогнозируемое сокращение числа токенов ${pct(eff.min_predicted_saving)} · минимальная доля решений, воспроизводимых по записям ${pct(cap.min_decision_replayable)} · допустимое число нерешённых задач: ${cap.max_tasks_lost} · для вариантов, которые нельзя оценить по записям, испытание в рабочей среде ${path.enabled ? "включено" : "выключено"}</div>
+      <div class="cn">исходный уровень: в поисковом наборе решено ${h.incumbent.search.solved}/${h.incumbent.search.tasks} задач, ${h.incumbent.search.prompt_tokens} токенов запроса · ${termTip("held-out")} решено ${h.incumbent.held_out.solved}/${h.incumbent.held_out.tasks} задач, ${h.incumbent.held_out.prompt_tokens} токенов</div>
     </div>
     <div class="claim">
-      <div class="ct">Судья: точность на собственных записях</div>
-      <div><span class="big">${rep.rebuilt_exactly}/${rep.episodes}</span> эпизодов восстановлены посимвольно (${rep.steps} шагов)</div>
-      <div class="cn">модель токенов проверена на чужой задаче: средняя ошибка ${(100 * (rep.token_model_mean_error || 0)).toFixed(1)}%, худшая ${(100 * (rep.token_model_max_error || 0)).toFixed(1)}%</div>
+      <div class="ct">Проверка точности воспроизведения</div>
+      <div><span class="big">${rep.rebuilt_exactly}/${rep.episodes}</span> испытаний воспроизведены точно (шагов: ${rep.steps})</div>
+      <div class="cn">оценка числа токенов проверена на независимой задаче: средняя ошибка ${(100 * (rep.token_model_mean_error || 0)).toFixed(1)}%, максимальная ${(100 * (rep.token_model_max_error || 0)).toFixed(1)}%</div>
     </div>
     ${referenceHtml(h.references)}
     ${repeatHtml(h.rounds)}
     ${roundsHtml}
   </div>
-  <div class="claims-note">Числа прочитаны из записей цикла: он отчитывается сам, панель ничего не добавляет. Правила приёмки пересчитаны по замороженным критериям: ${refused} из ${recheck.length} вердиктов, записанных по прежним правилам, были бы отклонены сейчас, выкачки среди них: ${deployedRefused}.</div>`;
+  <div class="claims-note">Числа взяты из записей цикла; панель не добавляет результатов. По действующим критериям ${refused} из ${recheck.length} прежних решений были бы отклонены; среди них уже применённых изменений: ${deployedRefused}.</div>`;
 
   requestAnimationFrame(() => requestAnimationFrame(() => {
     el.querySelectorAll(".bar[data-hw]").forEach(b => b.style.width = b.dataset.hw + "px");
@@ -808,46 +877,44 @@ function renderClaims(bench){
       `<tr><td>${seedRu(r.seed)}</td><td>${r.day1 == null ? "" : r.day1.toFixed(1)}</td>
        <td>${r.final == null ? "" : r.final.toFixed(1)}</td>
        <td class="pos">${r.delta == null ? "" : "+" + r.delta.toFixed(1)}</td>
-       <td>${r.ratio == null ? "" : r.ratio.toFixed(2) + "x"}</td></tr>`).join("");
-    // «island · 5 seeds» приходит из разбора файла серии: слово о мире и число
-    // прогонов говорим по-русски, отпечаток мира остаётся в подсказке.
+       <td>${r.ratio == null ? "" : r.ratio.toFixed(2) + " раза"}</td></tr>`).join("");
     const rawName = dom.name.replace(/\u2014/g, "\u00b7");
     const worldKey = (rawName.match(/^([a-z_]+)/) || [])[1] || "";
     const seedCount = (rawName.match(/(\d+)\s*seeds/) || [])[1];
-    const domName = worldRu(worldKey) + (seedCount ? `, прогонов: ${seedCount}` : "");
-    return `<div class="claim"><div class="ct">Мир «${domName}», самоулучшение измерено</div>
-      <div class="cn">каждая строка: отдельный мир, 3 цикла «эпизод, оценка, выкатка». Дельта измерена в мире, не спрогнозирована</div>
-      <table><tr><th>мир</th><th>день 1</th><th>итог</th><th>дельта</th><th>×раз</th></tr>${rows}</table></div>`;
+    const domName = worldRu(worldKey) + (seedCount ? `, начальных условий: ${seedCount}` : "");
+    return `<div class="claim"><div class="ct">Среда «${domName}»: измерение самоулучшения</div>
+      <div class="cn">каждая строка: отдельное начальное условие; проведено 3 цикла «эпизод, оценка, рабочая проверка». Изменение счёта измерено, а не спрогнозировано</div>
+      <table><tr><th>испытание</th><th>начальный результат</th><th>итог</th><th>изменение счёта</th><th>отношение итогов</th></tr>${rows}</table></div>`;
   }).join("");
 
   el.innerHTML = `<div class="claims">
     <div class="claim">
-      <div class="ct">1. Структурированная память в графе бьёт альтернативы</div>
-      <div class="cn">один и тот же опыт записан тремя способами и прочитан обратно (этап 3 работы)</div>
+      <div class="ct">1. Сравнение способов организации долговременной памяти</div>
+      <div class="cn">одинаковый опыт сохранён тремя способами и затем использован для ответа</div>
       <table>
-        <tr><th></th><th>${tip("полнота поиска", "recall")}</th><th>порядок</th><th>${tip("происхождение", "provenance")}</th></tr>
-        <tr><td>граф OSTIS</td><td><b>${f2(ostis.recall)}</b></td><td><b>${f2(ostis.order)}</b></td><td><b>${f2(ostis.provenance)}</b></td></tr>
+        <tr><th></th><th>${termTip("recall")}</th><th>порядок</th><th>${termTip("provenance")}</th></tr>
+        <tr><td>графовая память Oneiro</td><td><b>${f2(ostis.recall)}</b></td><td><b>${f2(ostis.order)}</b></td><td><b>${f2(ostis.provenance)}</b></td></tr>
         <tr><td>плоское хранилище</td><td>${f2(flat.recall)}</td><td>${f2(flat.order)}</td><td>${f2(flat.provenance)}</td></tr>
-        <tr><td>без памяти (окно 3)</td><td>${f2(ctx.recall)}</td><td>${f2(ctx.order)}</td><td>${f2(ctx.provenance)}</td></tr>
+        <tr><td>без памяти (последние 3 сообщения)</td><td>${f2(ctx.recall)}</td><td>${f2(ctx.order)}</td><td>${f2(ctx.provenance)}</td></tr>
       </table>
       <div class="cn" style="margin-top:6px">проверка по урезанной памяти: без хронологии порядок падает до ${f2(noTemp.order)}, без происхождения источник теряется до ${f2(noProv.provenance)}: обе связи в памяти несут данные</div>
     </div>
     <div class="claim">
-      <div class="ct">2. Судья оценивает стратегии без запуска мира</div>
-      <div class="cn">точный повтор по записям опыта; совпадение прогноза с измеренным результатом отслеживается отдельно</div>
-      <div><span class="big">${ser.improved ?? "?"}/${ser.seeds ?? "?"}</span> миров улучшились после первого сна</div>
-      <div class="cn" style="margin-top:6px">конфликтов записей, останавливающих повтор: ${ostis.conflicts ?? 0} в замере памяти, 0 в серии миров</div>
+      <div class="ct">2. Оценка стратегий без запуска испытательной среды</div>
+      <div class="cn">точное воспроизведение по записям опыта; соответствие прогноза измеренному результату проверяется отдельно</div>
+      <div><span class="big">${ser.improved ?? "?"}/${ser.seeds ?? "?"}</span> испытаний показали улучшение после первого цикла оценки</div>
+      <div class="cn" style="margin-top:6px">противоречий, мешающих воспроизведению: ${ostis.conflicts ?? 0} в измерении памяти, 0 в серии испытаний</div>
     </div>
     ${seedRows}
   </div>
-  <div class="claims-note">Числа прочитаны из записей прогонов: таблицы собираются прогонами на этом же стеке, панель не показывает ничего, что не было измерено.</div>`;
+  <div class="claims-note">Числа прочитаны из записей испытаний; панель не добавляет значений, которые не были измерены.</div>`;
 }
 
 /* ---------- график роста ---------- */
 function renderAscent(d, first){
   const eps = d.episodes || {};
   if(!Object.keys(eps).length){
-    $("ascent").innerHTML = `<div class="empty">эпизодов выкатки нет: запустите полный цикл, затем одиночные этапы кнопками выше</div>`;
+    $("ascent").innerHTML = `<div class="empty">проверенных эпизодов пока нет: выполните полный цикл или отдельные этапы кнопками выше</div>`;
     $("ascentVerdict").innerHTML = "";
     return;
   }
@@ -862,7 +929,7 @@ function renderAscent(d, first){
   });
   const pts = [...onlineByRoundAsc.entries()].sort((a,b) => a[0]-b[0]).map(([r,v]) => ({r, v}));
   if(!pts.length){
-    $("ascent").innerHTML = `<div class="empty">эпизодов выкатки нет: запустите полный цикл</div>`;
+    $("ascent").innerHTML = `<div class="empty">проверенных эпизодов пока нет: выполните полный цикл</div>`;
     $("ascentVerdict").innerHTML = "";
     return;
   }
@@ -871,22 +938,22 @@ function renderAscent(d, first){
   const X = i => P + i * ((W - 2*P) / Math.max(pts.length, 1));
   const Y = v => H - P - (v - lo) / (hi - lo) * (H - 2*P);
 
-  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="онлайн-счёт по раундам">`;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="результат в рабочей среде по циклам">`;
   for(let g = 0; g <= 4; g++){
     const y = P + g * (H - 2*P) / 4, v = hi - g * (hi - lo) / 4;
     s += `<line class="axis" x1="${P}" y1="${y}" x2="${W-P}" y2="${y}"/>`;
     s += `<text class="axislabel" x="${W-P+6}" y="${y+4}">${Math.round(v)}</text>`;
   }
   s += `<line x1="${P}" y1="${Y(first)}" x2="${W-P}" y2="${Y(first)}" stroke="#5d6b85" stroke-dasharray="4 4" opacity=".5"/>`;
-  s += `<text class="axislabel" x="${P}" y="${Y(first)-6}">первый день: ${first.toFixed(1)}</text>`;
+  s += `<text class="axislabel" x="${P}" y="${Y(first)-6}">первое измерение: ${first.toFixed(1)}</text>`;
   let path = `M ${X(0)} ${Y(first)}`;
   pts.forEach((p,i) => path += ` L ${X(i)} ${Y(p.v)}`);
   if(pts.length) path += ` L ${W-P} ${Y(pts[pts.length-1].v)}`;
   s += `<path d="${path}" fill="none" stroke="var(--green)" stroke-width="2.6" stroke-linejoin="round"/>`;
   pts.forEach((p,i) => {
-    s += `<circle cx="${X(i)}" cy="${Y(p.v)}" r="5" fill="var(--green)"><title>раунд ${p.r}: ${p.v}</title></circle>`;
+    s += `<circle cx="${X(i)}" cy="${Y(p.v)}" r="5" fill="var(--green)"><title>цикл ${p.r}: ${p.v}</title></circle>`;
     s += `<text x="${X(i)}" y="${Y(p.v)-10}" text-anchor="middle" font-size="11" font-weight="600" fill="var(--green)">${p.v.toFixed(1)}</text>`;
-    s += `<text class="axislabel" x="${X(i)}" y="${H-12}" text-anchor="middle">раунд ${p.r}</text>`;
+    s += `<text class="axislabel" x="${X(i)}" y="${H-12}" text-anchor="middle">цикл ${p.r}</text>`;
   });
   s += `</svg>`;
   $("ascent").innerHTML = s;
@@ -896,8 +963,9 @@ function renderAscent(d, first){
   if(pts.length && first){
     const gained = pts[pts.length-1].v - first;
     v.innerHTML = gained > 0
-      ? `Первый цикл ${first.toFixed(1)} <b>→ ${pts[pts.length-1].v.toFixed(1)}</b> после деплоя лучшей стратегии: <b>+${gained.toFixed(1)}</b> очков`
-      : `Роста нет: ${first.toFixed(1)} → ${pts[pts.length-1].v.toFixed(1)}`;  }
+      ? `Первое измерение ${first.toFixed(1)} <b>→ ${pts[pts.length-1].v.toFixed(1)}</b> после выбора нового варианта поведения: <b>+${gained.toFixed(1)}</b> очков`
+      : `Улучшения нет: ${first.toFixed(1)} → ${pts[pts.length-1].v.toFixed(1)}`;
+  }
 }
 
 /* ---------- таблица оценок стратегий ---------- */
@@ -910,13 +978,13 @@ function renderTable(strategies){
   }
   const bestOnline = Math.max(...strategies.map(s => s.online ?? -Infinity));
   $("dreamTable").innerHTML = `<table>
-    <tr><th>стратегия</th><th>прогноз повтора по записям</th><th>измерено онлайн</th><th>раунд</th></tr>` +
-    rows.map(st => {
+    <tr><th>вариант поведения</th><th>оценка по сохранённым данным</th><th>результат в рабочей среде</th><th>цикл</th></tr>` +
+    rows.map((st, index) => {
       const isWin = st.online != null && st.online >= bestOnline - 0.01;
       const barW = Math.max(3, Math.round(140 * (st.replay || 0) / maxR));
       return `<tr class="${isWin ? "winrow" : ""}">
-        <td>${strategyRu(st.name)}
-          ${st.online != null ? `<span class="tag dep">выкачено</span>` : ""}
+        <td>${strategyRu(st.name, index)}
+          ${st.online != null ? `<span class="tag dep">проверено</span>` : ""}
           ${isWin ? `<span class="tag win">лучшая</span>` : ""}</td>
         <td><span class="bar-wrap"><span class="bar" style="width:0" data-w="${barW}"></span>${st.replay ?? ""}</span></td>
         <td>${st.online != null ? st.online.toFixed(2) : ""}</td>
@@ -933,7 +1001,7 @@ function renderEpisodes(eps){
   const names = Object.keys(eps);
   if(!names.length){
     $("epTabs").innerHTML = "";
-    $("epBody").innerHTML = `<div class="empty">для этого субъекта эпизодов нет: запустите «Эпизод: текущая стратегия»</div>`;
+    $("epBody").innerHTML = `<div class="empty">для этого набора опыта записей пока нет: выполните проверку текущего варианта</div>`;
     currentEp = null;
     return;
   }
@@ -953,27 +1021,37 @@ function renderEpisodes(eps){
     `<div class="step" style="border-top:1px solid var(--line);margin-top:6px;padding-top:8px">
      <span class="idx"></span><span class="act"><b>итого</b></span>
      <span></span><span class="sc pos"><b>${total.toFixed(1)}</b></span>
-     <span class="note">${steps.length} шагов записано в память</span></div>`;
+     <span class="note">записано шагов: ${steps.length}</span></div>`;
 }
 
 /* ---------- управление задачами ---------- */
 function setUI(running, name){
   ["btnDay","btnExplore","btnDream","btnCycle","btnReset"].forEach(id => $(id).disabled = running);
   $("btnStop").disabled = !running;
-  $("jobTxt").innerHTML = running ? `работает: <b>${name}</b>` : "простаивает";
+  const labels = {"Проверка исходного варианта":"проверяет исходный вариант",
+                  "Сбор дополнительного опыта":"собирает дополнительный опыт",
+                  "Оценка вариантов по сохранённым записям":"оценивает варианты по сохранённым записям",
+                  "Полный цикл оценки":"выполняет полный цикл оценки",
+                  "Обновление базы знаний":"обновляет базу знаний"};
+  $("jobTxt").textContent = running ? (labels[name] || "Oneiro выполняет работу") : "работа не запущена";
 }
 
 async function act(kind){
   try{
     const body = SUBJECT ? {subject: SUBJECT} : {};
-    const r = await fetch("/api/act/" + kind, {
+    const r = await fetch("api/act/" + kind, {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify(body)
     });
     const j = await r.json();
-    if(j.error){ alert("Не удалось запустить: " + j.error); return; }
+    if(j.error){
+      alert(j.error === "другая работа уже идёт"
+        ? "Oneiro уже выполняет другую работу. Дождитесь её завершения."
+        : "Oneiro не смог начать работу. Подробности сохранены в журнале службы.");
+      return;
+    }
     setUI(true, j.started);
-  }catch(e){ alert("Сервер недоступен: " + e); }
+  }catch(e){ alert("Не удалось связаться с Oneiro. Проверьте, запущена ли панель."); }
 }
 
 $("btnDay").addEventListener("click", () => act("day"));
@@ -981,9 +1059,9 @@ $("btnExplore").addEventListener("click", () => act("explore"));
 $("btnDream").addEventListener("click", () => act("dream"));
 $("btnCycle").addEventListener("click", () => act("cycle"));
 $("btnReset").addEventListener("click", () => {
-  if(confirm("Сбросить базу знаний? Все записанные эпизоды и стратегии будут удалены, память соберётся заново из описания предметной области.")) act("reset");
+  if(confirm("Пересоздать базу знаний? Все записанные эпизоды и варианты поведения будут удалены, память соберётся заново из описания предметной области.")) act("reset");
 });
-$("btnStop").addEventListener("click", () => api("/api/stop", {method: "POST"}));
+$("btnStop").addEventListener("click", () => api("api/stop", {method: "POST"}));
 $("subjectSel").addEventListener("change", e => {
   SUBJECT = e.target.value;
   currentEp = null;
@@ -991,30 +1069,29 @@ $("subjectSel").addEventListener("change", e => {
 });
 
 /* ---------- поток событий ---------- */
-const es = new EventSource("/api/events");
+const es = new EventSource("api/events");
 es.onmessage = e => {
   const {t, line} = JSON.parse(e.data);
   const log = $("log");
   if(log.querySelector(".empty")) log.innerHTML = "";
   const div = document.createElement("div");
-  div.className = "line" + (line.startsWith("Сбой") || line.startsWith("Сброс не удался") ? " err" : "");
+  div.className = "line" + (line.startsWith("Oneiro не удалось") || line.startsWith("Не удалось") ? " err" : "");
   div.innerHTML = `<span class="t">${t}</span>${line}`;
   log.appendChild(div);
   log.scrollTop = log.scrollHeight;
   // подсветка этапов по содержимому реальных событий
-  if(line.includes("экспедицию") || line.includes("Запущено: День")) { resetStages(); setStage("day","active"); }
-  if(line.includes("Запущено: Сон") || line.includes("Запущено: Оценка")) setStage("dream","active");
-  if(line.includes("Запущено: Оценка")) setStage("dream","active");
-  if(line.includes("Запущено: Разведка")) setStage("explore","active");
-  if(line.includes("Запущено: Полный")) resetStages();
-  if(line.includes("Разведка маршрутом")) { setStage("day","done","записано"); setStage("explore","active"); }
-  if(line.includes("Оценка кандидатов")) { setStage("explore","done","2 маршрута"); setStage("dream","active"); }
-  if(line.includes("Повтор по записям проверил")) $("i-dream").textContent = line.slice(0,64);
+  if(line.includes("Запущено: Проверка текущей стратегии")) { resetStages(); setStage("day","active"); }
+  if(line.includes("Запущено: Сбор дополнительного опыта")) setStage("explore","active");
+  if(line.includes("Запущено: Оценка вариантов")) setStage("dream","active");
+  if(line.includes("Запущено: Полный цикл")) resetStages();
+  if(line.includes("Дополнительный опыт:")) { setStage("day","done","записано"); setStage("explore","active"); }
+  if(line.includes("Воспроизведение по сохранённым траекториям")) { setStage("explore","done","опыт собран"); setStage("dream","active"); }
+  if(line.includes("По сохранённым траекториям оценено")) $("i-dream").textContent = line.slice(0,64);
   if(line.includes("Лучший вариант")) { setStage("dream","done"); setStage("deploy","active"); }
-  if(line.includes("День завершён:")) { setStage("day","done","измерено"); setStage("deploy","done","измерено онлайн"); scheduleReset(); }
-  if(line.includes("Раунд")) { /* полный цикл пишет свои строки, баннер уже обновлён по этапам */ }
+  if(line.includes("Проверка завершена:")) { setStage("day","done","измерено"); setStage("deploy","done","проверено в рабочей среде"); scheduleReset(); }
+  if(line.includes("Цикл оценки завершён")) { /* полный цикл пишет итоговые значения отдельно */ }
   if(line.includes("Полный цикл")) resetStages();
-  if(line.includes("Сброс базы")) resetStages();
+  if(line.includes("Запущено: Обновление базы знаний")) resetStages();
 };
 let resetTimer = null;
 function scheduleReset(){
@@ -1023,13 +1100,11 @@ function scheduleReset(){
 }
 
 /* ---------- старт ---------- */
-(async () => {
-  const d = await api("/api/state");
-  SUBJECT = d.subjects[0] || "";
-  if(SUBJECT) $("subjectSel").value = SUBJECT;
-  render(d);
-  setConn(true, "связь с графом есть");
-})();
+/* Отсчёт стартует вместе со страницей, а не с первого ответа: пока неизвестно,
+   есть ли готовый снимок, лента и оценка памяти не опрашиваются — их запросы
+   ждали бы в очереди за тем же чтением графа. */
+buildingSince = Date.now();
+refresh();
 setInterval(refresh, 4000);
 </script>
 </body>

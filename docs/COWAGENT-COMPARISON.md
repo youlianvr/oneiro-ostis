@@ -38,10 +38,18 @@ we would be foolish to learn the hard way.
 - **The OSTIS sc-graph is the store.** Episodes, worlds, strategies, organization
   records and memory sessions are nodes with an ontology; every answer is traceable to
   the episodes it came from.
-- **One measured claim, and it is a negative one.** On the same 50 questions the flat
-  journal scores 72.7% and the graph 72.1%; the graph wins only on time questions (40%
-  against 16.7%). The graph's real advantage that we measured is provenance (1.00
-  against 0.00) and chronology, not recall.
+- **Two runs of the same 50 questions, and the honest reading of them.** Run `s-50-1`
+  put the flat journal at 72.7% and the graph at 72.1%; run `s-50-2` put the journal at
+  68.8% and the graph at 73.5%. Taken together the graph is ahead by 2.1 points over 92
+  judged cells per arm — and the spread between runs is the same size as the difference
+  between the stores, so the average is not yet a claim, it is a tie with an error bar.
+- **What is stable across both runs is time and provenance, not recall.** Time questions:
+  49% for the graph against 31% for the journal. Provenance 1.00 against 0.00, chronology
+  1.00 against 0.58. Recall is where the journal is just as good, which is the negative
+  result and stays in the text as one.
+- **The size of the effect is in the floor, not in the store.** No memory at all scores
+  5% on this benchmark. Memory is worth about 66 points; *which* memory is worth nothing
+  extra on the average and a great deal on questions about time.
 - **No decay, no distillation, no trimming.** Everything that was ever recorded stays at
   full weight, and there is no bounded "core" that is always in the prompt.
 
