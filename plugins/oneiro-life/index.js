@@ -39,8 +39,7 @@ function recordIntoOstis(cfg, api, kind, payload) {
     execFile(command, args, { timeout: RECORD_TIMEOUT_MS, windowsHide: true },
       (error, stdout, stderr) => {
         if (error) {
-          const detail = String(stderr || error.message).trim().slice(0, 200);
-          api.logger.warn(`Oneiro: не удалось записать событие ${kind}: ${detail}`);
+          api.logger.warn("Oneiro: сведения о запуске не сохранены.");
           resolve(false);
           return;
         }
@@ -63,7 +62,7 @@ export default definePluginEntry({
           state_dir: ctx.stateDir,
           project_dir: ctx.workspaceDir ?? null,
         });
-        api.logger.info(`Oneiro: служба готова, запись идёт через ${cfg.pythonPath}`);
+        api.logger.info("Oneiro: служба готова, запись в память включена.");
       },
       async stop(ctx) {
         await recordIntoOstis(cfg, api, "gateway_service_stop", { state_dir: ctx.stateDir });
