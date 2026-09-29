@@ -72,6 +72,10 @@ TAKEN_TEXT = (
     "Взял в работу: «{text}».\n"
     "Если понадобится твоё решение, спрошу кнопками прямо здесь."
 )
+ANSWERED_TEXT = (
+    "Ответ принял, вопрос закрыт: «{text}».\n"
+    "Кнопку я не нажимал: слов недостаточно, чтобы что-то изменить."
+)
 DUPLICATE_TEXT = "Это сообщение я уже принял, второй раз не беру."
 EMPTY_TEXT = (
     "В сообщении нет текста. Напиши словами, что нужно сделать."
@@ -125,6 +129,7 @@ class EntryRun:
     ignored: list[dict] = field(default_factory=list)
     decisions: list = field(default_factory=list)
     refusals: list[dict] = field(default_factory=list)
+    text_answers: list = field(default_factory=list)
     next_offset: Optional[int] = None
 
 
@@ -377,6 +382,9 @@ class TelegramGateway:
         if text.lower() in LIST_WORDS:
             run.replies.append(self.say(self.list_text(), message=message))
             return
+        routed = self._route_to_open_question(text, update_id, by_user, run)
+        if routed:
+            return
         task = IncomingTask(update_id=update_id, text=text, at=self._now(),
                             by_user_id=by_user)
         try:
@@ -392,6 +400,44 @@ class TelegramGateway:
         run.replies.append(self.say(TAKEN_TEXT.format(text=task.text), message=message))
         self._note("task_taken", {"task_id": task.task_id, "update_id": update_id,
                                   "at": task.at})
+
+    def _route_to_open_question(self, text: str, update_id: int, by_user: int,
+                                run: EntryRun) -> bool:
+        """A written answer closes the open question it belongs to.
+
+        Words are context, never a verdict: the question closes as ``free_text``,
+        what the owner said travels to the manager both as the question's answer
+        and as an ordinary conversation turn, and nothing here becomes a task.
+        Only a button press can ever approve.
+        """
+        if self.channel is None:
+            return False
+        try:
+            open_ids = self.channel.open_proposals()
+        except approval.ApprovalError as exc:
+            self._log_line(f"entry: could not read open questions: {exc}")
+            return False
+        if not open_ids:
+            return False
+        proposal_id = open_ids[-1]
+        try:
+            answer = self.channel.answer_with_text(
+                proposal_id, text, by_user_id=by_user, at=self._now()
+            )
+        except approval.ApprovalError as exc:
+            # Not the owner, or the question closed in the same batch: fall
+            # through so the words are not swallowed by a closed door.
+            self._log_line(f"entry: text refused for {proposal_id}: {exc}")
+            return False
+        self._accepted[str(update_id)] = f"{proposal_id}:{update_id}"
+        self._save()
+        run.text_answers.append(answer)
+        run.replies.append(self.say(ANSWERED_TEXT.format(text=text), message=None))
+        self._note("question_answered_text", {
+            "proposal_id": proposal_id, "update_id": update_id,
+            "outcome": answer.outcome, "at": answer.at,
+        })
+        return True
 
     def list_text(self) -> str:
         rows = self.tasks()

@@ -3,9 +3,10 @@
 A proposal is one improvement the agent wants to make to itself: a branch, a
 short human explanation, and the evidence it produced. The channel renders it
 with exactly two buttons. A decision exists only as a button press made from
-the owner's own account: there is no text path, no model path, and no second
-press. The bot cannot answer its own question, and a decision survives a
-restart because it is written to disk and to the graph.
+the owner's own account: a written message closes a question as ``free_text``
+context and never approves — there is no model path and no second press. The
+bot cannot answer its own question, and a decision survives a restart because
+it is written to disk and to the graph.
 """
 
 from __future__ import annotations
@@ -487,6 +488,46 @@ class TelegramApprovalChannel:
         except ApprovalError:
             # The decision is already recorded; a missing acknowledgement is cosmetic.
             pass
+
+    # -- answering by text ---------------------------------------------------
+
+    def open_proposals(self) -> list[str]:
+        """Ids of questions still waiting, oldest last, read fresh from disk.
+
+        The state file is read again first: the gateway that routes the owner's
+        words may run in a different process from the one that asked.
+        """
+        self._load()
+        return sorted(self._pending)
+
+    def answer_with_text(self, proposal_id: str, text: str, *, by_user_id: int,
+                         at: Optional[int] = None) -> Answer:
+        """The owner answered with words: the question closes, unanswered.
+
+        This is the text path the docstring above kept out for a while: words
+        close the question and carry what the owner said, but they never carry
+        a verdict. Only a press from the owner's own account can approve.
+        """
+        self._load()
+        if by_user_id != self.owner_user_id:
+            raise ApprovalError("not_the_owner")
+        if proposal_id not in self._pending:
+            raise ApprovalError(f"proposal {proposal_id} is not open")
+        moment = self._now() if at is None else int(at)
+        answer = answer_from_text(proposal_id, text, by_user_id=by_user_id,
+                                  at=moment, message_id=self._pending.get(proposal_id))
+        self._pending.pop(proposal_id)
+        self._decided[proposal_id] = {
+            "verdict": FREE_TEXT, "by_user_id": by_user_id, "at": moment,
+        }
+        self._save()
+        self._note(
+            "proposal_decided",
+            {"proposal_id": proposal_id, "verdict": FREE_TEXT,
+             "by_user_id": by_user_id, "at": moment,
+             "message_id": answer.message_id, "text": text},
+        )
+        return answer
 
     # -- reading state -----------------------------------------------------
 

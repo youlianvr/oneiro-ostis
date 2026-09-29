@@ -371,3 +371,94 @@ def test_a_reply_is_sent_to_the_owners_chat(tmp_path):
     payload = [p for m, p in telegram.calls if m == "sendMessage"][0]
     assert payload["chat_id"] == OWNER
     assert payload["reply_to_message_id"] == 901
+
+
+# --------------------------------------------------------------------------- #
+# words while a question is open: the text path
+# --------------------------------------------------------------------------- #
+
+def open_channel(tmp_path) -> approval.TelegramApprovalChannel:
+    channel = approval.TelegramApprovalChannel(
+        owner_user_id=OWNER,
+        transport=FakeTelegram(),
+        state_path=tmp_path / "approvals.json",
+    )
+    channel.send(approval.Proposal.action(
+        proposal_id="p-text-1",
+        title="Нашёл список рассылки",
+        found="в письме лежит список адресов",
+        proposed="добавить его в таблицу",
+        needed="твоё разрешение отправить запись в таблицу",
+        target="таблица приёма",
+    ))
+    return channel
+
+
+def test_written_answer_closes_the_question_and_takes_no_task(tmp_path):
+    """The exit condition of unit 2: both paths in one gateway test."""
+    channel = open_channel(tmp_path)
+    built, graph, telegram = gateway(
+        tmp_path, [message(911, "да, добавляй в таблицу")], channel=channel,
+    )
+    run = built.poll()
+
+    # the words closed the question as free_text, they did not become work
+    assert run.tasks == []
+    assert graph.tasks() == []
+    assert len(run.text_answers) == 1
+    answer = run.text_answers[0]
+    assert answer.outcome == approval.FREE_TEXT
+    assert answer.text == "да, добавляй в таблицу"
+    assert not answer.approves and not answer.answered
+    view = answer.for_manager()
+    assert view["outcome"] == approval.FREE_TEXT
+    assert "ask the question again" in view["instruction"]
+    # the channel moved the question out of pending
+    assert channel.open_proposals() == []
+    assert channel.is_approved("p-text-1") is False
+    assert channel._decided["p-text-1"]["verdict"] == approval.FREE_TEXT
+    # the owner was answered, and answered honestly
+    assert any("Ответ принял" in sent for sent in telegram.sent)
+    assert not any(entry.TAKEN_TEXT.format(text="да, добавляй в таблицу") in s
+                   for s in telegram.sent)
+    assert "question_answered_text" in graph.kinds()
+
+
+def test_written_answer_when_no_question_is_open_still_becomes_a_task(tmp_path):
+    channel = open_channel(tmp_path)
+    # close the question by press first
+    channel.handle_presses([{
+        "update_id": 950,
+        "callback_query": {"id": "press-x", "from": {"id": OWNER},
+                           "data": approval.Proposal.action(
+                               proposal_id="p-text-1", title="т", found="ф",
+                               proposed="п", needed="н", target="ц",
+                           ).callback_data(approval.REJECT)},
+    }])
+    built, graph, telegram = gateway(
+        tmp_path, [message(912, "а теперь сделай вот это")], channel=channel,
+    )
+    run = built.poll()
+    assert [t.text for t in run.tasks] == ["а теперь сделай вот это"]
+    assert run.text_answers == []
+
+
+def test_words_are_never_an_approval_even_when_they_sound_like_one(tmp_path):
+    channel = open_channel(tmp_path)
+    built, graph, _ = gateway(
+        tmp_path, [message(913, "да, конечно, одобряю")], channel=channel,
+    )
+    built.poll()
+    assert channel.is_approved("p-text-1") is False
+    assert channel._decided["p-text-1"]["verdict"] == approval.FREE_TEXT
+
+
+def test_a_stranger_words_do_not_close_the_question(tmp_path):
+    channel = open_channel(tmp_path)
+    built, graph, telegram = gateway(
+        tmp_path, [message(914, "отвечаю за него: да", by=STRANGER)], channel=channel,
+    )
+    run = built.poll()
+    assert channel.open_proposals() == ["p-text-1"]
+    assert run.text_answers == []
+    assert run.ignored[0]["reason"] == "not_the_owner"
