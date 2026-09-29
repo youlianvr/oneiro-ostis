@@ -26,6 +26,7 @@ from bridge import LifeSession, OneiroBridge
 from config import settings
 from heartbeat import HeartbeatRunner
 from llm import BudgetExhausted, CallBudget, ModelPool, ProviderError
+from question_tool import Conversation
 from roles import SchemaError, manager as manager_role, researcher as researcher_role
 from swarm import Proposal
 from worker import WorkerSession
@@ -320,7 +321,14 @@ def run_loop(
                 continue
 
             try:
-                decision = manager_role(pool, proposals, dossier, budget=budget)
+                conversation = Conversation(bridge=bridge, session_id=session.session_id)
+                try:
+                    history = conversation.history()
+                except Exception as exc:  # noqa: BLE001 - the loop must live without chat
+                    history = []
+                    echo(f"[loop] conversation history unreadable, continuing: {exc}")
+                decision = manager_role(pool, proposals, dossier, budget=budget,
+                                        conversation_history=history)
             except BudgetExhausted as exc:
                 _freeze(bridge, session, outcome, "budget", str(exc), echo, config)
                 break

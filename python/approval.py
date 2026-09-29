@@ -543,6 +543,20 @@ class TelegramApprovalChannel:
         """The only thing a caller may treat as permission."""
         return (self._decided.get(proposal_id) or {}).get("verdict") == APPROVE
 
+    def verdict_of(self, proposal_id: str) -> Optional[dict]:
+        """The recorded verdict of a question, whatever shape it closed in.
+
+        A press gives ``approve``/``reject``; words give ``free_text`` with
+        what the owner said, so the manager can read the answer without
+        digging through state files. ``None`` means the question is still open
+        or was never asked.
+        """
+        self._load()
+        row = self._decided.get(proposal_id)
+        if not row:
+            return None
+        return dict(row)
+
 
 def channel_from_env(**kwargs) -> TelegramApprovalChannel:
     """Build the channel the way the rest of the project reads keys."""

@@ -169,5 +169,13 @@ behavior — not as a rename pass that hides whether the behavior changed.
   turn, and words sounding like approval still never approve. Docstring of
   `approval.py` now says the truth about the text path. 50 tests green across
   `test_approval.py` + `test_telegram_entry.py`.
-- Units 3 to 6 are not started.
+- **Unit 3 done**: `question_tool.py` holds the conversation (`Conversation`,
+  every turn an organization event in the graph, survives restarts) and the
+  question tool (`QuestionTool.ask` — sends through the approval channel,
+  returns the honest outcome, delivers the owner's words to the conversation
+  as a turn per decision 4). `roles.manager` receives the conversation
+  history alongside the proposals; `life_loop` feeds it. `approval` gained
+  `verdict_of`. 74 tests green across approval, entry, question tool, roles,
+  life loop.
+- Units 4 to 6 are not started.
 - Units 2–6 sit in the workspace until the plan's final publish step.

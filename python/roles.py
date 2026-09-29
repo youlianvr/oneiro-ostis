@@ -131,7 +131,8 @@ def _researcher_messages(dossier: str, check_ids: Sequence[str]) -> list[dict]:
     ]
 
 
-def _manager_messages(proposals: Sequence[Proposal], dossier: str) -> list[dict]:
+def _manager_messages(proposals: Sequence[Proposal], dossier: str,
+                      conversation_history: Optional[Sequence[dict]] = None) -> list[dict]:
     options = [{"proposal_id": p.proposal_id, "title": p.title, "rationale": p.rationale,
                 "acceptance": list(p.acceptance), "evidence": list(p.evidence),
                 "check_id": p.check_id} for p in proposals]
@@ -139,7 +140,10 @@ def _manager_messages(proposals: Sequence[Proposal], dossier: str) -> list[dict]
         {"role": "system", "content": MANAGER_SYSTEM},
         {"role": "user", "content": (
             "Proposals:\n" + json.dumps(options, ensure_ascii=False, indent=1) +
-            "\n\nDossier excerpt:\n" + dossier
+            "\n\nDossier excerpt:\n" + dossier +
+            ("\n\nConversation with the owner so far (oldest first):\n"
+             + json.dumps(list(conversation_history), ensure_ascii=False, indent=1)
+             if conversation_history else "")
         )},
     ]
 
@@ -203,9 +207,11 @@ def manager(
     proposals: Sequence[Proposal],
     dossier: str,
     budget: Optional[CallBudget] = None,
+    *,
+    conversation_history: Optional[Sequence[dict]] = None,
 ) -> ManagerDecision:
     """Ask the manager to choose, stop, escalate, or ask for external review."""
-    messages = _manager_messages(proposals, dossier)
+    messages = _manager_messages(proposals, dossier, conversation_history)
     ids = [p.proposal_id for p in proposals]
     last_error: Optional[Exception] = None
     for attempt in range(2):
