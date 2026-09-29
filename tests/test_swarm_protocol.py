@@ -54,6 +54,31 @@ def test_manager_can_stop_without_worker():
     ]
 
 
+def test_manager_answer_is_a_conversational_turn_not_a_decision():
+    """v2, less wood: the manager may answer a question instead of deciding."""
+    calls = []
+    coordinator = SwarmCoordinator(
+        session_id="s1",
+        event_sink=lambda **event: calls.append(event),
+    )
+
+    result = coordinator.run_cycle(
+        researcher=proposal,
+        manager=lambda _options: ManagerDecision(
+            "answer", "Yes, the table can take the rows the letter lists."
+        ),
+        worker=lambda _: pytest.fail("worker must not run"),
+    )
+
+    assert result.pr is None
+    assert result.stopped_reason == "manager action: answer"
+    assert [event["kind"] for event in calls] == [
+        "research_options",
+        "manager_decision",
+        "answer",
+    ]
+
+
 def test_worker_result_is_a_non_merged_pr_packet():
     result = SwarmCoordinator(session_id="s2").run_cycle(
         researcher=proposal,

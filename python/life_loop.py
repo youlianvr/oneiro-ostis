@@ -306,6 +306,10 @@ def run_loop(
                     pool, dossier, list(config.checks), budget=budget,
                     prefix=f"{config.run_tag}-{cycle_tag}-p",
                 )
+                # v2, "less wood": a fallback record marks a degraded cycle —
+                # the loop keeps going, and the manager sees the truth.
+                if any(p.proposal_id.endswith("fallback") for p in proposals):
+                    echo(f"[loop] researcher degraded in {cycle_tag}: using the fallback record")
             except BudgetExhausted as exc:
                 _freeze(bridge, session, outcome, "budget", str(exc), echo, config)
                 break
@@ -350,6 +354,13 @@ def run_loop(
 
             if decision.action != "assign_worker":
                 echo(f"[loop] manager chose {decision.action}: {decision.reason[:160]}")
+                if decision.action == "answer":
+                    # A conversational turn instead of a decision: recorded,
+                    # the cycle moves on. Nothing is assigned, nothing freezes.
+                    system_record(session.session_id, "manager_answer",
+                                  {"cycle": cycle_tag, "answer": decision.reason[:600]},
+                                  f"answer_{config.run_tag}_{cycle_tag}")
+                    continue
                 if decision.action in ("escalate", "external_review"):
                     outcome["status"] = "waiting_owner"
                     outcome["freeze_reason"] = f"manager action: {decision.action}"

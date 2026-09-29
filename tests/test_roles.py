@@ -67,8 +67,16 @@ def test_researcher_rejects_unknown_check_id_twice():
                                      "risk": "low"}]})
     pool = ScriptedPool([bad, bad])
 
+    # with the degraded-but-alive path on (v2 default), the fallback record
+    # names the failure instead of raising
+    result = researcher(pool, "dossier", CHECKS)
+    assert result[0].proposal_id.endswith("fallback")
+    assert "Schema failure" in result[0].title
+
+    # with it off, the old strictness holds
+    pool = ScriptedPool([bad, bad])
     with pytest.raises(SchemaError, match="check_id"):
-        researcher(pool, "dossier", CHECKS)
+        researcher(pool, "dossier", CHECKS, allow_fewer_options=False)
 
 
 def test_manager_assigns_a_valid_choice():
@@ -96,8 +104,41 @@ def test_manager_cannot_choose_an_unoffered_or_unknown_action():
     pool = ScriptedPool([bad_choice, bad_choice])
 
     with pytest.raises(SchemaError, match="chosen"):
-        manager(pool, proposals, "dossier")
+        manager(pool, proposals, "dossier", allow_answer=False)
 
     pool = ScriptedPool([bad_action, bad_action])
     with pytest.raises(SchemaError, match="action"):
-        manager(pool, proposals, "dossier")
+        manager(pool, proposals, "dossier", allow_answer=False)
+
+
+def test_manager_degrades_to_an_honest_reject_after_two_failures():
+    """v2, less wood: the cycle closes degraded, not dead."""
+    from swarm import Proposal
+    proposals = [Proposal("p1", "Первый", "r", ("a",), check_id="unit-tests")]
+    bad = json.dumps({"action": "merge", "reason": "x"})
+    pool = ScriptedPool([bad, bad])
+    decision = manager(pool, proposals, "dossier")
+    assert decision.action == "reject"
+    assert "failed validation twice" in decision.reason
+    assert decision.chosen is None
+
+
+def test_manager_may_answer_instead_of_deciding():
+    """v2, less wood: an answer is prose, it chooses nothing."""
+    from swarm import Proposal
+    proposals = [Proposal("p1", "Первый", "r", ("a",), check_id="unit-tests")]
+    answer = json.dumps({"action": "answer", "reason": "Yes, the table can take the rows."})
+    pool = ScriptedPool([answer])
+    decision = manager(pool, proposals, "dossier")
+    assert decision.action == "answer"
+    assert decision.chosen is None
+
+
+def test_researcher_may_offer_one_strong_proposal():
+    """v2, less wood: fewer than two options is allowed."""
+    one = json.dumps({"proposals": [{"title": "t", "rationale": "r",
+                                     "acceptance": ["a"], "check_id": "unit-tests",
+                                     "risk": "low"}]})
+    pool = ScriptedPool([one])
+    result = researcher(pool, "dossier", CHECKS)
+    assert len(result) == 1

@@ -177,5 +177,22 @@ behavior — not as a rename pass that hides whether the behavior changed.
   history alongside the proposals; `life_loop` feeds it. `approval` gained
   `verdict_of`. 74 tests green across approval, entry, question tool, roles,
   life loop.
-- Units 4 to 6 are not started.
+- **Unit 4 done**: `speak` sends the manager's message with no question behind
+  it — rate-limited (default six hours, configurable), recorded as a
+  conversation turn, and structurally unable to sign anything: it has no
+  verdict behind it and the only signing path remains a press. Tests cover
+  sent/skipped/refused and the no-sign rule.
+- **Unit 5 done**: English everywhere, including the phone (decisions 1 and
+  6): `telegram_entry` texts and command words English-only, `approval`
+  render/keyboard/toast, `task_runner` owner sentences and part names,
+  `config` settings page, `roles`/`worker` prompts, console overlay
+  (`i18n_ru` emptied and unregistered, `oneiro_setup` page). Full suite
+  292 passed with the same 10 sc-server errors.
+- **Unit 6 done**: the wood is loosened. A schema failure no longer kills the
+  cycle: the researcher returns a degraded-but-alive fallback record, the
+  manager closes with an honest reject; the researcher may offer one strong
+  proposal instead of a quota of two; the manager may answer (action
+  `answer`, recorded as `manager_answer`) instead of deciding; the worker's
+  prescribed register ("no file names, no English, no tool names") is
+  replaced by honest and specific. The JSON record stays machine-checkable.
 - Units 2–6 sit in the workspace until the plan's final publish step.
