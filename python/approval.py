@@ -3,9 +3,10 @@
 A proposal is one improvement the agent wants to make to itself: a branch, a
 short human explanation, and the evidence it produced. The channel renders it
 with exactly two buttons. A decision exists only as a button press made from
-the owner's own account: there is no text path, no model path, and no second
-press. The bot cannot answer its own question, and a decision survives a
-restart because it is written to disk and to the graph.
+the owner's own account: a written message closes a question as ``free_text``
+context and never approves — there is no model path and no second press. The
+bot cannot answer its own question, and a decision survives a restart because
+it is written to disk and to the graph.
 """
 
 from __future__ import annotations
@@ -212,34 +213,35 @@ def render(proposal: Proposal) -> str:
 
     Nothing here names a branch, a field or an internal number. The person on the
     phone decides about his own work, so he is told what changes, what it gives
-    and what can break, and nothing about our bookkeeping.
+    and what can break, and nothing about our bookkeeping. English, per PLAN-V2
+    decision 6 — the question must read the same way everywhere.
     """
     if proposal.kind == ACTION:
         lines = [
             f"{proposal.title}",
             "",
-            f"Что я нашёл: {proposal.changed}",
-            f"Что предлагаю сделать: {proposal.gives}",
-            f"Что мне нужно от тебя: {proposal.risks}",
+            f"What I found: {proposal.changed}",
+            f"What I propose to do: {proposal.gives}",
+            f"What I need from you: {proposal.risks}",
             "",
-            f"Куда это попадёт: {proposal.target}",
+            f"Where it lands: {proposal.target}",
         ]
-        closing = "Ответь кнопками ниже: без твоего нажатия ничего не произойдёт."
+        closing = "Answer with the buttons below: without your press, nothing happens."
     else:
         lines = [
             f"{proposal.title}",
             "",
-            f"Что я хочу изменить: {proposal.changed}",
-            f"Что это даёт: {proposal.gives}",
-            f"Что может сломать: {proposal.risks}",
+            f"What I want to change: {proposal.changed}",
+            f"What it gives: {proposal.gives}",
+            f"What can break: {proposal.risks}",
             "",
-            "Пока это лежит отдельно и в основной работе ничего не меняет.",
+            "This sits separately for now and changes nothing in the main work.",
         ]
-        closing = "Ответь кнопками ниже: без твоего нажатия ничего не изменится."
+        closing = "Answer with the buttons below: without your press, nothing changes."
     if proposal.files:
-        lines.append("Что затронуто: " + ", ".join(proposal.files[:6]))
+        lines.append("What is touched: " + ", ".join(proposal.files[:6]))
     if proposal.evidence:
-        lines.append("Что я уже проверил: " + "; ".join(proposal.evidence[:4]))
+        lines.append("What I already checked: " + "; ".join(proposal.evidence[:4]))
     lines += ["", closing]
     return "\n".join(lines)
 
@@ -248,8 +250,8 @@ def keyboard(proposal: Proposal) -> dict:
     return {
         "inline_keyboard": [
             [
-                {"text": "Принять", "callback_data": proposal.callback_data(APPROVE)},
-                {"text": "Отклонить", "callback_data": proposal.callback_data(REJECT)},
+                {"text": "Approve", "callback_data": proposal.callback_data(APPROVE)},
+                {"text": "Reject", "callback_data": proposal.callback_data(REJECT)},
             ]
         ]
     }
@@ -480,13 +482,53 @@ class TelegramApprovalChannel:
     def _acknowledge(self, press_id: Optional[str], verdict: str) -> None:
         if not press_id:
             return
-        text = "Принято" if verdict == APPROVE else "Отклонено"
+        text = "Approved" if verdict == APPROVE else "Rejected"
         try:
             self._call("answerCallbackQuery",
                        {"callback_query_id": press_id, "text": text})
         except ApprovalError:
             # The decision is already recorded; a missing acknowledgement is cosmetic.
             pass
+
+    # -- answering by text ---------------------------------------------------
+
+    def open_proposals(self) -> list[str]:
+        """Ids of questions still waiting, oldest last, read fresh from disk.
+
+        The state file is read again first: the gateway that routes the owner's
+        words may run in a different process from the one that asked.
+        """
+        self._load()
+        return sorted(self._pending)
+
+    def answer_with_text(self, proposal_id: str, text: str, *, by_user_id: int,
+                         at: Optional[int] = None) -> Answer:
+        """The owner answered with words: the question closes, unanswered.
+
+        This is the text path the docstring above kept out for a while: words
+        close the question and carry what the owner said, but they never carry
+        a verdict. Only a press from the owner's own account can approve.
+        """
+        self._load()
+        if by_user_id != self.owner_user_id:
+            raise ApprovalError("not_the_owner")
+        if proposal_id not in self._pending:
+            raise ApprovalError(f"proposal {proposal_id} is not open")
+        moment = self._now() if at is None else int(at)
+        answer = answer_from_text(proposal_id, text, by_user_id=by_user_id,
+                                  at=moment, message_id=self._pending.get(proposal_id))
+        self._pending.pop(proposal_id)
+        self._decided[proposal_id] = {
+            "verdict": FREE_TEXT, "by_user_id": by_user_id, "at": moment,
+        }
+        self._save()
+        self._note(
+            "proposal_decided",
+            {"proposal_id": proposal_id, "verdict": FREE_TEXT,
+             "by_user_id": by_user_id, "at": moment,
+             "message_id": answer.message_id, "text": text},
+        )
+        return answer
 
     # -- reading state -----------------------------------------------------
 
@@ -501,6 +543,20 @@ class TelegramApprovalChannel:
     def is_approved(self, proposal_id: str) -> bool:
         """The only thing a caller may treat as permission."""
         return (self._decided.get(proposal_id) or {}).get("verdict") == APPROVE
+
+    def verdict_of(self, proposal_id: str) -> Optional[dict]:
+        """The recorded verdict of a question, whatever shape it closed in.
+
+        A press gives ``approve``/``reject``; words give ``free_text`` with
+        what the owner said, so the manager can read the answer without
+        digging through state files. ``None`` means the question is still open
+        or was never asked.
+        """
+        self._load()
+        row = self._decided.get(proposal_id)
+        if not row:
+            return None
+        return dict(row)
 
 
 def channel_from_env(**kwargs) -> TelegramApprovalChannel:

@@ -26,6 +26,16 @@ same commit `main` stands on, so `main` stays the stable clone-and-run point).
 3. The three sources of "wood" named by the owner are all in scope: the rigid
    JSON-only role contracts, the prescribed bureaucratic phrasing, and the
    uniform cycle that always walks the same path.
+4. **Double delivery of free text** (2026-09-30): a written answer closes the
+   open question as `free_text` AND reaches the manager as an ordinary
+   conversation turn.
+5. **Questions carry no deadline** (2026-09-30): a question stays open until a
+   button or words arrive; no "expired" state exists.
+6. **The phone speaks English too** (2026-09-30): every owner-facing text,
+   including `telegram_entry.py` and the question renders, becomes English in
+   unit 5, and the word commands become English-only (`/help`, `/tasks`, …) —
+   the Russian ones are removed, not kept as aliases. Russian remains only in
+   the owner's spoken chat with the agent.
 
 ## Where the agent logic lives today
 
@@ -144,12 +154,45 @@ behavior — not as a rename pass that hides whether the behavior changed.
 
 ## State
 
-- Branch `v2` exists on the remote, at `1a9b9a9b`.
+- Branch `v2` exists on the remote; unit 1 was published there as `4a4b2628e`
+  (fast-path deploy commit, tree verified identical to the local subtree).
 - **Unit 1 done**: `approval.py` carries the third outcome (`free_text`), the
   rule that only a press approves, and `Answer.for_manager()`, which is the exact
   shape the question tool will hand back. `tests/test_approval.py` went from 21
   to 29 passing tests; the full local suite is 277 passed with the same 10
   sc-server connection errors it has without a running graph stack.
-- Units 2 to 6 are not started.
-- Nothing on this branch is published beyond its creation: the commits below sit
-  in the workspace until the owner asks for a publish.
+- **Unit 2 done**: `telegram_entry.py` routes the owner's words to an open
+  question before treating them as a task — `channel.open_proposals()` and
+  `channel.answer_with_text(...)` close the question as `free_text` (state file,
+  graph record, owner told honestly that no button was pressed), the answer is
+  delivered to the manager both as the question's answer and as a conversation
+  turn, and words sounding like approval still never approve. Docstring of
+  `approval.py` now says the truth about the text path. 50 tests green across
+  `test_approval.py` + `test_telegram_entry.py`.
+- **Unit 3 done**: `question_tool.py` holds the conversation (`Conversation`,
+  every turn an organization event in the graph, survives restarts) and the
+  question tool (`QuestionTool.ask` — sends through the approval channel,
+  returns the honest outcome, delivers the owner's words to the conversation
+  as a turn per decision 4). `roles.manager` receives the conversation
+  history alongside the proposals; `life_loop` feeds it. `approval` gained
+  `verdict_of`. 74 tests green across approval, entry, question tool, roles,
+  life loop.
+- **Unit 4 done**: `speak` sends the manager's message with no question behind
+  it — rate-limited (default six hours, configurable), recorded as a
+  conversation turn, and structurally unable to sign anything: it has no
+  verdict behind it and the only signing path remains a press. Tests cover
+  sent/skipped/refused and the no-sign rule.
+- **Unit 5 done**: English everywhere, including the phone (decisions 1 and
+  6): `telegram_entry` texts and command words English-only, `approval`
+  render/keyboard/toast, `task_runner` owner sentences and part names,
+  `config` settings page, `roles`/`worker` prompts, console overlay
+  (`i18n_ru` emptied and unregistered, `oneiro_setup` page). Full suite
+  292 passed with the same 10 sc-server errors.
+- **Unit 6 done**: the wood is loosened. A schema failure no longer kills the
+  cycle: the researcher returns a degraded-but-alive fallback record, the
+  manager closes with an honest reject; the researcher may offer one strong
+  proposal instead of a quota of two; the manager may answer (action
+  `answer`, recorded as `manager_answer`) instead of deciding; the worker's
+  prescribed register ("no file names, no English, no tool names") is
+  replaced by honest and specific. The JSON record stays machine-checkable.
+- Units 2–6 sit in the workspace until the plan's final publish step.

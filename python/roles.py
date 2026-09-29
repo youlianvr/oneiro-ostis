@@ -1,13 +1,14 @@
-"""The three living roles: prompts, strict reply schemas, validation.
+"""The three living roles: prompts, reply schemas, validation.
 
-A role's whole contract: it receives JSON context, it must answer with one
-JSON object matching the documented schema. Anything else is a schema error
-that gets exactly one corrective retry and then fails the cycle. Free-form
-prose never leaks into the organization records.
+A role's contract: it receives context, it answers with a record the
+organization can test — one JSON object matching the documented schema. The
+record is no longer the only thing a role may say (v2): the human-readable
+fields (title, rationale, reason, summary) are prose, and a malformed record
+gets one corrective retry and then a degraded-but-alive outcome instead of a
+dead cycle (PLAN-V2, "less wood", cause 1 and 2).
 
-Human-readable fields (title, rationale, reason) are written in Russian so the
-dashboard and the owner's morning reading need no translation; keys, ids and
-check names stay in English.
+Human-readable fields are written in plain English (PLAN-V2 decision 1): one
+language for the product. Keys, ids and check names stay English too.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from swarm import ManagerDecision, Proposal
 RESEARCHER_ROLE = "researcher"
 MANAGER_ROLE = "manager"
 
-MANAGER_ACTIONS = ("assign_worker", "reject", "external_review", "escalate")
+MANAGER_ACTIONS = ("assign_worker", "reject", "external_review", "escalate", "answer")
 
 
 class SchemaError(RuntimeError):
@@ -95,7 +96,7 @@ Rules:
 - "check_id" must be one of the offered check ids; it is the only command the worker may run.
 - "risk" is "low" or "medium"; anything larger is not a first task.
 - Do not propose merges, pushes, releases, or changes outside the project.
-- Write title, rationale, acceptance and evidence in Russian. Keep JSON keys and ids in English.
+- Write title, rationale, acceptance and evidence in plain English. Keep JSON keys and ids in English.
 - Answer with a single JSON object and nothing else, exactly this shape:
 {"proposals":[{"title":"...","rationale":"...","acceptance":["..."],"evidence":["path:line — ..."],"check_id":"unit-tests","risk":"low"}]}
 """
@@ -115,7 +116,9 @@ Actions:
 Rules:
 - Never approve a merge, a push, or a release; the owner does that outside this system.
 - Never pick more than one proposal.
-- Write "reason" and "concerns" in Russian. Keep JSON keys and ids in English.
+- Write "reason" and "concerns" in plain English. Keep JSON keys and ids in English.
+- You may answer the owner's question with "action": "answer" instead of deciding;
+  put the answer itself in "reason".
 - Answer with a single JSON object and nothing else, exactly this shape:
 {"action":"assign_worker","chosen":"r1","reason":"...","concerns":["..."]}
 """
@@ -131,7 +134,8 @@ def _researcher_messages(dossier: str, check_ids: Sequence[str]) -> list[dict]:
     ]
 
 
-def _manager_messages(proposals: Sequence[Proposal], dossier: str) -> list[dict]:
+def _manager_messages(proposals: Sequence[Proposal], dossier: str,
+                      conversation_history: Optional[Sequence[dict]] = None) -> list[dict]:
     options = [{"proposal_id": p.proposal_id, "title": p.title, "rationale": p.rationale,
                 "acceptance": list(p.acceptance), "evidence": list(p.evidence),
                 "check_id": p.check_id} for p in proposals]
@@ -139,9 +143,31 @@ def _manager_messages(proposals: Sequence[Proposal], dossier: str) -> list[dict]
         {"role": "system", "content": MANAGER_SYSTEM},
         {"role": "user", "content": (
             "Proposals:\n" + json.dumps(options, ensure_ascii=False, indent=1) +
-            "\n\nDossier excerpt:\n" + dossier
+            "\n\nDossier excerpt:\n" + dossier +
+            ("\n\nConversation with the owner so far (oldest first):\n"
+             + json.dumps(list(conversation_history), ensure_ascii=False, indent=1)
+             if conversation_history else "")
         )},
     ]
+
+
+def fallback_proposals(prefix: str = "r") -> list[Proposal]:
+    """The minimal honest record when a schema failed twice.
+
+    Instead of killing the cycle, the researcher's seat is filled with a
+    proposal that says plainly what happened. The manager sees the truth and
+    may act on it; nothing is invented.
+    """
+    return [Proposal(
+        proposal_id=f"{prefix}fallback",
+        title="Schema failure: the researcher could not produce a usable record",
+        rationale=("The researcher's answer failed validation twice, so this cycle "
+                   "carries no real proposal. Recorded as degraded, not dead: the "
+                   "cycle may still close honestly or try the next weakness."),
+        acceptance=("the next cycle produces a schema-valid research record",),
+        evidence=(),
+        check_id="",
+    )]
 
 
 def researcher(
@@ -151,8 +177,15 @@ def researcher(
     budget: Optional[CallBudget] = None,
     *,
     prefix: str = "r",
+    allow_fewer_options: bool = True,
 ) -> list[Proposal]:
-    """Ask the researcher for 2-4 proposals; one corrective retry on schema."""
+    """Ask the researcher for proposals; one corrective retry, then a fallback.
+
+    The researcher may offer fewer than two options (v2, "less wood", cause 3):
+    one strong proposal beats a second one invented to fill a quota. When both
+    schema attempts fail, a degraded-but-alive fallback record is returned so
+    the cycle can still close honestly instead of dying.
+    """
     messages = _researcher_messages(dossier, allowed_checks)
     last_error: Optional[Exception] = None
     for attempt in range(2):
@@ -195,6 +228,8 @@ def researcher(
                     "JSON shape, nothing else."
                 )},
             ]
+    if allow_fewer_options:
+        return fallback_proposals(prefix)
     raise SchemaError(f"researcher failed the schema twice: {last_error}")
 
 
@@ -203,9 +238,17 @@ def manager(
     proposals: Sequence[Proposal],
     dossier: str,
     budget: Optional[CallBudget] = None,
+    *,
+    conversation_history: Optional[Sequence[dict]] = None,
+    allow_answer: bool = True,
 ) -> ManagerDecision:
-    """Ask the manager to choose, stop, escalate, or ask for external review."""
-    messages = _manager_messages(proposals, dossier)
+    """Ask the manager to choose, stop, escalate, ask for review, or answer.
+
+    The manager may answer a question instead of deciding (v2, "less wood",
+    cause 3): an ``answer`` action carries prose in ``reason`` and closes the
+    cycle's decision with a conversational turn rather than a worker task.
+    """
+    messages = _manager_messages(proposals, dossier, conversation_history)
     ids = [p.proposal_id for p in proposals]
     last_error: Optional[Exception] = None
     for attempt in range(2):
@@ -236,6 +279,16 @@ def manager(
                     "JSON shape, nothing else."
                 )},
             ]
+    if allow_answer:
+        # Degraded-but-alive: the manager's record failed twice, so the cycle
+        # closes with an honest answer instead of dying.
+        return ManagerDecision(
+            action="reject",
+            reason=(f"The manager's record failed validation twice ({last_error}). "
+                    "The cycle closes degraded, not dead; nothing was chosen."),
+            evidence=(),
+            chosen=None,
+        )
     raise SchemaError(f"manager failed the schema twice: {last_error}")
 
 

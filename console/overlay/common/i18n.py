@@ -276,7 +276,10 @@ def _load_catalogs():
     if _catalogs is not None:
         return _catalogs
     _catalogs = {}
-    for lang, module in ((RU, "i18n_ru"),):
+    # v2: the product is English-only (PLAN-V2 decisions 1 and 6), so no
+    # catalog is registered; the ru loader is kept as the pattern for adding
+    # one back, and i18n_ru.MESSAGES is empty.
+    for lang, module in ():
         try:
             try:
                 mod = __import__(f"common.{module}", fromlist=["MESSAGES"])
