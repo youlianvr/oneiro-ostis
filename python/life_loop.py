@@ -157,7 +157,7 @@ def build_dossier(config: LoopConfig, journal: Optional[list[str]] = None,
     """
     parts: list[str] = []
     if task.strip():
-        parts.append("## что просит владелец\n" + task.strip()[:600])
+        parts.append("## what the owner asks for\n" + task.strip()[:600])
     python_dir = config.project_root / "python"
     modules = sorted(python_dir.glob("*.py"))
     module_lines = [

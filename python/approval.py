@@ -213,34 +213,35 @@ def render(proposal: Proposal) -> str:
 
     Nothing here names a branch, a field or an internal number. The person on the
     phone decides about his own work, so he is told what changes, what it gives
-    and what can break, and nothing about our bookkeeping.
+    and what can break, and nothing about our bookkeeping. English, per PLAN-V2
+    decision 6 — the question must read the same way everywhere.
     """
     if proposal.kind == ACTION:
         lines = [
             f"{proposal.title}",
             "",
-            f"Что я нашёл: {proposal.changed}",
-            f"Что предлагаю сделать: {proposal.gives}",
-            f"Что мне нужно от тебя: {proposal.risks}",
+            f"What I found: {proposal.changed}",
+            f"What I propose to do: {proposal.gives}",
+            f"What I need from you: {proposal.risks}",
             "",
-            f"Куда это попадёт: {proposal.target}",
+            f"Where it lands: {proposal.target}",
         ]
-        closing = "Ответь кнопками ниже: без твоего нажатия ничего не произойдёт."
+        closing = "Answer with the buttons below: without your press, nothing happens."
     else:
         lines = [
             f"{proposal.title}",
             "",
-            f"Что я хочу изменить: {proposal.changed}",
-            f"Что это даёт: {proposal.gives}",
-            f"Что может сломать: {proposal.risks}",
+            f"What I want to change: {proposal.changed}",
+            f"What it gives: {proposal.gives}",
+            f"What can break: {proposal.risks}",
             "",
-            "Пока это лежит отдельно и в основной работе ничего не меняет.",
+            "This sits separately for now and changes nothing in the main work.",
         ]
-        closing = "Ответь кнопками ниже: без твоего нажатия ничего не изменится."
+        closing = "Answer with the buttons below: without your press, nothing changes."
     if proposal.files:
-        lines.append("Что затронуто: " + ", ".join(proposal.files[:6]))
+        lines.append("What is touched: " + ", ".join(proposal.files[:6]))
     if proposal.evidence:
-        lines.append("Что я уже проверил: " + "; ".join(proposal.evidence[:4]))
+        lines.append("What I already checked: " + "; ".join(proposal.evidence[:4]))
     lines += ["", closing]
     return "\n".join(lines)
 
@@ -249,8 +250,8 @@ def keyboard(proposal: Proposal) -> dict:
     return {
         "inline_keyboard": [
             [
-                {"text": "Принять", "callback_data": proposal.callback_data(APPROVE)},
-                {"text": "Отклонить", "callback_data": proposal.callback_data(REJECT)},
+                {"text": "Approve", "callback_data": proposal.callback_data(APPROVE)},
+                {"text": "Reject", "callback_data": proposal.callback_data(REJECT)},
             ]
         ]
     }
@@ -481,7 +482,7 @@ class TelegramApprovalChannel:
     def _acknowledge(self, press_id: Optional[str], verdict: str) -> None:
         if not press_id:
             return
-        text = "Принято" if verdict == APPROVE else "Отклонено"
+        text = "Approved" if verdict == APPROVE else "Rejected"
         try:
             self._call("answerCallbackQuery",
                        {"callback_query_id": press_id, "text": text})

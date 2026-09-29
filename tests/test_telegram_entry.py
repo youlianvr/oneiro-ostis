@@ -1,8 +1,9 @@
 """The phone is the way in: a plain message becomes work, and only the owner's.
 
 These tests hold the promise the whole entry rests on. A message in ordinary
-Russian turns into a dated record in the graph, the answer back is Russian with
-no machinery in it, and nobody but the owner can hand work in.
+words turns into a dated record in the graph, the answer back is English with
+no machinery in it (PLAN-V2 decision 6), and nobody but the owner can hand work
+in.
 """
 
 from __future__ import annotations
@@ -189,7 +190,7 @@ def test_a_duplicate_message_is_not_recorded_twice(tmp_path):
 
 
 def test_help_answers_help_and_takes_no_work(tmp_path):
-    built, graph, telegram = gateway(tmp_path, [message(41, "/помощь")])
+    built, graph, telegram = gateway(tmp_path, [message(41, "/help")])
     run = built.poll()
     assert run.tasks == []
     assert graph.tasks() == []
@@ -350,16 +351,23 @@ VISIBLE_TEXTS = {
 }
 
 
-def test_everything_the_owner_reads_is_russian():
-    """No Latin letters, no tool or field names: this is what a person sees."""
+def test_everything_the_owner_reads_is_english():
+    """No Cyrillic, no tool or field names: this is what a person sees."""
     for name, text in VISIBLE_TEXTS.items():
-        filled = text.format(text="сообщение", **{}) if "{text}" in text else text
-        letters = re.findall(r"[A-Za-z]", filled)
-        assert not letters, f"{name} carries Latin letters: {letters}"
+        filled = text.format(text="a message", **{}) if "{text}" in text else text
+        letters = re.findall(r"[\u0400-\u04FF]", filled)
+        assert not letters, f"{name} carries Cyrillic letters: {letters}"
+
+
+def test_the_owner_can_still_write_in_any_language(tmp_path):
+    """English command words; the owner's own task text stays whatever it is."""
+    built, graph, telegram = gateway(tmp_path, [message(921, "собери отчёт")])
+    run = built.poll()
+    assert [t.text for t in run.tasks] == ["собери отчёт"]
 
 
 def test_the_visible_texts_name_no_machinery():
-    banned = ("граф", "MCP", "запрос", "callback", "JSON", "API", "proposal")
+    banned = ("graph", "MCP", "request", "callback", "JSON", "API", "proposal")
     for name, text in VISIBLE_TEXTS.items():
         for word in banned:
             assert word.lower() not in text.lower(), f"{name} names {word}"
@@ -418,7 +426,7 @@ def test_written_answer_closes_the_question_and_takes_no_task(tmp_path):
     assert channel.is_approved("p-text-1") is False
     assert channel._decided["p-text-1"]["verdict"] == approval.FREE_TEXT
     # the owner was answered, and answered honestly
-    assert any("Ответ принял" in sent for sent in telegram.sent)
+    assert any("Answer received" in sent for sent in telegram.sent)
     assert not any(entry.TAKEN_TEXT.format(text="да, добавляй в таблицу") in s
                    for s in telegram.sent)
     assert "question_answered_text" in graph.kinds()

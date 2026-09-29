@@ -1,34 +1,12 @@
 # encoding:utf-8
 
-"""Russian (ru) message catalog.
+"""Russian (ru) message catalog. Removed in v2.
 
-Keyed by the **English** source text of ``i18n.t(zh, en)`` call sites, so
-localizing the runtime never touches a call site: anything missing here simply
-falls back to English. To translate more of the runtime, add a line —
-nothing else has to change.
+The product speaks one language (PLAN-V2 decision 1 and 6): English everywhere
+it matters, Russian only in the owner's spoken chat with the agent. This file
+once mapped the runtime's English source strings to Russian for the console
+and panel; it is kept out of the overlay build, and the loader in ``i18n.py``
+no longer registers it. History lives in git, not here.
 """
 
-MESSAGES = {
-    # Progress cards and status lines (Feishu card, chat stream).
-    "Working": "В работе",
-    "Done": "Готово",
-    "Stopped": "Остановлено",
-    "Error": "Ошибка",
-    "Thinking": "Думаю",
-    "Tools": "Инструменты",
-    "turn": "ход",
-    "turns": "ходов",
-    "running": "выполняется",
-    "error": "ошибка",
-    "done": "готово",
-    # Attachments quoted back inside a user message.
-    "Workspace directory": "Папка рабочей области",
-    "Workspace file": "Файл рабочей области",
-    "Image": "Изображение",
-    "Video": "Видео",
-    "Directory": "Папка",
-    "File": "Файл",
-    # Fallback shown when the model answered with nothing at all.
-    "(The model returned no content. Please retry or rephrase your request.)":
-        "(Модель не вернула ответ. Повторите запрос или переформулируйте его.)",
-}
+MESSAGES = {}

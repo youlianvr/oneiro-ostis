@@ -92,9 +92,9 @@ def channel(tmp_path: Path, fake: FakeTelegram, **kwargs) -> TelegramApprovalCha
 def test_render_names_every_field_and_no_em_dash():
     """The owner reads about his work, not about our bookkeeping."""
     text = render(proposal())
-    for fragment in ("Нашёл, что ускорить", "Что я хочу изменить", "Что это даёт",
-                     "Что может сломать", "Что затронуто: python/approval.py",
-                     "без твоего нажатия ничего не изменится"):
+    for fragment in ("Нашёл, что ускорить", "What I want to change", "What it gives",
+                     "What can break", "What is touched: python/approval.py",
+                     "without your press, nothing changes"):
         assert fragment in text
     assert "\u2014" not in text
 
@@ -110,7 +110,7 @@ def test_render_hides_branch_and_numbers_from_the_owner():
 def test_keyboard_carries_two_buttons_within_the_telegram_limit():
     markup = keyboard(proposal("p" * 40))["inline_keyboard"][0]
     labels = [button["text"] for button in markup]
-    assert labels == ["Принять", "Отклонить"]
+    assert labels == ["Approve", "Reject"]
     for button in markup:
         assert len(button["callback_data"].encode("utf-8")) <= 64
     assert markup[0]["callback_data"].endswith(":" + "p" * 40)
@@ -163,7 +163,7 @@ def test_the_owner_press_decides_once(tmp_path):
     assert isinstance(first.decisions[0], Decision)
     assert first.decisions[0].approved is True
     assert subject.is_approved("p01-two-buttons") is True
-    assert fake.answered[0]["text"] == "Принято"
+    assert fake.answered[0]["text"] == "Approved"
 
     fake.press(proposal().callback_data(APPROVE), OWNER, press_id="cb2")
     second = subject.poll()
@@ -264,10 +264,10 @@ def action_proposal(proposal_id: str = "a01-mail-to-db") -> Proposal:
 
 def test_an_action_asks_in_the_owners_words():
     text = render(action_proposal())
-    assert "Что я нашёл: " in text
-    assert "Что предлагаю сделать: " in text
-    assert "Что мне нужно от тебя: " in text
-    assert "Куда это попадёт: база приёма, лист 10-А" in text
+    assert "What I found: " in text
+    assert "What I propose to do: " in text
+    assert "What I need from you: " in text
+    assert "Where it lands: база приёма, лист 10-А" in text
     assert "Ветка:" not in text
     assert "\u2014" not in text
 

@@ -5,9 +5,9 @@ JSON object matching the documented schema. Anything else is a schema error
 that gets exactly one corrective retry and then fails the cycle. Free-form
 prose never leaks into the organization records.
 
-Human-readable fields (title, rationale, reason) are written in Russian so the
-dashboard and the owner's morning reading need no translation; keys, ids and
-check names stay in English.
+Human-readable fields (title, rationale, reason) are written in plain English
+(PLAN-V2 decision 1): one language for the product. Keys, ids and check names
+stay English too.
 """
 
 from __future__ import annotations
@@ -95,7 +95,7 @@ Rules:
 - "check_id" must be one of the offered check ids; it is the only command the worker may run.
 - "risk" is "low" or "medium"; anything larger is not a first task.
 - Do not propose merges, pushes, releases, or changes outside the project.
-- Write title, rationale, acceptance and evidence in Russian. Keep JSON keys and ids in English.
+- Write title, rationale, acceptance and evidence in plain English. Keep JSON keys and ids in English.
 - Answer with a single JSON object and nothing else, exactly this shape:
 {"proposals":[{"title":"...","rationale":"...","acceptance":["..."],"evidence":["path:line — ..."],"check_id":"unit-tests","risk":"low"}]}
 """
@@ -115,7 +115,7 @@ Actions:
 Rules:
 - Never approve a merge, a push, or a release; the owner does that outside this system.
 - Never pick more than one proposal.
-- Write "reason" and "concerns" in Russian. Keep JSON keys and ids in English.
+- Write "reason" and "concerns" in plain English. Keep JSON keys and ids in English.
 - Answer with a single JSON object and nothing else, exactly this shape:
 {"action":"assign_worker","chosen":"r1","reason":"...","concerns":["..."]}
 """
