@@ -24,6 +24,15 @@ CALLBACK_NAMESPACE = "oneiro"
 APPROVE = "approve"
 REJECT = "reject"
 VERDICTS = (APPROVE, REJECT)
+FREE_TEXT = "free_text"
+OUTCOMES = (APPROVE, REJECT, FREE_TEXT)
+# What the manager is handed when the owner answers with words instead of a
+# button: the question stays unanswered, and asking again is the honest next step.
+RE_ASK_HINT = (
+    "The owner did not answer this question, they wrote something instead. "
+    "Text is never an approval. If that message reads as agreement, ask the "
+    "question again and let them press the button."
+)
 MAX_CALLBACK_BYTES = 64
 PROPOSAL_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,40}$")
 DEFAULT_STATE_PATH = Path(__file__).resolve().parent.parent / "state" / "approvals.json"
@@ -125,6 +134,77 @@ class PollResult:
     decisions: list[Decision] = field(default_factory=list)
     refusals: list[dict] = field(default_factory=list)
     next_offset: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class Answer:
+    """One answer to a question the agent asked, in whichever shape it arrived.
+
+    A button press from the owner's own account is a verdict. Words are not: a
+    written message closes the question as ``free_text``, carries what the owner
+    said, and leaves the decision unmade, so the rule that only a press can ever
+    approve survives the text path.
+    """
+
+    proposal_id: str
+    outcome: str
+    by_user_id: int
+    at: int
+    text: str = ""
+    message_id: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        if self.outcome not in OUTCOMES:
+            raise ApprovalError(f"unknown outcome {self.outcome!r}")
+        if not PROPOSAL_ID_PATTERN.match(self.proposal_id):
+            raise ApprovalError(f"proposal id {self.proposal_id!r} is not usable")
+        if self.outcome == FREE_TEXT:
+            if not self.text.strip():
+                raise ApprovalError("a free-text answer carries the owner's words")
+        elif self.text:
+            raise ApprovalError(f"a button answer carries no text, got {self.text!r}")
+
+    @property
+    def approves(self) -> bool:
+        """True only for a press from the owner's own account."""
+        return self.outcome == APPROVE
+
+    @property
+    def answered(self) -> bool:
+        """True when the question was answered, whatever the verdict was."""
+        return self.outcome in VERDICTS
+
+    def for_manager(self) -> dict:
+        """The exact shape the question tool returns to the manager."""
+        view: dict = {"proposal_id": self.proposal_id, "outcome": self.outcome,
+                      "answered": self.answered}
+        if self.answered:
+            return view
+        view["text"] = self.text
+        view["instruction"] = RE_ASK_HINT
+        return view
+
+    def as_decision(self) -> Optional[Decision]:
+        """The verdict behind this answer, when there is one."""
+        if not self.answered:
+            return None
+        return Decision(proposal_id=self.proposal_id, verdict=self.outcome,
+                        by_user_id=self.by_user_id, at=self.at,
+                        message_id=self.message_id)
+
+
+def answer_from_decision(decision: Decision) -> Answer:
+    """A button press, seen through the same lens as spoken words."""
+    return Answer(proposal_id=decision.proposal_id, outcome=decision.verdict,
+                  by_user_id=decision.by_user_id, at=decision.at,
+                  message_id=decision.message_id)
+
+
+def answer_from_text(proposal_id: str, text: str, *, by_user_id: int, at: int,
+                     message_id: Optional[int] = None) -> Answer:
+    """The owner answered with words: the question closes unanswered."""
+    return Answer(proposal_id=proposal_id, outcome=FREE_TEXT, by_user_id=by_user_id,
+                  at=at, text=text, message_id=message_id)
 
 
 def render(proposal: Proposal) -> str:
