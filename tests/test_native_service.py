@@ -210,6 +210,10 @@ def test_every_effect_leaves_tool_evidence(service, tmp_path):
 
 
 def test_initiative_is_opt_in_rate_limited_and_interest_driven(service):
+    # initiative() reads the wall clock for quiet hours (23:00-08:00 default).
+    # Pin quiet hours to an empty window so the test never depends on the
+    # time of day it happens to run at.
+    service.update_settings({"quiet_start": 0, "quiet_end": 0})
     assert service.initiative()["status"] == "idle"
     service.update_settings({"initiative_enabled": True, "interest_exploration": True,
                              "initiative_interval": 3600})
