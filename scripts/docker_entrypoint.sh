@@ -36,10 +36,22 @@ function build_kb() {
 }
 
 function start_machine {
+    # Memory safety: the graph is the agent's biography and must survive restarts.
+    #   REBUILD_KB=1                 -> explicit rebuild from sources (--clear)
+    #   empty KB storage (first run) -> build once, nothing to preserve yet
+    #   anything else                -> keep the graph, just start sc-machine
+    local storage="${KB_STORAGE:-/kb.bin}"
     if [ -n "$REBUILD_KB" ] && [ "$REBUILD_KB" -eq 1 ];
     then
+        echo "REBUILD_KB=1: explicit KB rebuild from sources (clears the graph)."
         # this expands to $KB_PATH if it's non-null and expands to "/knowledge-base" otherwise.
         build_kb "${KB_PATH:-"/knowledge-base"}"
+    elif [ -z "$(ls -A "$storage" 2>/dev/null)" ]; then
+        echo "KB storage $storage is empty: building from sources for the first time."
+        echo "From now on the graph is kept across restarts."
+        "$BINARY_PATH"/sc-builder -c "$CONFIG_PATH" -i "${KB_PATH:-"/knowledge-base"}"
+    else
+        echo "Existing graph found in $storage: starting sc-machine without rebuilding."
     fi
 
     # if arguments were provided, use them instead of the default ones.

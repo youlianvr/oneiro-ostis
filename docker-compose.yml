@@ -33,8 +33,11 @@ services:
       retries: 3
       start_period: 120s
     environment:
-      # Rebuild the KB from sources on every start (repo.path: ontology + IMS base).
-      - "REBUILD_KB=1"
+      # Memory safety: a normal start keeps the existing graph (volume kb-binary).
+      # A KB build happens only on an empty volume (first run) or when the owner
+      # explicitly asks for a rebuild: REBUILD_KB=1 or scripts/reset_stack.sh --yes.
+      # The old "rebuild on every start" wiped every memory on each container boot.
+      - "REBUILD_KB=0"
       - "KB_PATH=/knowledge-base/repo.path"
       - "BINARY_PATH=/example-app/install/sc-machine/bin"
       - "CONFIG_PATH=/knowledge-base/oneiro-ostis.ini"

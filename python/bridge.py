@@ -145,6 +145,9 @@ RUNTIME_VOCABULARY = (
     NREL_MEMORY_SESSION_PAYLOAD,
     NREL_MEMORY_SESSION_DATE,
     NREL_MEMORY_BENCH_RESULT,
+    "concept_native_event", "concept_native_task", "concept_native_approval",
+    "concept_native_note", "concept_native_interest", "concept_native_message",
+    "nrel_native_actor", "nrel_native_subject", "nrel_native_conversation",
 )
 
 EPISODE_PREFIX = "episode_"
@@ -639,6 +642,55 @@ class OneiroBridge:
             except (KeyError, TypeError, ValueError):
                 continue
         return sorted(records, key=lambda row: (row.recorded_at, row.record_id))
+
+    def record_native_event(self, event: dict, *, session_id: str) -> None:
+        """One construction for native evidence AND semantic graph membership.
+
+        The JSON link retains exact recovery data; typed semantic links make
+        actor, task/approval/note identity and conversation graph-queryable.
+        Existing organization/research records are not overwritten.
+        """
+        node = self.resolve_entity(ORGANIZATION_PREFIX + event["id"])
+        construction = ScConstruction()
+        for index, kind in enumerate((CONCEPT_ORGANIZATION_RECORD, "concept_native_event")):
+            construction.generate_connector(sc_type.CONST_PERM_POS_ARC,
+                                           self.keynode(kind), node, f"native_class_{index}")
+        data = event["data"]
+        if event["kind"] in ("task", "approval", "note", "interest", "message"):
+            subject = self.resolve_entity("native_" + event["kind"] + "_" +
+                                          _safe_graph_identifier(str(data.get("id") or event["id"])))
+            construction.generate_connector(sc_type.CONST_PERM_POS_ARC,
+                self.keynode("concept_native_" + event["kind"]), subject, "subject_class")
+            arc = "native_subject_arc"
+            construction.generate_connector(sc_type.CONST_COMMON_ARC, node, subject, arc)
+            construction.generate_connector(sc_type.CONST_PERM_POS_ARC,
+                self.keynode("nrel_native_subject"), arc, "subject_relation")
+        context = data.get("context") or {}
+        for name, value in (("actor", event["actor"]),
+                            ("conversation", data.get("conversation") or context.get("conversation"))):
+            if value:
+                target = self.resolve_entity("native_" + name + "_" + _safe_graph_identifier(str(value)))
+                arc = "native_" + name + "_arc"
+                construction.generate_connector(sc_type.CONST_COMMON_ARC, node, target, arc)
+                construction.generate_connector(sc_type.CONST_PERM_POS_ARC,
+                    self.keynode("nrel_native_" + name), arc, "native_" + name + "_relation")
+        record = OrganizationRecord(record_id=event["id"], session_id=session_id,
+            role=event["actor"], kind="native_" + event["kind"], payload=event,
+            origin=event["origin"], verified=event["origin"] in ("owner", "runtime", "tool"),
+            recorded_at=int(time.time()))
+        self._add_json_relation(construction, node, NREL_ORGANIZATION_RECORD, record.as_payload())
+        generate_elements(construction)
+
+    def load_native_events(self, *, session_id: str) -> list[OrganizationRecord]:
+        """Query only the native subgraph, not the entire research biography."""
+        template = ScTemplate()
+        template.triple(self.keynode("concept_native_event"), sc_type.VAR_PERM_POS_ARC, sc_type.VAR_NODE)
+        records = []
+        for item in search_by_template(template):
+            row = self._json_relation(item.get(2), NREL_ORGANIZATION_RECORD)
+            if isinstance(row, dict) and row.get("session_id") == session_id:
+                records.append(OrganizationRecord(**row))
+        return records
 
     # ---------- strategy store ----------
 
