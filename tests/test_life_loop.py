@@ -89,6 +89,45 @@ def make_config(tmp_path, cycles=1):
     )
 
 
+def test_a_degraded_researcher_leaves_the_cycle_alive(tmp_path):
+    """v2, less wood: two schema failures give a fallback record, not a dead cycle."""
+    bridge = FakeBridge()
+    bad = json.dumps({"proposals": [{"title": "t", "rationale": "r",
+                                     "acceptance": ["a"], "check_id": "no-such-check",
+                                     "risk": "low"}]})
+    bad_decision = json.dumps({"action": "merge", "reason": "x"})
+    # the researcher fails twice -> fallback; the manager fails twice -> reject
+    pool = FakePool([bad, bad, bad_decision, bad_decision])
+
+    outcome = run_loop(make_config(tmp_path), bridge=bridge, pool=pool,
+                       sleep=lambda _s: None, echo=lambda _s: None)
+
+    # the cycle lived: it closed honestly instead of freezing or dying
+    assert outcome["status"] == "finished"
+    kinds = [event["kind"] for event in bridge.org_events]
+    assert "cycle_schema_error" not in kinds
+    assert "cycle_failed" not in kinds
+    assert "loop_frozen" not in kinds
+    # the model_evidence record proves the researcher's fallback was seen
+    assert "model_evidence" in kinds
+
+
+def test_an_answer_from_the_manager_is_recorded_and_keeps_going(tmp_path):
+    """v2, less wood: an answer is a conversational turn, the run continues."""
+    bridge = FakeBridge()
+    answer = json.dumps({"action": "answer", "reason": "Yes, the table can take the rows."})
+    pool = FakePool([PROPOSAL_JSON, answer])
+
+    outcome = run_loop(make_config(tmp_path), bridge=bridge, pool=pool,
+                       sleep=lambda _s: None, echo=lambda _s: None)
+
+    assert outcome["status"] == "finished"
+    kinds = [event["kind"] for event in bridge.org_events]
+    assert "manager_answer" in kinds
+    answered = [event for event in bridge.org_events if event["kind"] == "manager_answer"][0]
+    assert "the table can take the rows" in answered["payload"]["answer"]
+
+
 def test_escalation_ends_the_run_with_a_record(tmp_path):
     bridge = FakeBridge()
     pool = FakePool([PROPOSAL_JSON, ESCALATE_JSON])

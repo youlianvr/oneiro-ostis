@@ -132,7 +132,7 @@ def test_an_empty_console_config_has_no_model(setup_module):
     state = setup_module.model_state({})
     assert state["configured"] is False
     assert state["provider_id"] == ""
-    assert "ключ" in state["detail"] or "нет ни своего" in state["detail"]
+    assert "key" in state["detail"] or "neither a custom" in state["detail"]
 
 
 def test_a_complete_custom_provider_is_a_usable_model(setup_module):
@@ -158,14 +158,14 @@ def test_a_custom_provider_missing_one_part_is_not_usable(setup_module, missing)
     entry.pop(missing)
     state = setup_module.model_state({"bot_type": "custom:oneiro", "custom_providers": [entry]})
     assert state["configured"] is False
-    russian = {"api_base": "адрес", "api_key": "ключ", "model": "модель"}[missing]
+    russian = {"api_base": "address", "api_key": "key", "model": "model"}[missing]
     assert russian in state["detail"]
 
 
 def test_an_active_custom_provider_that_vanished_is_not_usable(setup_module):
     state = setup_module.model_state({"bot_type": "custom:oneiro"})
     assert state["configured"] is False
-    assert "не найден" in state["detail"]
+    assert "is not in config.json" in state["detail"]
 
 
 def test_a_builtin_provider_key_counts_and_the_legacy_custom_key_does_not(setup_module):
@@ -229,7 +229,7 @@ def test_graph_state_needs_the_machine_port_to_connect(setup_module):
 
     state = setup_module.graph_state("127.0.0.1", free_port(), web_port=free_port())
     assert state["reachable"] is False and state["web_reachable"] is False
-    assert "не отвечает" in state["detail"]
+    assert "does not answer" in state["detail"]
 
 
 def test_graph_state_falls_back_to_the_default_port_on_nonsense(setup_module):
@@ -240,7 +240,7 @@ def test_graph_state_falls_back_to_the_default_port_on_nonsense(setup_module):
 def test_start_graph_without_a_project_directory_says_so(setup_module, tmp_path):
     result = setup_module.start_graph(str(tmp_path / "missing"))
     assert result["ok"] is False
-    assert "каталог проекта" in result["detail"]
+    assert "project directory" in result["detail"]
 
 
 def test_start_graph_without_docker_says_so(setup_module, monkeypatch):
@@ -256,10 +256,10 @@ def test_start_graph_without_docker_says_so(setup_module, monkeypatch):
 
 def _state(ready_model=True, ready_graph=True, ready_panel=True) -> dict:
     return {
-        "model": {"configured": ready_model, "detail": "модель"},
-        "graph": {"reachable": ready_graph, "detail": "граф",
+        "model": {"configured": ready_model, "detail": "model"},
+        "graph": {"reachable": ready_graph, "detail": "graph",
                   "host": "localhost", "port": 8090},
-        "panel": {"reachable": ready_panel, "detail": "панель"},
+        "panel": {"reachable": ready_panel, "detail": "panel"},
     }
 
 
@@ -304,7 +304,7 @@ def test_verify_model_accepts_a_provider_that_lists_models_instead(setup_module)
     with StubServer(routes) as stub:
         result = setup_module.verify_model(stub.base + "/v1", "sk-test", "auto/coding")
     assert result["ok"] is True and result["via"] == "models"
-    assert "без запроса к модели" in result["detail"]
+    assert "without querying the model" in result["detail"]
 
 
 def test_verify_model_reports_what_the_provider_said(setup_module):
@@ -319,4 +319,4 @@ def test_verify_model_reports_what_the_provider_said(setup_module):
 def test_verify_model_needs_all_three_parts(setup_module):
     result = setup_module.verify_model("", "", "")
     assert result["ok"] is False
-    assert "адрес, ключ и модель" in result["detail"]
+    assert "an address, a key and a model" in result["detail"]
