@@ -26,7 +26,6 @@ from bridge import LifeSession, OneiroBridge
 from config import settings
 from heartbeat import HeartbeatRunner
 from llm import BudgetExhausted, CallBudget, ModelPool, ProviderError
-from question_tool import Conversation
 from roles import SchemaError, manager as manager_role, researcher as researcher_role
 from swarm import Proposal
 from worker import WorkerSession
@@ -157,7 +156,7 @@ def build_dossier(config: LoopConfig, journal: Optional[list[str]] = None,
     """
     parts: list[str] = []
     if task.strip():
-        parts.append("## what the owner asks for\n" + task.strip()[:600])
+        parts.append("## что просит владелец\n" + task.strip()[:600])
     python_dir = config.project_root / "python"
     modules = sorted(python_dir.glob("*.py"))
     module_lines = [
@@ -306,10 +305,6 @@ def run_loop(
                     pool, dossier, list(config.checks), budget=budget,
                     prefix=f"{config.run_tag}-{cycle_tag}-p",
                 )
-                # v2, "less wood": a fallback record marks a degraded cycle —
-                # the loop keeps going, and the manager sees the truth.
-                if any(p.proposal_id.endswith("fallback") for p in proposals):
-                    echo(f"[loop] researcher degraded in {cycle_tag}: using the fallback record")
             except BudgetExhausted as exc:
                 _freeze(bridge, session, outcome, "budget", str(exc), echo, config)
                 break
@@ -325,14 +320,7 @@ def run_loop(
                 continue
 
             try:
-                conversation = Conversation(bridge=bridge, session_id=session.session_id)
-                try:
-                    history = conversation.history()
-                except Exception as exc:  # noqa: BLE001 - the loop must live without chat
-                    history = []
-                    echo(f"[loop] conversation history unreadable, continuing: {exc}")
-                decision = manager_role(pool, proposals, dossier, budget=budget,
-                                        conversation_history=history)
+                decision = manager_role(pool, proposals, dossier, budget=budget)
             except BudgetExhausted as exc:
                 _freeze(bridge, session, outcome, "budget", str(exc), echo, config)
                 break
@@ -354,13 +342,6 @@ def run_loop(
 
             if decision.action != "assign_worker":
                 echo(f"[loop] manager chose {decision.action}: {decision.reason[:160]}")
-                if decision.action == "answer":
-                    # A conversational turn instead of a decision: recorded,
-                    # the cycle moves on. Nothing is assigned, nothing freezes.
-                    system_record(session.session_id, "manager_answer",
-                                  {"cycle": cycle_tag, "answer": decision.reason[:600]},
-                                  f"answer_{config.run_tag}_{cycle_tag}")
-                    continue
                 if decision.action in ("escalate", "external_review"):
                     outcome["status"] = "waiting_owner"
                     outcome["freeze_reason"] = f"manager action: {decision.action}"

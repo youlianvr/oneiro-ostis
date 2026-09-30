@@ -9,99 +9,85 @@
       "path": "agent/registry.py",
       "kind": "changed",
       "pristine_sha256": "ff1ba0f61e40d4d2521b7937d3a6496cdf53e4df1f7e6d7d2180d82ba5a2a7f0",
-      "product_sha256": "59544dbf8264484cc45c75b6061bbd16949aaf7e7ff5c360d6ea5a3ebdf0597f",
-      "overlay_sha256": "59544dbf8264484cc45c75b6061bbd16949aaf7e7ff5c360d6ea5a3ebdf0597f"
+      "product_sha256": "59544dbf8264484cc45c75b6061bbd16949aaf7e7ff5c360d6ea5a3ebdf0597f"
     },
     {
       "path": "agent/tools/mcp/mcp_admin.py",
       "kind": "new",
       "pristine_sha256": null,
-      "product_sha256": "caff4e3f6bab996643eec02053ac4450132acefbc34da5da653d6b0e18e074ae",
-      "overlay_sha256": "caff4e3f6bab996643eec02053ac4450132acefbc34da5da653d6b0e18e074ae"
+      "product_sha256": "caff4e3f6bab996643eec02053ac4450132acefbc34da5da653d6b0e18e074ae"
     },
     {
       "path": "agent/tools/mcp/mcp_client.py",
       "kind": "changed",
       "pristine_sha256": "d9aacfba14dc101d1a8a5ea7ebec6a79f2585dd99ac4147aef05217775d2efdc",
-      "product_sha256": "600c0dbca430cf265b388fef039f21baf7d02e5e2bfd8a587ea0bab87a2036d3",
-      "overlay_sha256": "600c0dbca430cf265b388fef039f21baf7d02e5e2bfd8a587ea0bab87a2036d3"
+      "product_sha256": "600c0dbca430cf265b388fef039f21baf7d02e5e2bfd8a587ea0bab87a2036d3"
     },
     {
       "path": "agent/tools/tool_manager.py",
       "kind": "changed",
       "pristine_sha256": "b6c02b05794e44d3cee15e043692fd6d82622716f25586307e03671b06d7a826",
-      "product_sha256": "f2ad7c33964ea225c1d3ffa472f457bb01092211f13986b4fbfc3bbd180feef1",
-      "overlay_sha256": "f2ad7c33964ea225c1d3ffa472f457bb01092211f13986b4fbfc3bbd180feef1"
+      "product_sha256": "f2ad7c33964ea225c1d3ffa472f457bb01092211f13986b4fbfc3bbd180feef1"
     },
     {
       "path": "channel/web/chat.html",
       "kind": "changed",
       "pristine_sha256": "6918ef20f34efaeed585910e596e63b4ea663f5e4fa86ff34ad10120e73d44a0",
-      "product_sha256": "a992f072318833da4cc2e78cadb3f170ee7a5074d7a0bdb6c35e44162cc266ee",
-      "overlay_sha256": "a992f072318833da4cc2e78cadb3f170ee7a5074d7a0bdb6c35e44162cc266ee"
+      "product_sha256": "a992f072318833da4cc2e78cadb3f170ee7a5074d7a0bdb6c35e44162cc266ee"
     },
     {
       "path": "channel/web/oneiro_setup.py",
       "kind": "new",
       "pristine_sha256": null,
-      "product_sha256": "8e2fb7c3df8d7fd4c43b2fa11f22eadfcacf96207f9e8367123e3618b4842172",
-      "overlay_sha256": "27c3af3c21b96852319c2c3c2c7a41af455f30bb212ac8f4dcc1d29703d8c8ae"
+      "product_sha256": "8e2fb7c3df8d7fd4c43b2fa11f22eadfcacf96207f9e8367123e3618b4842172"
     },
     {
       "path": "channel/web/setup.html",
       "kind": "new",
       "pristine_sha256": null,
-      "product_sha256": "c087f43ceccb33fce80821a131ead0e02ee2f92a281bde189ef1b3f461c81581",
-      "overlay_sha256": "c087f43ceccb33fce80821a131ead0e02ee2f92a281bde189ef1b3f461c81581"
+      "product_sha256": "c087f43ceccb33fce80821a131ead0e02ee2f92a281bde189ef1b3f461c81581"
     },
     {
       "path": "channel/web/static/css/console.css",
       "kind": "changed",
       "pristine_sha256": "27e265c5202ba4cefc5ba8daa8846cc24236a16a533e96929298eeedf55dac8d",
-      "product_sha256": "e05234dd6d72ebf0c3ec8364ca344d93f8e425b85feeeb54e715dda4f8ff5be1",
-      "overlay_sha256": "e05234dd6d72ebf0c3ec8364ca344d93f8e425b85feeeb54e715dda4f8ff5be1"
+      "product_sha256": "e05234dd6d72ebf0c3ec8364ca344d93f8e425b85feeeb54e715dda4f8ff5be1"
     },
     {
       "path": "channel/web/static/js/console.js",
       "kind": "changed",
       "pristine_sha256": "b7e6bd0d25471ff148493c7637683bdde604eea7171dec5bbb5c0457a32dcc4b",
-      "product_sha256": "e02782f5e0a14c71129792bc9cc3641622b954d73306d906f041339d61b4eaf8",
-      "overlay_sha256": "e02782f5e0a14c71129792bc9cc3641622b954d73306d906f041339d61b4eaf8"
+      "product_sha256": "e02782f5e0a14c71129792bc9cc3641622b954d73306d906f041339d61b4eaf8"
     },
     {
       "path": "channel/web/static/js/mcp-admin.js",
       "kind": "new",
       "pristine_sha256": null,
-      "product_sha256": "e83b72ebd952613730ae76f19716ace33172dd2749467f2a209b057e8433eb20",
-      "overlay_sha256": "e83b72ebd952613730ae76f19716ace33172dd2749467f2a209b057e8433eb20"
+      "product_sha256": "e83b72ebd952613730ae76f19716ace33172dd2749467f2a209b057e8433eb20"
     },
     {
       "path": "channel/web/static/js/oneiro-admin.js",
       "kind": "new",
       "pristine_sha256": null,
-      "product_sha256": "16128652f1512369ee12443d936d08762340850355b83b3e74118062d7559d67",
-      "overlay_sha256": "16128652f1512369ee12443d936d08762340850355b83b3e74118062d7559d67"
+      "product_sha256": "16128652f1512369ee12443d936d08762340850355b83b3e74118062d7559d67"
     },
     {
       "path": "channel/web/web_channel.py",
       "kind": "changed",
       "pristine_sha256": "401ad2956aa1da36eef7aadc669659aedab860ae390310680ff18815bc58c38f",
-      "product_sha256": "c4126e8eecc2dcf52e0da186c5db98674c5cc6342674749a9f38f5840e0f8f1b",
-      "overlay_sha256": "c4126e8eecc2dcf52e0da186c5db98674c5cc6342674749a9f38f5840e0f8f1b"
+      "product_sha256": "c4126e8eecc2dcf52e0da186c5db98674c5cc6342674749a9f38f5840e0f8f1b"
     },
     {
       "path": "common/i18n.py",
       "kind": "changed",
       "pristine_sha256": "8e1b5db39ceb55f5b43548485878c1eff0e00a9de2e941a9459a8fea4d800ff1",
-      "product_sha256": "5e69331444de2f47e7b5aa125162bc5af559d2bf4ba5f1d0be8d6316819c42be",
-      "overlay_sha256": "66b70c4f3b7b9a18f95000102a7a84325e4d9e386ed3488badebfac34b71d8d2"
+      "product_sha256": "5e69331444de2f47e7b5aa125162bc5af559d2bf4ba5f1d0be8d6316819c42be"
     },
     {
       "path": "common/i18n_ru.py",
       "kind": "new",
       "pristine_sha256": null,
-      "product_sha256": "46e3d7d5dbec7ed645ae56733dd63b49d189bab03c6378f66a1580fce53ad3d8",
-      "overlay_sha256": "6960c909ab55ece14a6b9b2b0a67e70fabd83b42f373c88271ed2a6a884e75d4"
+      "product_sha256": "46e3d7d5dbec7ed645ae56733dd63b49d189bab03c6378f66a1580fce53ad3d8"
     }
   ]
 }

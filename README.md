@@ -110,8 +110,6 @@ documented in `docs/GOAL-LIVE-SWARM.md`.
 - `docs/PROGRESS.md` — per-stage execution log.
 - `docs/GOAL-LIVE-SWARM.md` — the live-swarm goal, its run log and evidence.
 - `docs/ARCHITECTURE-HYBRID.md` — where Oneiro, Hermes and OpenClaw meet.
-- `docs/PLAN-V2.md` — the `v2` branch: a manager the owner can talk to, one
-  language for the product, and the concrete plan for removing the rigid feel.
 - `docs/pz/` — the research work for the school competition (markdown source,
   Word and PDF builds, dashboard figures). Rebuild with
   `python scripts/pz-build.py` then `python scripts/pz-word.py`; the numbers in

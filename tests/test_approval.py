@@ -13,15 +13,11 @@ sys.path.insert(0, str(PROJECT / "python"))
 
 from approval import (  # noqa: E402
     APPROVE,
-    FREE_TEXT,
     REJECT,
-    Answer,
     ApprovalError,
     Decision,
     Proposal,
     TelegramApprovalChannel,
-    answer_from_decision,
-    answer_from_text,
     keyboard,
     render,
 )
@@ -92,9 +88,9 @@ def channel(tmp_path: Path, fake: FakeTelegram, **kwargs) -> TelegramApprovalCha
 def test_render_names_every_field_and_no_em_dash():
     """The owner reads about his work, not about our bookkeeping."""
     text = render(proposal())
-    for fragment in ("Нашёл, что ускорить", "What I want to change", "What it gives",
-                     "What can break", "What is touched: python/approval.py",
-                     "without your press, nothing changes"):
+    for fragment in ("Нашёл, что ускорить", "Что я хочу изменить", "Что это даёт",
+                     "Что может сломать", "Что затронуто: python/approval.py",
+                     "без твоего нажатия ничего не изменится"):
         assert fragment in text
     assert "\u2014" not in text
 
@@ -110,7 +106,7 @@ def test_render_hides_branch_and_numbers_from_the_owner():
 def test_keyboard_carries_two_buttons_within_the_telegram_limit():
     markup = keyboard(proposal("p" * 40))["inline_keyboard"][0]
     labels = [button["text"] for button in markup]
-    assert labels == ["Approve", "Reject"]
+    assert labels == ["Принять", "Отклонить"]
     for button in markup:
         assert len(button["callback_data"].encode("utf-8")) <= 64
     assert markup[0]["callback_data"].endswith(":" + "p" * 40)
@@ -163,7 +159,7 @@ def test_the_owner_press_decides_once(tmp_path):
     assert isinstance(first.decisions[0], Decision)
     assert first.decisions[0].approved is True
     assert subject.is_approved("p01-two-buttons") is True
-    assert fake.answered[0]["text"] == "Approved"
+    assert fake.answered[0]["text"] == "Принято"
 
     fake.press(proposal().callback_data(APPROVE), OWNER, press_id="cb2")
     second = subject.poll()
@@ -264,10 +260,10 @@ def action_proposal(proposal_id: str = "a01-mail-to-db") -> Proposal:
 
 def test_an_action_asks_in_the_owners_words():
     text = render(action_proposal())
-    assert "What I found: " in text
-    assert "What I propose to do: " in text
-    assert "What I need from you: " in text
-    assert "Where it lands: база приёма, лист 10-А" in text
+    assert "Что я нашёл: " in text
+    assert "Что предлагаю сделать: " in text
+    assert "Что мне нужно от тебя: " in text
+    assert "Куда это попадёт: база приёма, лист 10-А" in text
     assert "Ветка:" not in text
     assert "\u2014" not in text
 
@@ -311,60 +307,3 @@ def test_a_refused_press_is_recorded_too(tmp_path):
     assert records[-1][0] == "proposal_refused"
     assert records[-1][1]["reason"] == "not_the_owner"
     assert records[-1][1]["by_user_id"] == STRANGER
-
-
-# --- the three answers of one question: confirm, reject, or the owner's words ---
-
-
-def test_words_are_an_answer_but_never_an_approval():
-    spoken = answer_from_text(proposal().proposal_id, "да, только не сейчас",
-                              by_user_id=OWNER, at=1)
-    assert spoken.outcome == FREE_TEXT
-    assert spoken.approves is False
-    assert spoken.answered is False
-
-
-def test_a_free_text_answer_carries_the_words_and_the_re_ask_hint():
-    spoken = answer_from_text("p05-free-text", "не сейчас, я занят", by_user_id=OWNER, at=7)
-    view = spoken.for_manager()
-    assert view["answered"] is False
-    assert view["text"] == "не сейчас, я занят"
-    assert view["instruction"]
-    assert "never an approval" in view["instruction"]
-
-
-def test_a_press_is_an_answer_and_carries_no_words():
-    pressed = answer_from_decision(
-        Decision(proposal_id="p05-free-text", verdict=APPROVE, by_user_id=OWNER, at=9))
-    assert pressed.approves is True
-    assert pressed.answered is True
-    assert pressed.for_manager() == {"proposal_id": "p05-free-text",
-                                     "outcome": APPROVE, "answered": True}
-
-
-def test_a_reject_is_an_answer_but_not_an_approval():
-    pressed = answer_from_decision(
-        Decision(proposal_id="p05-free-text", verdict=REJECT, by_user_id=OWNER, at=9))
-    assert pressed.answered is True
-    assert pressed.approves is False
-
-
-def test_an_empty_text_answer_is_refused():
-    with pytest.raises(ApprovalError):
-        answer_from_text("p05-free-text", "   ", by_user_id=OWNER, at=1)
-
-
-def test_a_button_answer_cannot_smuggle_text():
-    with pytest.raises(ApprovalError):
-        Answer(proposal_id="p05-free-text", outcome=APPROVE, by_user_id=OWNER, at=1,
-               text="и ещё вот что")
-
-
-def test_an_unknown_outcome_is_refused():
-    with pytest.raises(ApprovalError):
-        Answer(proposal_id="p05-free-text", outcome="maybe", by_user_id=OWNER, at=1)
-
-
-def test_an_unusable_proposal_id_is_refused():
-    with pytest.raises(ApprovalError):
-        answer_from_text("не годится", "ок", by_user_id=OWNER, at=1)

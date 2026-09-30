@@ -1,23 +1,22 @@
 """The owner's phone is the way in: plain words become work.
 
-A person who is not a programmer writes the bot in ordinary words. That message
+A person who is not a programmer writes the bot in ordinary Russian. That message
 is not a chat line to be answered and forgotten: it is recorded, dated, in the
 same graph that holds every other fact about the work, and the job is taken from
 there. The graph is the truth, so a task survives the restart of anything else.
 
 This module owns the Telegram connection, and it is the only thing that does.
-Telegram moves its update offset on every read, so two independent readers of
-the same bot steal each other's updates: the second one never sees what the first
-one consumed. Here everything arrives through one place, then splits: a message
-is work handed in by the owner, a button press is an answer to a question the
-agent already asked, and it goes to the approval channel that owns decisions,
-and a written answer to an open question closes that question as free_text.
+Telegram moves its update offset on every read, so two independent readers of the
+same bot steal each other's updates: the second one never sees what the first one
+consumed. Here everything arrives through one place, then splits: a message is
+work handed in by the owner, a button press is an answer to a question the agent
+already asked, and it goes to the approval channel that owns decisions.
 
-What the owner reads is English and nothing else (PLAN-V2 decision 6): no tool
-names, no field names, no branch names, no trace of how the work is done.
-Technical detail (which request failed, which record was written) goes into the
-graph and the log, where it belongs, because the person on the phone is deciding
-about his own work, not debugging our machinery.
+What the owner reads is Russian and nothing else: no tool names, no field names,
+no branch names, no trace of how the work is done. Technical detail (which request
+failed, which record was written) goes into the graph and the log, where it
+belongs, because the person on the phone is deciding about his own work, not
+debugging our machinery.
 
 Only the owner's own account hands in work. A stranger is not answered at all:
 there is nothing to say to him, and nothing he should learn about this machine.
@@ -64,31 +63,29 @@ REMEMBERED_UPDATES = 200
 # --------------------------------------------------------------------------- #
 
 HELP_TEXT = (
-    "Hello. I am the assistant: I work on this computer and remember everything I "
-    "have done, as records of the work.\n"
-    "Write in plain words what needs to be done. I will take it on and tell you "
-    "when I reach the point where your decision is needed."
+    "Здравствуй. Я помощник: работаю на этом компьютере и помню всё, что уже "
+    "делал, записями о работе.\n"
+    "Напиши простыми словами, что нужно сделать. Я возьму это в работу и скажу, "
+    "когда дойду до места, где нужно твоё решение."
 )
 TAKEN_TEXT = (
-    "Taken on: \u201c{text}\u201d.\n"
-    "If your decision is needed, I will ask with buttons right here."
+    "Взял в работу: «{text}».\n"
+    "Если понадобится твоё решение, спрошу кнопками прямо здесь."
 )
-ANSWERED_TEXT = (
-    "Answer received, the question is closed: \u201c{text}\u201d.\n"
-    "I did not press the button: words alone change nothing."
+DUPLICATE_TEXT = "Это сообщение я уже принял, второй раз не беру."
+EMPTY_TEXT = (
+    "В сообщении нет текста. Напиши словами, что нужно сделать."
 )
-DUPLICATE_TEXT = "I already accepted this message and will not take it twice."
-EMPTY_TEXT = "There is no text in the message. Write in words what needs doing."
-NOTHING_TO_DO = "Nothing is in work right now."
-IN_WORK_HEAD = "In work right now:"
-IN_WORK_LINE = "\u2022 {text}"
+NOTHING_TO_DO = "Сейчас в работе ничего нет."
+IN_WORK_HEAD = "Сейчас в работе:"
+IN_WORK_LINE = "• {text}"
 TROUBLE_TEXT = (
-    "I could not accept the task: my memory is not answering right now. "
-    "I will try again in a minute."
+    "Не смог принять задачу: моя память сейчас не отвечает. "
+    "Попробую снова через минуту."
 )
 
-HELP_WORDS = {"/start", "/help", "help", "start"}
-LIST_WORDS = {"/tasks", "/what", "tasks", "what's in progress", "what is in progress"}
+HELP_WORDS = {"/start", "/help", "/помощь", "помощь", "начать", "/начать"}
+LIST_WORDS = {"/задачи", "/что", "что в работе", "задачи", "что делаешь"}
 
 
 class EntryError(RuntimeError):
@@ -128,7 +125,6 @@ class EntryRun:
     ignored: list[dict] = field(default_factory=list)
     decisions: list = field(default_factory=list)
     refusals: list[dict] = field(default_factory=list)
-    text_answers: list = field(default_factory=list)
     next_offset: Optional[int] = None
 
 
@@ -292,7 +288,7 @@ class TelegramGateway:
         try:
             return any(row["task_id"] == task.task_id for row in self.tasks())
         except EntryError:
-            # The graph is unreachable. The caller must not answer "taken",
+            # The graph is unreachable. The caller must not answer "принято",
             # because nothing was taken: the honest path is the error message.
             raise
 
@@ -314,7 +310,7 @@ class TelegramGateway:
             },
         )
         if not answer.get("ok"):
-            raise EntryError(f"Telegram refused the read: {answer.get('description')}")
+            raise EntryError(f"Телеграм отказал в чтении сообщений: {answer.get('description')}")
         updates = answer.get("result") or []
         run = EntryRun()
         for update in updates:
@@ -351,7 +347,7 @@ class TelegramGateway:
              "allowed_updates": ["message", "callback_query"]},
         )
         if not answer.get("ok"):
-            raise EntryError(f"Telegram refused the first read: {answer.get('description')}")
+            raise EntryError(f"Телеграм отказал в первом чтении: {answer.get('description')}")
         rows = answer.get("result") or []
         if rows:
             newest = max(int(row.get("update_id") or 0) for row in rows)
@@ -375,15 +371,11 @@ class TelegramGateway:
         if not text:
             run.replies.append(self.say(EMPTY_TEXT, message=message))
             return
-        lowered = text.lower()
-        if lowered in HELP_WORDS or lowered.rstrip("!") in HELP_WORDS:
+        if text.lower() in HELP_WORDS:
             run.replies.append(self.say(HELP_TEXT, message=message))
             return
-        if lowered in LIST_WORDS:
+        if text.lower() in LIST_WORDS:
             run.replies.append(self.say(self.list_text(), message=message))
-            return
-        routed = self._route_to_open_question(text, update_id, by_user, run)
-        if routed:
             return
         task = IncomingTask(update_id=update_id, text=text, at=self._now(),
                             by_user_id=by_user)
@@ -401,44 +393,6 @@ class TelegramGateway:
         self._note("task_taken", {"task_id": task.task_id, "update_id": update_id,
                                   "at": task.at})
 
-    def _route_to_open_question(self, text: str, update_id: int, by_user: int,
-                                run: EntryRun) -> bool:
-        """A written answer closes the open question it belongs to.
-
-        Words are context, never a verdict: the question closes as ``free_text``,
-        what the owner said travels to the manager both as the question's answer
-        and as an ordinary conversation turn, and nothing here becomes a task.
-        Only a button press can ever approve.
-        """
-        if self.channel is None:
-            return False
-        try:
-            open_ids = self.channel.open_proposals()
-        except approval.ApprovalError as exc:
-            self._log_line(f"entry: could not read open questions: {exc}")
-            return False
-        if not open_ids:
-            return False
-        proposal_id = open_ids[-1]
-        try:
-            answer = self.channel.answer_with_text(
-                proposal_id, text, by_user_id=by_user, at=self._now()
-            )
-        except approval.ApprovalError as exc:
-            # Not the owner, or the question closed in the same batch: fall
-            # through so the words are not swallowed by a closed door.
-            self._log_line(f"entry: text refused for {proposal_id}: {exc}")
-            return False
-        self._accepted[str(update_id)] = f"{proposal_id}:{update_id}"
-        self._save()
-        run.text_answers.append(answer)
-        run.replies.append(self.say(ANSWERED_TEXT.format(text=text), message=None))
-        self._note("question_answered_text", {
-            "proposal_id": proposal_id, "update_id": update_id,
-            "outcome": answer.outcome, "at": answer.at,
-        })
-        return True
-
     def list_text(self) -> str:
         rows = self.tasks()
         if not rows:
@@ -451,7 +405,7 @@ class TelegramGateway:
     # -- answering the phone ------------------------------------------------ #
 
     def say(self, text: str, message: Optional[dict] = None) -> str:
-        """Send one owner-facing line to the phone. Returns the text that was sent."""
+        """Send one Russian line to the owner. Returns the text that was sent."""
         payload: dict = {
             "chat_id": self.chat_id,
             "text": text,
@@ -464,10 +418,10 @@ class TelegramGateway:
         except EntryError as exc:
             # The reply is cosmetic compared with the task: the work is already
             # recorded, so a failed answer is logged, not raised.
-            self._log_line(f"entry: the reply did not go out: {exc.technical}")
+            self._log_line(f"вход: ответ не ушёл: {exc.technical}")
             return text
         if not answer.get("ok"):
-            self._log_line(f"entry: Telegram refused the reply: {answer.get('description')}")
+            self._log_line(f"вход: Телеграм отказал в ответе: {answer.get('description')}")
         return text
 
     def _build_channel(self) -> Optional[approval.TelegramApprovalChannel]:
@@ -496,7 +450,7 @@ class TelegramGateway:
                 verified=True,
             )
         except Exception as exc:
-            self._log_line(f"entry: could not record \"{kind}\": {exc}")
+            self._log_line(f"вход: не удалось записать «{kind}»: {exc}")
 
     def _log_line(self, line: str) -> None:
         if self._log is not None:
@@ -515,7 +469,7 @@ class TelegramGateway:
             try:
                 self.run_once()
             except EntryError as exc:
-                self._log_line(f"entry: failure in the loop: {exc.technical}")
+                self._log_line(f"вход: сбой в работе: {exc.technical}")
             time.sleep(pause)
 
 
@@ -525,7 +479,7 @@ def gateway_from_env(**kwargs) -> TelegramGateway:
     if not owner:
         raise EntryError(
             f"no owner id: set {OWNER_ENV} in the environment or a .env above {PROJECT}",
-            human="The assistant is not configured: I do not know whose messages to accept.",
+            human="Помощник не настроен: не знаю, чьи сообщения принимать.",
         )
     return TelegramGateway(owner_user_id=int(owner), **kwargs)
 
@@ -536,20 +490,20 @@ def main(argv: Optional[list[str]] = None) -> int:
     try:
         gateway = gateway_from_env()
     except EntryError as exc:
-        print(f"Failure: {exc.technical}", file=sys.stderr)
+        print(f"Сбой: {exc.technical}", file=sys.stderr)
         return 1
     if "--prime" in args:
         offset = gateway.prime()
-        print(f"first read done, message offset: {offset}")
+        print(f"первое чтение сделано, отсечка сообщений: {offset}")
         return 0
     if once:
         run = gateway.run_once()
-        print(f"tasks taken: {len(run.tasks)}  ignored: {len(run.ignored)}  "
-              f"decided: {len(run.decisions)}  refusals: {len(run.refusals)}")
+        print(f"взято задач: {len(run.tasks)}  пропущено: {len(run.ignored)}  "
+              f"решено: {len(run.decisions)}  отказов: {len(run.refusals)}")
         return 0
     if gateway._offset is None:
         gateway.prime()
-    gateway._log_line("entry: watching for your messages")
+    gateway._log_line("вход: слежу за твоими сообщениями")
     gateway.run_forever()
     return 0
 

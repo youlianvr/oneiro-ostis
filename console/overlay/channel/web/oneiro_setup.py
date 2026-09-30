@@ -62,18 +62,18 @@ def model_state(config: dict) -> dict:
     if bot_type.startswith(CUSTOM_PREFIX):
         entry = custom_provider(config, bot_type[len(CUSTOM_PREFIX):])
         if entry is None:
-            state["detail"] = f"provider {bot_type} is not in config.json"
+            state["detail"] = f"провайдер {bot_type} не найден в config.json"
             return state
         state["provider"] = str(entry.get("name") or bot_type)
         state["base_url"] = str(entry.get("api_base") or "").strip()
         state["key_set"] = bool(str(entry.get("api_key") or "").strip())
         state["model"] = str(entry.get("model") or state["model"]).strip()
-        absent = [name for name, ok in (("address", bool(state["base_url"])),
-                                        ("key", state["key_set"]),
-                                        ("model", bool(state["model"]))) if not ok]
+        absent = [name for name, ok in (("адрес", bool(state["base_url"])),
+                                        ("ключ", state["key_set"]),
+                                        ("модель", bool(state["model"]))) if not ok]
         state["configured"] = not absent
-        state["detail"] = (f"provider \u201c{state['provider']}\u201d" if not absent else
-                           "provider \u201c{}\u201d is missing: {}".format(state["provider"], ", ".join(absent)))
+        state["detail"] = (f"провайдер «{state['provider']}»" if not absent else
+                           "у провайдера «{}» нет: {}".format(state["provider"], ", ".join(absent)))
         return state
 
     # A builtin provider (or none chosen yet): the console stores its credentials
@@ -85,9 +85,9 @@ def model_state(config: dict) -> dict:
                   and str(config.get(key) or "").strip())
     state["configured"] = bool(keys)
     state["key_set"] = bool(keys)
-    state["provider"] = bot_type or "the builtin provider"
-    state["detail"] = (f"builtin provider key: {', '.join(keys)}" if keys else
-                       "neither a custom provider nor a builtin key")
+    state["provider"] = bot_type or "встроенный провайдер"
+    state["detail"] = (f"ключ встроенного провайдера: {', '.join(keys)}" if keys else
+                       "нет ни своего провайдера, ни ключа встроенного")
     return state
 
 
@@ -127,7 +127,7 @@ def panel_state(base: str, timeout: float = 5.0) -> dict:
             document = json.loads(response.read().decode("utf-8"))
     except (OSError, ValueError) as error:
         return {"reachable": False, "base": base, "settings_path": "", "llm": {},
-                "graph": {}, "detail": f"the panel did not answer ({base}): {type(error).__name__}"}
+                "graph": {}, "detail": f"панель не ответила ({base}): {type(error).__name__}"}
 
     rows = {row.get("key"): row for row in document.get("settings") or [] if isinstance(row, dict)}
 
@@ -143,7 +143,7 @@ def panel_state(base: str, timeout: float = 5.0) -> dict:
                 for name in ("base_url", "api_key", "model")},
         "graph": {"host": str(value("graph.host", "localhost")),
                   "port": value("graph.port", 8090)},
-        "detail": "the panel answers",
+        "detail": "панель отвечает",
     }
 
 
@@ -172,25 +172,25 @@ def graph_state(host: str, port, web_port=GRAPH_WEB_PORT) -> dict:
         "port": machine_port,
         "reachable": machine,
         "web_reachable": web,
-        "detail": (f"sc-machine at {host}:{machine_port} answers" if machine
-                   else f"sc-machine at {host}:{machine_port} does not answer"),
+        "detail": (f"sc-machine на {host}:{machine_port} отвечает" if machine
+                   else f"sc-machine на {host}:{machine_port} не отвечает"),
     }
 
 
 def start_graph(project_dir: str, timeout: float = 240.0) -> dict:
     """Bring the stack up the way the installer does, and report the last words."""
     if not project_dir or not os.path.isdir(project_dir):
-        return {"ok": False, "detail": "project directory not found (ONEIRO_PROJECT not set)"}
+        return {"ok": False, "detail": "не найден каталог проекта (ONEIRO_PROJECT не задан)"}
     try:
         result = subprocess.run(["docker", "compose", "up", "-d"], cwd=project_dir,
                                 capture_output=True, text=True, timeout=timeout)
     except FileNotFoundError:
-        return {"ok": False, "detail": "docker not found in PATH"}
+        return {"ok": False, "detail": "docker не найден в PATH"}
     except subprocess.TimeoutExpired:
-        return {"ok": False, "detail": "docker compose did not answer in time"}
+        return {"ok": False, "detail": "docker compose не ответил за отведённое время"}
     tail = ((result.stdout or "") + (result.stderr or "")).strip().splitlines()[-3:]
     return {"ok": result.returncode == 0,
-            "detail": " | ".join(tail) or f"return code {result.returncode}"}
+            "detail": " | ".join(tail) or f"код возврата {result.returncode}"}
 
 
 # ------------------------------------------------------------------ the answer
@@ -201,23 +201,23 @@ def readiness(state: dict) -> dict:
     if not state["model"]["configured"]:
         missing.append({
             "id": "model",
-            "title": "No chat model is configured",
+            "title": "Модель для чата не настроена",
             "detail": state["model"]["detail"],
-            "fix": "Provide an OpenAI-compatible provider address, key and model name.",
+            "fix": "Укажите адрес OpenAI-совместимого провайдера, ключ и имя модели.",
         })
     if not state["graph"]["reachable"]:
         missing.append({
             "id": "graph",
-            "title": "The graph stack does not answer",
+            "title": "Стек графа не отвечает",
             "detail": state["graph"]["detail"],
-            "fix": "Bring it up with the button below (docker compose up -d in the project folder).",
+            "fix": "Поднимите его кнопкой ниже (docker compose up -d в папке проекта).",
         })
     if not state["panel"]["reachable"]:
         missing.append({
             "id": "panel",
-            "title": "The Oneiro panel does not answer",
+            "title": "Панель Oneiro не отвечает",
             "detail": state["panel"]["detail"],
-            "fix": "Restart Oneiro with the shortcut: the launcher raises the panel together with the console.",
+            "fix": "Перезапустите Oneiro ярлыком: лаунчер поднимает панель вместе с консолью.",
         })
     return {"ready": not missing, "missing": missing}
 
@@ -283,19 +283,19 @@ def verify_model(base_url: str, api_key: str, model: str, timeout: float = 25.0)
     api_key = str(api_key or "").strip()
     if not base or not model or not api_key:
         return {"ok": False, "via": "", "status": None,
-                "detail": "an address, a key and a model are needed"}
+                "detail": "нужны адрес, ключ и модель"}
 
     code, body = _http_json(base + "/chat/completions", api_key,
                             {"model": model, "messages": [{"role": "user", "content": "ping"}],
                              "max_tokens": 1}, timeout)
     if code == 200:
         return {"ok": True, "via": "chat/completions", "status": 200,
-                "detail": f"the model \u201c{model}\u201d answered"}
+                "detail": f"модель «{model}» ответила"}
 
     list_code, list_body = _http_json(base + "/models", api_key, None, timeout)
     if list_code == 200:
         return {"ok": True, "via": "models", "status": 200,
-                "detail": "the provider accepted the key and listed models (without querying the model)"}
+                "detail": "провайдер принял ключ и перечислил модели (без запроса к модели)"}
 
     return {"ok": False, "via": "chat/completions", "status": code,
-            "detail": _shorten(body) or _shorten(list_body) or "the provider did not answer"}
+            "detail": _shorten(body) or _shorten(list_body) or "провайдер не ответил"}

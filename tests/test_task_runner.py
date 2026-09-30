@@ -153,15 +153,15 @@ def test_work_ends_at_a_question_with_two_buttons():
     assert proposal_id == "keep-task-12-a1"
     assert len(channel.sent) == 1
     message = approval.render(channel.sent[0])
-    assert "A change is ready for the job: \u201cпосмотри, что не доделано\u201d" in message
-    assert "What I want to change: a small change in the assistant's work" in message
-    assert "without your press, nothing changes" in message
+    assert "Готово изменение по делу: «посмотри, что не доделано»" in message
+    assert "Что я хочу изменить: небольшая правка в работе помощника" in message
+    assert "без твоего нажатия ничего не изменится" in message
     assert "task_started" in bridge.kinds()
     asked = bridge.of("task_question")[0]
     assert asked.payload["proposal_id"] == "keep-task-12-a1"
     assert asked.payload["packet"]["branch"] == "agent/tg12-c1"
     said = [text for kind, text in calls if kind == "said"]
-    assert said[0].startswith("Taken on")
+    assert said[0].startswith("Взялся за дело")
 
 
 def test_a_cycle_that_produced_no_packet_is_reported_honestly():
@@ -173,11 +173,11 @@ def test_a_cycle_that_produced_no_packet_is_reported_honestly():
     failed = bridge.of("task_failed")[0]
     assert failed.payload["task_id"] == "task-12"
     said = [text for kind, text in calls if kind == "said"]
-    assert "the change could not be prepared" in said[-1]
+    assert "подготовить изменение не вышло" in said[-1]
 
 
 def test_a_second_attempt_does_not_greet_the_owner_again():
-    """A process that restarts mid-work must not repeat "taken on"."""
+    """A process that restarts mid-work must not repeat "взялся за дело"."""
     bridge = FakeBridge([
         task_record(),
         record("task_started", {"task_id": "task-12", "attempt": 1}),
@@ -187,7 +187,7 @@ def test_a_second_attempt_does_not_greet_the_owner_again():
     runner.work(runner.states()["task-12"])
 
     said = [text for kind, text in calls if kind == "said"]
-    assert not any(text.startswith("Taken on") for text in said)
+    assert not any(text.startswith("Взялся за дело") for text in said)
 
 
 def test_a_job_that_failed_once_is_worked_again():
@@ -246,7 +246,7 @@ def test_the_last_failure_does_not_promise_another_attempt():
     assert runner.work(runner.states()["task-12"]) is None
 
     said = [text for kind, text in calls if kind == "said"]
-    assert "not taking it on again today" in said[-1]
+    assert "Больше сегодня за это не берусь" in said[-1]
 
 
 def test_a_packet_the_graph_does_not_know_is_not_claimed_as_work():
@@ -276,7 +276,7 @@ def test_an_approved_verdict_closes_the_job_and_says_so():
     assert done.payload["verdict"] == "approve"
     assert done.role == "human"
     said = [text for kind, text in calls if kind == "said"]
-    assert "not merged into the main work" in said[-1]
+    assert "в основную работу не влито" in said[-1]
 
 
 def test_a_rejected_verdict_closes_the_job_and_says_so():
@@ -290,7 +290,7 @@ def test_a_rejected_verdict_closes_the_job_and_says_so():
     assert runner.collect(runner.states()["task-12"]) == "reject"
     assert bridge.of("task_done")[0].payload["verdict"] == "reject"
     said = [text for kind, text in calls if kind == "said"]
-    assert "was put aside" in said[-1]
+    assert "оставил в стороне" in said[-1]
 
 
 def test_a_job_that_still_waits_is_not_closed_twice():
@@ -333,12 +333,12 @@ VISIBLE = {
 }
 
 
-def test_everything_the_owner_reads_from_the_runner_is_english():
-    banned = re.compile(r"\b(graph|MCP|JSON|API|branch|commit|PR)\b", re.IGNORECASE)
+def test_everything_the_owner_reads_from_the_runner_is_russian():
     for name, text in VISIBLE.items():
-        filled = text.format(text="a message") if "{text}" in text else text
-        assert not re.findall(r"[\u0400-\u04FF]", filled), f"{name} carries Cyrillic"
-        assert not banned.search(filled), f"{name} names machinery"
+        filled = text.format(text="сообщение") if "{text}" in text else text
+        assert not re.findall(r"[A-Za-z]", filled), f"{name} carries Latin letters"
+        for word in ("граф", "MCP", "JSON", "API", "ветка", "commit", "PR"):
+            assert word.lower() not in filled.lower(), f"{name} names {word}"
 
 
 def test_the_owner_is_told_which_part_changes_not_which_file():
@@ -350,17 +350,17 @@ def test_the_owner_is_told_which_part_changes_not_which_file():
     message = approval.render(channel.sent[0])
     assert "python/life_loop.py" not in message
     assert ".py" not in message
-    assert "the assistant's daily round of work" in message
+    assert "ежедневный круг работы помощника" in message
 
 
 def test_an_unknown_file_becomes_words_instead_of_a_path():
     assert runner_module.human_part(
-        "projects/ostis/oneiro-ostis/python/new_thing.py") == "an inner part of the assistant"
+        "projects/ostis/oneiro-ostis/python/new_thing.py") == "внутренняя часть помощника"
     assert runner_module.human_part(
-        "projects/x/tests/test_swarm_protocol.py") == "the assistant's checks"
+        "projects/x/tests/test_swarm_protocol.py") == "проверки помощника"
     assert runner_module.human_parts(
         ["a/python/swarm.py", "b/python/swarm.py", "c/python/worker.py"]) == [
-            "how the roles agree on work", "the assistant working with the project's files"]
+            "согласование работы ролей", "работа помощника с файлами проекта"]
 
 
 def test_the_owner_is_never_told_an_internal_number():

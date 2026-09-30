@@ -10,9 +10,9 @@ gateway when the owner taps the button, and this module reads that record. Two
 things follow, and both are the point: the work cannot approve itself, and the
 decision survives a restart, because the graph is the memory.
 
-What the owner reads is English, in his own terms (PLAN-V2 decision 6): no
-branch names, no paths in the sentence, no tool names. He is told what was
-found, what it gives and what it can break, and then he presses a button.
+What the owner reads is Russian, in his own terms: no branch names, no paths in
+the sentence, no tool names. He is told what was found, what it gives and what it
+can break, and then he presses a button.
 """
 
 from __future__ import annotations
@@ -52,22 +52,22 @@ MAX_ATTEMPTS = 3
 # slashes and extensions is our bookkeeping, not his decision. An unknown file
 # falls back to a general phrase rather than a path.
 PART_NAMES = {
-    "approval.py": "the questions to you and your answers",
-    "bridge.py": "the assistant's memory",
-    "heartbeat.py": "one step of the assistant's work",
-    "life_loop.py": "the assistant's daily round of work",
-    "llm.py": "how the assistant talks to the models",
-    "replay.py": "replaying past runs",
-    "roles.py": "the assistant's roles",
-    "skills_index.py": "searching for ready-made skills",
-    "swarm.py": "how the roles agree on work",
-    "task_runner.py": "taking tasks from your phone",
-    "telegram_entry.py": "the link to your phone",
-    "worker.py": "the assistant working with the project's files",
-    "worktree_runner.py": "a separate copy for changes",
+    "approval.py": "вопросы к тебе и твои ответы",
+    "bridge.py": "память помощника",
+    "heartbeat.py": "один шаг работы помощника",
+    "life_loop.py": "ежедневный круг работы помощника",
+    "llm.py": "обращение помощника к моделям",
+    "replay.py": "повтор прошлых прогонов",
+    "roles.py": "роли помощника",
+    "skills_index.py": "поиск готовых умений",
+    "swarm.py": "согласование работы ролей",
+    "task_runner.py": "приём задач с твоего телефона",
+    "telegram_entry.py": "связь с твоим телефоном",
+    "worker.py": "работа помощника с файлами проекта",
+    "worktree_runner.py": "отдельная копия для изменений",
 }
-UNKNOWN_PART = "an inner part of the assistant"
-TESTS_PART = "the assistant's checks"
+UNKNOWN_PART = "внутренняя часть помощника"
+TESTS_PART = "проверки помощника"
 
 
 def human_part(path: str) -> str:
@@ -91,25 +91,23 @@ def human_parts(paths, limit: int = 3) -> list[str]:
     return named
 
 STARTED_TEXT = (
-    "Taken on: \u201c{text}\u201d.\n"
-    "Looking at what can be improved here. When I find something, I will ask for "
-    "your decision with buttons."
+    "Взялся за дело: «{text}».\n"
+    "Смотрю, что здесь можно поправить. Найду — спрошу твоё решение кнопками."
 )
 FAILED_TEXT = (
-    "The job \u201c{text}\u201d: the change could not be prepared, nothing in the main "
-    "work was touched. I will try another attempt."
+    "Дело «{text}»: подготовить изменение не вышло, в основной работе ничего не "
+    "менял. Попробую другой заход."
 )
 FAILED_LAST_TEXT = (
-    "The job \u201c{text}\u201d: the change could not be prepared, nothing in the main "
-    "work was touched. I am not taking it on again today — write if you want me "
-    "to try again."
+    "Дело «{text}»: подготовить изменение не вышло, в основной работе ничего не "
+    "менял. Больше сегодня за это не берусь — напиши, если попробовать снова."
 )
 APPROVED_TEXT = (
-    "Approved. The change sits in a separate copy and is not merged into the main "
-    "work: say so separately if you want it merged."
+    "Принято. Изменение лежит в отдельной копии и в основную работу не влито: "
+    "скажи отдельно, если нужно влить."
 )
 REJECTED_TEXT = (
-    "Rejected. The change was put aside; it did not reach the main work."
+    "Отклонено. Изменение оставил в стороне, в основную работу оно не попало."
 )
 
 
@@ -270,7 +268,7 @@ class TaskRunner:
                                        "reason": reason[:400]})
             last = attempt >= MAX_ATTEMPTS
             self._say((FAILED_LAST_TEXT if last else FAILED_TEXT).format(text=state.text))
-            self.echo(f"task {state.task_id}: the change was not assembled ({reason[:120]})")
+            self.echo(f"задача {state.task_id}: изменение не собрано ({reason[:120]})")
             return None
         proposal_id = proposal_id_for(state.task_id, attempt)
         # The sentence about what changes is composed here, from the parts of the
@@ -279,15 +277,15 @@ class TaskRunner:
         # English word would reach the owner's phone. His own words are the only
         # model-adjacent text he ever reads back.
         parts = human_parts(packet.get("changed_paths") or ())
-        changed = ("a small change in the assistant's work: " + ", ".join(parts)
-                   if parts else "a small change in the assistant's work")
+        changed = ("небольшая правка в работе помощника: " + ", ".join(parts)
+                   if parts else "небольшая правка в работе помощника")
         proposal = approval.Proposal.change(
             proposal_id=proposal_id,
-            title=f"A change is ready for the job: \u201c{state.text}\u201d",
+            title=f"Готово изменение по делу: «{state.text}»",
             changed=changed,
-            gives="one small improvement in the assistant's work, verified by the checks",
-            risks="if the check behaves differently on another machine, the change is not "
-                  "merged into the main work and there is nothing to roll back",
+            gives="одно небольшое улучшение в работе помощника, проверенное тестами",
+            risks="если проверка на другой машине поведёт себя иначе, изменение в основную "
+                  "работу не влито и откатывать нечего",
             branch=str(packet.get("branch") or ""),
             files=(),
             evidence=tuple(self._evidence(packet)),
@@ -333,8 +331,8 @@ class TaskRunner:
         backed by the record the loop wrote, not by this line.
         """
         if not (packet.get("tests") or ()):
-            return ["the change was verified by one of the project's allowed checks"]
-        return ["ran the project's checks, all passed"]
+            return ["изменение проверено одной из разрешённых проверок проекта"]
+        return ["прогнал проверки проекта, все прошли"]
 
     # -- the verdict ------------------------------------------------------- #
 
@@ -347,7 +345,7 @@ class TaskRunner:
                                  "proposal_id": state.question,
                                  "verdict": verdict})
         self._say(APPROVED_TEXT if verdict == approval.APPROVE else REJECTED_TEXT)
-        self.echo(f"task {state.task_id}: the owner answered \"{verdict}\"")
+        self.echo(f"задача {state.task_id}: владелец ответил «{verdict}»")
         return verdict
 
     # -- the project's own loop as the worker ------------------------------ #
@@ -371,14 +369,14 @@ class TaskRunner:
         token = approval._walk_env(None, telegram_entry.TOKEN_ENV)
         owner = approval._walk_env(None, telegram_entry.OWNER_ENV)
         if not token or not owner:
-            self.echo(f"no bot access or no owner id, the message was left unsent: {text}")
+            self.echo(f"нет доступа к боту или не задан владелец, сообщение осталось непосланным: {text}")
             return
         call = telegram_entry.telegram_transport(token)
         try:
             call("sendMessage", {"chat_id": int(owner), "text": text,
                                  "disable_web_page_preview": True})
         except Exception as exc:  # noqa: BLE001 - the record already holds the truth
-            self.echo(f"could not write to the owner: {exc}")
+            self.echo(f"не удалось написать владельцу: {exc}")
 
     # -- the loop ---------------------------------------------------------- #
 
@@ -401,7 +399,7 @@ class TaskRunner:
             try:
                 self.tick()
             except Exception as exc:  # noqa: BLE001 - a runner must not die silently
-                self.echo(f"a step failed: {exc}")
+                self.echo(f"шаг не удался: {exc}")
             time.sleep(pause)
 
 
@@ -449,9 +447,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     runner = runner_from_env()
     if "--once" in args:
         result = runner.tick()
-        print(f"task work: {result['moved'] or 'nothing to do'}")
+        print(f"работа с задачей: {result['moved'] or 'делать нечего'}")
         return 0
-    runner.echo("watching the memory: waiting for tasks from the phone")
+    runner.echo("слежу за памятью: жду задачи с телефона")
     runner.run_forever()
     return 0
 

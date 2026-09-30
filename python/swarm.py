@@ -110,13 +110,7 @@ class SwarmCoordinator:
             (offered,) if isinstance(offered, Proposal) else tuple(offered)
         )
         if not options:
-            # v2, "less wood": an empty offer is a degraded cycle, not a dead
-            # one. The protocol still refuses to invent a proposal here — the
-            # caller decides what a degraded cycle means — but the error says
-            # what to do instead of only that it failed.
-            raise SwarmProtocolError(
-                "researcher returned no proposals; close the cycle degraded or retry"
-            )
+            raise SwarmProtocolError("researcher returned no proposals")
         for option in options:
             self._validate_proposal(option)
         events: list[dict] = []
@@ -139,9 +133,6 @@ class SwarmCoordinator:
 
         if decision.action != "assign_worker" or chosen is None:
             reason = f"manager action: {decision.action}"
-            # An answer closes the cycle as a conversational turn, not as a
-            # decision about work: it is recorded as its own kind so the
-            # journal shows the manager spoke rather than chose.
             self._emit(events, decision.action, "manager", {
                 "proposal_id": None,
                 "reason": decision.reason,
@@ -198,10 +189,7 @@ class SwarmCoordinator:
                            options: Sequence[Proposal]) -> None:
         if not decision.reason:
             raise SwarmProtocolError("manager decision needs a reason")
-        if decision.action not in ("assign_worker", "answer"):
-            return
-        if decision.action == "answer":
-            # An answer is prose for the owner; it chooses nothing.
+        if decision.action != "assign_worker":
             return
         ids = {option.proposal_id for option in options}
         if decision.chosen is None:

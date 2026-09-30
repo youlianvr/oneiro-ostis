@@ -82,10 +82,10 @@ TOOLS = [
     {"type": "function", "function": {
         "name": "finish",
         "description": ("Declare the change complete and give a short summary of what was done. "
-                        "The summary is read by a person who is not a programmer: be honest "
-                        "and specific, in plain words."),
+                        "The summary is read by a person who is not a programmer: plain "
+                        "Russian, no file names, no English, no tool names."),
         "parameters": {"type": "object", "properties": {
-            "summary": {"type": "string", "description": "What changed and why, in plain words."},
+            "summary": {"type": "string", "description": "What changed and why, in Russian."},
         }, "required": ["summary"]},
     }},
 ]
@@ -108,9 +108,9 @@ Rules:
 - Read the files you are about to change before changing them; do not guess their content.
 - Never touch .git or anything outside the worktree.
 - Work in the project subdirectory named in the task; that is where the code and tests live.
-- When the check passes, call finish with a short summary of one or two sentences: honest and
-  specific, in the words a person who is not a programmer would use. That summary is what a human
-  reads later in the record of the work.
+- When the check passes, call finish with a short summary in Russian, one or two sentences, in the
+  words a person who is not a programmer would use: no file names, no English words, no tool names.
+  That summary is what a human reads later in the record of the work.
 """
 
 
@@ -225,7 +225,7 @@ class WorkerSession:
                                  actions=self.actions)
         messages.append({"role": "user", "content":
                          "You are out of steps. Call finish now: one short summary "
-                         "of what you changed and whether the check passes."})
+                         "in Russian of what you changed and whether the check passes."})
         for _ in range(FINISH_GRACE_CALLS):
             reply = self.pool.reply(WORKER_ROLE, messages, tools=TOOLS, budget=self.budget)
             model_calls += 1

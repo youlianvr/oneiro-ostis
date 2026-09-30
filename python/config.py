@@ -42,10 +42,9 @@ SETTINGS_PATH = SETTINGS_DIR / "settings.json"
 class Setting:
     """One declared setting. The registry below is the whole truth about it.
 
-    `label` and `help` are written in the product's user-facing language
-    (English, per PLAN-V2 decision 1: one language for the product). The
-    settings page shows them as they come; only the chrome around them is
-    translated.
+    `label` and `help` are written in the project's user-facing language
+    (Russian, as the dashboard and the telephone bot are). The settings page
+    shows them as they come; only the chrome around them is translated.
     """
 
     key: str
@@ -70,81 +69,81 @@ class Setting:
 SETTINGS: tuple[Setting, ...] = (
     Setting(
         "llm.base_url", "ONEIRO_LLM_BASE_URL", "http://127.0.0.1:20128/v1",
-        "Provider address",
-        "Address of an OpenAI-compatible provider. Any one that understands /chat/completions.",
-        "Model", aliases=("ONEIRO_BASE_URL",),
+        "Адрес провайдера",
+        "Адрес OpenAI-совместимого провайдера. Любой, который понимает /chat/completions.",
+        "Модель", aliases=("ONEIRO_BASE_URL",),
     ),
     Setting(
         "llm.api_key", "ONEIRO_LLM_API_KEY", "",
-        "Provider key",
-        "Empty — looked up in environment variables and in a .env next to the project.",
-        "Model", kind="secret", aliases=("ONEIRO_API_KEY", "OMNIROUTE_API_KEY"),
+        "Ключ провайдера",
+        "Пусто — ищем в переменных окружения и в .env рядом с проектом.",
+        "Модель", kind="secret", aliases=("ONEIRO_API_KEY", "OMNIROUTE_API_KEY"),
     ),
     Setting(
         "llm.model", "ONEIRO_LLM_MODEL", "auto/coding",
-        "Default model",
-        "The model for the researcher and worker roles.",
-        "Model",
+        "Модель по умолчанию",
+        "Модель для ролей исследователя и работника.",
+        "Модель",
     ),
     Setting(
         "graph.host", "ONEIRO_HOST", "localhost",
-        "Graph address",
-        "The address of the OSTIS sc-machine.",
-        "Graph",
+        "Адрес графа",
+        "Адрес sc-машины OSTIS.",
+        "Граф",
     ),
     Setting(
         "graph.port", "ONEIRO_PORT", 8090,
-        "Graph port",
-        "The SCTP port of the OSTIS sc-machine.",
-        "Graph", kind="int",
+        "Порт графа",
+        "SCTP-порт sc-машины OSTIS.",
+        "Граф", kind="int",
     ),
     Setting(
         "dashboard.port", "ONEIRO_DASH_PORT", 8130,
-        "Panel port",
-        "The port of the Oneiro panel and its settings API. Change only before restarting the panel.",
-        "Interface", kind="int",
+        "Порт панели",
+        "Порт панели Oneiro и её API настроек. Меняется только после перезапуска панели.",
+        "Интерфейс", kind="int",
     ),
     Setting(
         "world.seed", "ONEIRO_SEED", "oneiro-0",
-        "Island-world seed",
-        "The same seed is a repeatable experiment. The workshop has its own seed, workshop-0.",
-        "World",
+        "Семя мира-острова",
+        "Одинаковое семя — повторяемый опыт. У мастерской своё семя, workshop-0.",
+        "Мир",
     ),
     Setting(
         "loop.rounds", "ONEIRO_ROUNDS", 4,
-        "Rounds per run",
-        "How many self-improvement rounds one cycle run makes.",
-        "Cycle", kind="int",
+        "Раундов за прогон",
+        "Сколько раундов самоулучшения делает один прогон цикла.",
+        "Цикл", kind="int",
     ),
     Setting(
         "series.seeds", "ONEIRO_SEEDS", 5,
-        "Seeds in a series",
-        "How many seeds one series run walks through. The workshop uses the same.",
-        "Cycle", kind="int",
+        "Семян в серии",
+        "Сколько семян перебирает серия прогонов. У мастерской столько же.",
+        "Цикл", kind="int",
     ),
     Setting(
         "workspace", "ONEIRO_WORKSPACE", "~/.openclaw/workspace",
-        "Working folder",
-        "The folder the agent disposes of, and where it looks for the skill catalog.",
-        "Work", kind="path",
+        "Рабочая папка",
+        "Папка, которой распоряжается агент, и где он ищет каталог навыков.",
+        "Работа", kind="path",
     ),
     Setting(
         "bench.dir", "ONEIRO_BENCH_DIR", "~/.openclaw/bench-memory",
-        "Measurements folder",
-        "Where memory benchmark runs are written.",
-        "Measurements", kind="path",
+        "Папка измерений",
+        "Куда пишутся прогоны бенчмарка памяти.",
+        "Измерения", kind="path",
     ),
     Setting(
         "bench.lme_dir", "ONEIRO_LME_DIR", "~/.openclaw/datasets/longmemeval",
-        "LongMemEval dataset",
-        "Where the dataset lives. It is not in the repository — it is too large.",
-        "Measurements", kind="path",
+        "Набор LongMemEval",
+        "Где лежит набор. В репозитории он не лежит — он слишком большой.",
+        "Измерения", kind="path",
     ),
     Setting(
         "mcp.source", "ONEIRO_MCP_SOURCE", "~/.openclaw/workspace/.mcp.json",
-        "MCP server list",
-        "The file the list of MCP servers for this machine is read from.",
-        "Harness", kind="path",
+        "Список MCP-серверов",
+        "Файл, из которого берётся список MCP-серверов для этой машины.",
+        "Обвязка", kind="path",
     ),
 )
 
@@ -181,7 +180,7 @@ def _read_file() -> dict:
         _load_error = f"{file_path}: {exc}"
         return {}
     if not isinstance(raw, dict):
-        _load_error = f"{file_path}: the top level must be an object"
+        _load_error = f"{file_path}: верхний уровень должен быть объектом"
         return {}
     _load_error = ""
     with _lock:
@@ -204,7 +203,7 @@ def _coerce(setting: Setting, value: Any) -> Any:
             return int(str(value).strip())
         except (TypeError, ValueError):
             raise ValueError(
-                f"{setting.key}: an integer was expected, got {value!r}"
+                f"{setting.key}: ожидалось целое число, получено {value!r}"
             ) from None
     if setting.kind == "bool":
         return str(value).strip().lower() in ("1", "true", "yes", "on")
@@ -321,10 +320,10 @@ def save(patch: dict) -> dict:
     with two mistakes comes back with two messages instead of one at a time.
     """
     if not isinstance(patch, dict):
-        raise ValueError("a settings object was expected")
+        raise ValueError("ожидался объект с настройками")
     unknown = [k for k in patch if k not in _BY_KEY]
     if unknown:
-        raise ValueError(f"unknown settings: {', '.join(sorted(unknown))}")
+        raise ValueError(f"неизвестные настройки: {', '.join(sorted(unknown))}")
     problems: list[str] = []
     coerced: dict[str, Any] = {}
     for key, raw in patch.items():
@@ -391,7 +390,7 @@ def main(argv: list[str] | None = None) -> int:
             patch = {}
             for item in args.set:
                 if "=" not in item:
-                    raise ValueError(f"KEY=VALUE was expected, got {item!r}")
+                    raise ValueError(f"ожидалось KEY=VALUE, получено {item!r}")
                 k, v = item.split("=", 1)
                 patch[k.strip()] = v
             save(patch)
