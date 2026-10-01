@@ -12,6 +12,12 @@ build/
 install/
 ConanPresets.json
 
+# Standalone package build/test environment
+.venv/
+dist/
+*.egg-info/
+.mypy_cache/
+
 # Python
 __pycache__/
 *.pyc

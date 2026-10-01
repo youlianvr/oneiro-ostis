@@ -1,5 +1,35 @@
 # Oneiro-OSTIS
 
+## Full rewrite — current state (2026-10-02)
+
+The English `v2` product is being rebuilt under [MASTER-PLAN](docs/MASTER-PLAN.md).
+Binding decisions are in [GOAL-NATIVE-ONEIRO](docs/GOAL-NATIVE-ONEIRO.md); the actual
+module census, preserved data, tests and blockers are in
+[REWRITE-BASELINE](docs/REWRITE-BASELINE.md). Russian `main` stays separate.
+The missing cloud PR is not a prerequisite.
+
+A standalone **foundation**, not the completed assistant, now installs with:
+
+```bash
+uv sync --locked --group dev
+uv run --locked oneiro doctor  # exit 1 honestly means assistant not ready
+uv run --locked oneiro serve   # manual loopback server, default 9899
+```
+
+The wheel contains `oneiro` and its static assets, not CowAgent/OpenClaw/legacy
+agent engines. It serves same-origin `/`, `/settings`, `/setup`, `/oneiro/` and
+configuration diagnostics. Conversation and the actual graph panel are **not yet
+integrated**: their APIs return 503, never invented results. `ONEIRO_SETTINGS_FILE`
+selects the shared settings file; the old location remains compatible until a
+verified migration. No ancestor `.env` search is performed by the new package.
+`ONEIRO_DATA_DIR` holds process ownership only, not a substitute memory database.
+
+Full native installer, desktop shortcut, graph migration, Linux VM and production
+acceptance remain pending. Historical installation and scientific evidence below
+are preserved for existing installations; they do not certify the new package.
+
+## Historical implementation and scientific record
+
 **Oneiro-OSTIS** is a persistent intelligent agent whose autobiographical experience lives natively in an OSTIS knowledge graph — and which improves itself by *dreaming*: while the agent sleeps, alternative strategies are proposed by an LLM and judged by **exact replay over the recorded experience tree**. The winning strategy is deployed online; the tree of discoveries grows; the loop repeats.
 
 Pattern: *Dream-RSI* (2026) — "accumulated history is already a simulator of the world." Our angle: the OSTIS semantic graph is that exact symbolic simulator.

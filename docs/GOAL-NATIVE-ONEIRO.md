@@ -1,102 +1,76 @@
-# Native Oneiro — global delivery goal
+# Oneiro — binding owner decisions
 
-Status: implementation in progress, replacing the product control plane on `v2`.
-This document supersedes the old rigid product-loop decisions in PLAN-V2 and
-ARCHITECTURE-HYBRID. The research/replay experiments and their evidence remain valid.
+Status: full-project rewrite approved; implementation is incremental, not done.
+Authority: current owner conversation and Mission, recovered 2026-10-02.
+Delivery plan: [MASTER-PLAN.md](MASTER-PLAN.md).
+Evidence/checklist: [REWRITE-BASELINE.md](REWRITE-BASELINE.md).
 
-## Goal
+## Product
 
-Deliver a coherent, persistent personal assistant which the owner can actually
-use: a configurable manager as the conversational counterpart, an independent
-researcher and executor, proactive work, OSTIS memory and enforced permissions.
-CowAgent, Hermes and OpenClaw are not the product's control plane. Reusable
-libraries, protocols and external tools are welcome when they fit seamlessly.
-Implementation proceeds without repeated requests to continue. Missing credentials
-and unavailable infrastructure must be reported, never replaced by claimed success.
+One coherent persistent assistant with mandatory OSTIS memory, independent
+manager/researcher/executor roles, initiative, Linux computer use and measured
+self-improvement. Review all own code, including scientific/kernel/native code.
+Use ready libraries/protocols/low-level desktop drivers instead of writing another
+agent engine. CowAgent/Hermes/OpenClaw are not product prerequisites.
 
-## Owner decisions
+## Roles and operation
 
-- Priority: a continuously living, proactive personal assistant; both technical
-  work and everyday assistance. Research initially, useful product eventually.
-- No mandatory researcher -> manager -> executor ceremony on every message.
-- Three configurable personalities, maintained in individual SOUL.md profiles.
-  A personality is a behavioural configuration, not a claim of consciousness.
-- Manager talks, reads, plans, delegates and arbitrates; does not write code.
-- Researcher can read anything, research the web, maintain personal notes and
-  share findings; cannot install programs or modify working projects.
-- Executor works within its task, may read documentation directly, reports
-  objections and unexpected consequences. Permanent role boundaries cannot be
-  relaxed by a prompt, a SOUL change or the manager's insistence.
-- Each role owns its memory and may freely read the other roles' memory.
-  Research does not require permission from the manager or immediate reporting.
-- Interests can emerge from discoveries or unfinished work. Independent interest
-  exploration is configurable. Owner pain points may also motivate research.
-- Manager can revise a plan, escalate consequences or insist within the owner's
-  authorised scope. Confirmed destructive instructions should be executable,
-  not silently vetoed for lack of a backup.
-- Internet requests, reading private sources and registration are possible;
-  no unsolicited messages, publication, private-repository exposure, diagnostic
-  uploads or local-data transfer. Remote LLM context and VirusTotal file uploads
-  are explicit exceptions. Antivirus results are not proof of safety.
-- Configuration changes need separate permission. Autostart is unwanted.
-  Applying changes to an external/working database requires a button confirmation;
-  this does not mean confirming every write to Oneiro's own autobiographical graph.
-- A direct instruction can authorise its specified action, not unrelated side
-  effects. Pending decisions pause dependent work, not the entire system.
-- Language is not fixed here.
+- Three configurable SOUL personalities; no compulsory three-role pipeline.
+- Manager converses/plans/delegates/arbitrates, not code edits.
+- Researcher researches/reads/shared notes, not installation/project changes.
+- Executor implements assigned work/verifies outcomes/reports objections.
+- Prompts and SOUL cannot change permanent capabilities.
+- Each role owns notes and can read others' memory.
+- Initiative comes from owner needs, unfinished work and interests, with opt-in,
+  quiet hours, deduplication and finite cycles.
+- No OS autostart; a manually started instance may keep working.
 
-## Target architecture
+## Models, tools and permissions
 
-```text
-Native web / Telegram
-          |
-Conversation + task service / initiative scheduler
-          |
-Manager | Researcher | Executor (one model/tool runtime, distinct profiles)
-          |
-Trusted tool registry -> role gate -> effect gate -> exact approval -> handler
-          |
-OSTIS event memory + semantic relations / local artifacts
-```
+- Use configured working OmniRoute models, including live development checks;
+  leave provider integration extensible, don't hardcode upstream names.
+- Working context, selected attachments and VM screenshots may go to configured
+  AI APIs without per-request approvals. Credential values stay out of ordinary
+  context/logs. This supersedes repetitive outbound-URL/model-media consent in
+  older plans; implementation still has to catch up.
+- Use scoped permissions for real accounts. Use API scopes where possible;
+  GUI access cannot guarantee per-effect restrictions merely by classifying pixels.
+- Computer use is confined to a separate Linux desktop VM, not host desktop.
+- Local work within approved scope does not require repeated continuation asks.
+- Agent may automatically improve/update application code after verification;
+  capability grants, secrets, control tests and update supervisor are outside its
+  writable authority. Trial/rejection/rollback are mandatory, improvement measured.
+- Finite calls/tokens/time/retries prevent accidental loops; price is not invented.
+- No permanent destruction: archive/trash/restore; rebuild separate storage.
+  This supersedes the old provision allowing irreversible destructive instructions.
 
-One process owns coordination. Channels translate inputs and deliver outputs;
-they do not have their own agent, task queue or approval truth. A reviewed tool
-registry, not tool-name heuristics, determines effects. Unrestricted host shell
-and unreviewed MCP tools must not bypass policy. Risky execution belongs in a
-network-disabled container, not a git worktree masquerading as a sandbox.
+## Memory and evidence
 
-OSTIS is required for durable operation. No silent flat-file/SQLite replacement
-when the graph is unavailable. A test-only in-memory adapter exercises contracts.
-The first migration preserves existing graph records and research code; normal
-startup must never rebuild an existing graph with `--clear`.
+OSTIS is required; production cannot silently fall back to SQLite/JSON. Typed
+append-only observations, stable IDs, completion/recovery and provenance are
+required. Existing graph data/experiments/owner work/published artifacts are kept.
+Normal startup never clears existing graph. Migration/snapshot consistency must
+be demonstrated on the real pinned stack, not inferred from a copy or mock.
+No claim of action, viewing, installation, measurement or test without evidence.
 
-## Acceptance and verification
+## Delivery and publication
 
-- Casual chat does not automatically create a coding task.
-- Delegation is optional and produces recoverable, independently scheduled tasks.
-- Tool effects and actual outcomes are recorded; claims do not substitute for tools.
-- An exact pending action survives restart; only the authenticated owner's button
-  releases sensitive effects. Text replies remain conversation, not rejection.
-- Role restrictions are enforced in the dispatcher as well as tool schemas.
-- SOUL is editable without changing capability restrictions.
-- Initiative has an opt-in, interval and bounded call budgets; waiting tasks do
-  not stop research or conversation. No fixed briefing masquerades as personality.
-- UI, Telegram and scheduler consume the same service and memory.
-- Missing model, graph, sandbox or API keys are visible and prevent affected work.
-- Offline tests cover policy, replay/recovery, channels and native conversation.
-  Live integrations are only labelled verified after real calls succeed.
+- One desktop shortcut; one origin **http://127.0.0.1:9899**.
+- Chat at root, settings/onboarding via relative routes, graph panel at **/oneiro/**.
+  No CORS workaround and no manual port discovery.
+- Native installer/onboarding/manual lifecycle/upgrade/recovery are product work.
+- English UI/code/new docs; Russian dialogue. Keep existing Russian `main` and
+  English `v2` split: rewrite intended for `v2`, not translation of `main`.
+- Latest Mission authorizes eventual GitHub push after verification. Current
+  foundation unit must not publish. Publication is project subtree only to its
+  own remote; no workspace publication or broad staging.
+- No further architecture/continuation questions after approval. Missing access,
+  infrastructure/admin/2FA blocks the affected scenario; independent work continues.
 
-## Migration boundaries
+## Acceptance
 
-Legacy launcher, installer, console overlay and research panel remain available
-for existing installations, but are no longer prerequisites of the native entrypoint.
-Delete or archive legacy product paths only after equivalent native scenarios and
-migration checks pass. Do not discard existing owner data or scientific results.
-
-## Known external prerequisites
-
-This workspace currently has no Docker binary, OSTIS Python dependencies, pytest
-or configured environment keys. Native offline tests will use stdlib unittest.
-A live OSTIS + LLM + Telegram + VirusTotal test cannot be claimed until the actual
-services/credentials exist. The managed Node-only static hosting is not a host for
-this local Python/Docker product.
+See all stages/exit conditions in MASTER-PLAN. Offline contracts, typechecking,
+live OSTIS/provider/browser/VM/scientific/migration/update checks and clean-install
+proof are separate evidence categories. A shell returning HTTP 200 is not a
+working assistant. Plans, provider listings and old green counts are not live
+acceptance. Reports state changed paths, commits, actual tests and remaining gaps.
