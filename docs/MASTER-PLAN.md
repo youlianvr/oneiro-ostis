@@ -174,9 +174,23 @@ are not completion of these phases.
       An audit of every .triple/.quintuple/.triple_with_relation call in the
       product tree found no remaining all-variable template, which is the one
       shape this sc-memory build does not answer.
-      Remaining in this stage: save_harness, save_harness_round,
-      save_memory_bench_result, the life/organization loaders and the
-      dream-cycle writers are untested across a restart - unproven, not broken.
+      Every writer now has a measured write -> read -> SIGINT -> reload -> read
+      round trip 2026-10-02: save_harness, save_harness_round,
+      save_memory_bench_result, the life and organization loaders, the native
+      event writer, save_memory_sessions, save_strategy in both its plain and
+      its dream-cycle shape, and record_attempt. None of them was broken; no
+      product code changed in that block. The round trips ran on a byte-identical
+      copy of the live graph on a spare port, never on live.
+      The last untested writer was found by following python/dream.py's own
+      save_strategy call: it passes dream_round and derived_from, and no earlier
+      probe had ever passed either, so the numeric nrel_dream_round link and the
+      nrel_derived_from parent link were genuinely unexercised until now.
+      Contract tests are the default for this seam: a writer added to bridge.py
+      without a contract test against its real producer fails the suite, and the
+      producers are called rather than re-implemented.
+      Remaining in this stage: the query and migration contracts, and live
+      validation through the web surface - the web container still runs the
+      legacy ostis/sc-web:0.9.0 with no oneiro module.
       See REWRITE-BASELINE.md.
 - [ ] 3: concurrent, recoverable runtime/tasks/initiative.
 - [ ] 4: shared model/research/media adapters and live capabilities.

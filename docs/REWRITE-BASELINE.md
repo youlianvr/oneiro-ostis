@@ -1534,7 +1534,8 @@ back.
   organization loaders, and the dream-cycle writers are still untested across a
   restart. `record_attempt` and `save_strategy` and `save_memory_sessions` now
   have measured round-trips; the rest remain unproven, which is different from
-  broken.
+  broken. **Superseded by Block C part 3 below: all of them are now measured
+  across a real SIGINT save and reload, and none was broken.**
 - `load_strategies` does not deduplicate by name: writing the same strategy
   twice yields two rows. Whether that is intended is not decided here.
 - The contract test reads the bridge and producer sources to pin the agreement.
@@ -1543,17 +1544,254 @@ back.
   8095. The live graph was not read, written or restarted, and `docker-compose.yml`
   is unchanged.
 
+## 2026-10-02 — Block C part 3: every writer, and the third bad probe
+
+The previous section closed with a list of six writers that had never been
+exercised across a restart. All of them are now measured, together with the
+dream-cycle write path, on a scratch copy of the live graph. **None of them was
+broken.** The writer seam in `python/bridge.py` is correct in every case
+examined, and nothing in it was changed.
+
+### Verdict per writer
+
+| Writer | Payload taken from | In-session | After SIGINT + reload |
+|---|---|---|---|
+| `save_harness` | `harness.publish.get_policy(name).descriptor()` | PROVEN | PROVEN |
+| `save_harness_round` | `harness.publish.round_record(payload, criteria)` | PROVEN | PROVEN |
+| `save_memory_bench_result` | the cell literal in `bench/memory/run.py` | PROVEN | PROVEN |
+| `record_life_event` → `persist_life_session` | `LifeSession.payload()` via the real API | PROVEN | PROVEN |
+| `record_organization_event` | the real keyword API, `OrganizationRecord` | PROVEN | PROVEN |
+| `record_native_event` | `native.memory.GraphMemory.append` | PROVEN | PROVEN |
+| `save_strategy` (dream shape) | `python/dream.py`'s own call, with `dream_round` and `derived_from` | PROVEN | PROVEN |
+| `save_memory_sessions` | `bench.memory.dataset.session_to_dict` | PROVEN | PROVEN |
+| `save_strategy` (plain shape) | measured in Block C part 2 | PROVEN | PROVEN |
+| `record_attempt` | measured in Block C part 1, via the compiled agent | PROVEN | PROVEN |
+
+Every payload is the one the product's own producer emits. No payload in this
+block was written by hand, which is the rule the block was created to enforce.
+
+### The measurement
+
+Scratch: a byte-for-byte copy of the live graph, served by the same image the
+live machine runs, on port 8095, in its own compose project
+(`oneiro-writers`, `.runtime/compose-writers.yml`), never the live
+`kb-binary` volume. Three SIGINT saves through `docker compose stop`, which is
+the shipped stop path:
+
+```
+seed        93cea54c...   copy of the live graph, md5 identical to /kb.bin/segments.scdb
+
+write       save_harness, save_harness_round, save_memory_bench_result,
+            record_life_event, record_organization_event, record_native_event
+read        PROVEN  load_harnesses_distinct 1      load_harness_rounds 1
+            PROVEN  load_memory_bench_results 1    load_life_sessions 1
+            PROVEN  load_organization_events_distinct 1  load_native_events 1
+            PROVEN  life_events 1, life_revision 1
+
+stop 1      exit 0    93cea54c... -> 789771f0...
+read        all six still PROVEN, with descriptor, replay_saving 0.25,
+            gate "probe gate", online_result, round_index 7 intact
+
+write       save_strategy, save_memory_sessions x2
+stop 2      exit 0    789771f0... -> 0c57e33b...
+read        all six still PROVEN, plus the strategy and both sessions
+
+write       save_strategy with dream_round=3, derived_from=<strategy>
+stop 3      exit 0    d27b9ba7... -> 63efafa5...
+read        PROVEN  dream_round 3.0, derived_from "probe_strategy_2026_10_02",
+            descriptor = the real harness policy descriptor
+```
+
+The dream-cycle line matters on its own. `python/dream.py:108` publishes
+candidates with `dream_round` and `derived_from` set, but every earlier probe
+passed `None` for both, so the numeric `nrel_dream_round` link and the
+`nrel_derived_from` parent-strategy link had never run. Naming the writer
+"unproven" was correct; leaving it at that would have been under-delivering.
+
+### The third mistake: a wrong seed reads as a broken writer
+
+The first attempt at this block failed on the first call, on all six writers:
+
+```
+InvalidValueError: ScAddr of concept_harness is invalid
+    bridge.py:806  save_harness -> self.keynode(CONCEPT_HARNESS)
+```
+
+That reads exactly like a defect in `save_harness`. It is not one. The scratch
+had been seeded from `knowledge-base/kb.bin` — the graph checked into the
+repository — and that graph has none of the oneiro ontology classes:
+
+```
+knowledge-base/kb.bin (bare seed)   concept_strategy, concept_session,
+                                    concept_harness, concept_harness_round,
+                                    concept_organization_record,
+                                    nrel_strategy_descriptor, nrel_derived_from,
+                                    concept_memory_bench_result, nrel_dream_round
+                                    -> all ABSENT
+
+live graph, read-only                -> all present except
+                                       concept_memory_bench_result
+```
+
+`bridge.keynode()` self-heals a missing name only if it is in
+`RUNTIME_VOCABULARY`, and that list contains the memory vocabulary but **not**
+`concept_harness`, `concept_harness_round`, `concept_strategy`,
+`nrel_strategy_descriptor`, `nrel_derived_from` or `nrel_dream_round`. Those
+come from `knowledge-base/ontology/experience.scs`, so the harness, strategy and
+dream writers hard-require a graph built from the current ontology and fail
+loudly on a bare one. `concept_memory_bench_result` is absent from the live
+graph too and is self-created on first write, which is why the memory writers
+had never needed a built graph and the harness writers had.
+
+So the third bad probe was the seed, not the payload, and the lesson is the
+same one twice over: **establish the environment's preconditions from the
+producer's real dependencies before writing to it.** A failure that names the
+writer is not evidence about the writer. The fix was to seed from a copy of the
+live graph; the writers were not touched.
+
+### Two traps in the OSTIS client, both of which produced false readings
+
+- `ScKeynodes._dict` is a **class-level cache**. A process that connects to two
+  servers reports the first server's addresses for the second, so "the scratch
+  graph has `concept_harness`" was fiction — read from a 8090-then-8095 check.
+  One server per process, or the answer is meaningless.
+- The client's socket threads are non-daemon. A probe that never calls
+  `disconnect()` does not exit and prints nothing, so a broken check can look
+  like a hang.
+
+Both are recorded in `.runtime/keynode_check.py`, which exists to make the first
+mistake impossible to repeat.
+
+### A real constraint, not a defect: `harness.publish` cannot be imported
+
+`harness/replay.py` (the judge) and `python/replay/` (the world simulator) are
+one module name, and they are not interchangeable:
+
+```
+harness/ first  ->  replay = harness/replay.py   NORMAL_STOPS present
+python/  first  ->  replay = python/replay/      NORMAL_STOPS absent
+                    from replay.engine import ... -> ModuleNotFoundError
+```
+
+The simulator is a package that seven product and test files import as
+`replay.engine`. Whichever binds first wins and the other becomes unreachable.
+So `harness.publish` imports exactly as documented — `python
+harness/publish.py` puts `harness/` at `sys.path[0]` — and **cannot** be
+imported by a process that already has `python/` first, which is every pytest
+process, since `pyproject.toml` and `tests/conftest.py` both put it there.
+
+This is not fixed here, and it is not fixable by a `sys.path` trick: taking the
+name for the judge breaks `replay.engine` for the rest of the suite, which is
+exactly what the six writers' own tests would have done. The honest fix is a
+rename, and that is the owner's decision, not a side effect of a
+characterisation block. Until then the publisher is CLI-only by construction.
+
+### The contract test approach is now the default for this seam
+
+`tests/test_bridge_writer_contracts.py` (12 tests) pins every writer against the
+real producer of its payload, and `tests/test_memory_session_contract.py`
+(4) keeps the pair that was already wrong once:
+
+- the producers are **called**, never re-implemented: `session_to_dict`,
+  `get_policy(name).descriptor()`, `round_record`, `LifeSession.payload()`,
+  `OrganizationRecord.as_payload()`, `native.memory.GraphMemory.append` and its
+  real `SESSION` constant;
+- where the loader rebuilds a dataclass, the assertion is the loader's own
+  construction — `LifeSession(**payload)` and `OrganizationRecord(**row)` must
+  both work, because that is literally what the loaders do;
+- `test_every_writer_is_covered_by_this_suite` fails when `bridge.py` gains a
+  method named `record_*`, `save_*` or `persist_*` that is neither listed in
+  `WRITERS` nor pinned, and also fails when `WRITERS` names a method that no
+  longer exists. A new writer cannot arrive without a contract test;
+- `test_bridge_has_no_all_variable_template_left` keeps the Block C search fix
+  from regressing;
+- the harness producers are called **out of process**, because of the collision
+  above. That is a constraint with a test attached
+  (`test_harness_replay_is_a_name_collision_not_a_typo`), not decoration.
+
+There is deliberately **no** test written to fail against a loader. All eight
+loaders examined were correct; a test that failed against correct code would
+encode the mistake and then break the moment someone fixed it back.
+
+```
+python -m pytest -q                                   408 passed, 112.75s
+uv run --frozen mypy python/oneiro                    Success: no issues found in 11 source files
+```
+
+### Live-verified versus unverified
+
+Live-verified, read-only: the keynode inventory above, and the SIGINT save
+itself (Block B). The live graph's `segments.scdb` is byte-identical before and
+after this block — `93cea54c02b22a92f6ee329c15639e61` — the machine was never
+restarted (`started=2026-10-02T17:56:19Z`, unchanged since Block B) and
+`oneiro-ostis-web-1` was never recreated (`started=13:26:31Z`).
+
+Verified on a **copy** of the live graph, not on live: every writer in the table
+above. No live write was performed, by instruction.
+
+Still unverified:
+
+- Anything about this seam through HTTP. `oneiro-ostis-web-1` runs the legacy
+  `ostis/sc-web:0.9.0` with no `oneiro` module, so the bridge has never been
+  exercised through a web surface.
+- Many records per corpus, ordering, and size limits. Each writer was measured
+  with one record per kind; nothing here says what a thousand rows do.
+- `load_strategies`, `load_harnesses` and `load_organization_events` do not
+  deduplicate. Measured as a note, never as a defect: writing the same record
+  twice yields two rows. Whether that is intended is still not decided.
+- The `_add_json_relation` / `_json_relation` mismatch listed as unverified in
+  the Block C section above **is resolved**: part 2 showed the reader is correct
+  and the rows were dropped by a missing `session_id`. It is removed from the
+  carried list.
+
+## How to not repeat the three bad probes of 2026-10-02
+
+Three times in one day a probe reported a defect that did not exist, and each
+cost a full investigation. They are one mistake in three costumes: **a probe
+whose payload, template or environment was not the product's own.** A reader
+who takes one of these reports at face value will call the wrong thing broken,
+fix it, and break something that worked.
+
+| # | What the probe did | What it claimed | What was actually true |
+|---|---|---|---|
+| 1 | put a **node type** in a template's connector slot | `search_by_template` is broken | the connector slot holds a *connector* type; at least one end of a triple must be concrete |
+| 2 | invented a session payload `{question, answer, date_epoch, score}` | `load_memory_sessions` cannot read what it writes | the writer stores the caller's dict verbatim; the real producer emits `session_id`, and the loader filters on it |
+| 3 | seeded the scratch graph from the repository's bare `knowledge-base/kb.bin` | every harness, strategy and dream writer is broken | those writers need keynodes from `experience.scs`; the live graph has them, the bare seed has none |
+
+The rule that catches all three:
+
+- **Take the payload from the producer. Call it.** `session_to_dict`,
+  `get_policy(...).descriptor()`, `round_record(...)`, `LifeSession.payload()`,
+  `OrganizationRecord.as_payload()`, `GraphMemory.append`. If a payload in a
+  test or a probe is a literal dict written by hand, it is a guess, and a guess
+  that contradicts the loader will be read as a defect.
+- **Match the type the slot expects.** A connector takes a connector type; an
+  arc takes a node. Read the slot's contract from the writer, not from the
+  template's own argument list.
+- **Establish the environment before writing to it.** Which image, which graph,
+  which vocabulary. If a writer fails on the first call, find out what the graph
+  it needs before concluding the writer is at fault.
+- **One server per process.** `ScKeynodes._dict` is class-level; a process that
+  touches two servers answers for the first one.
+- **When a probe reports a defect, check the writer's real callers first.** Every
+  one of these three would have been caught in under a minute by reading who
+  calls the function and what they pass.
+
+`tests/test_bridge_writer_contracts.py` encodes the first rule as a standing
+check rather than a lesson: a writer added to `bridge.py` without a contract
+test against its real producer fails the suite.
+
 ## Next independent work
 
 The four-block plan is approved. Blocks A, B and C are done, including the two
-reported blockers that turned out not to be defects. Block D and the stages
-after 2 are next.
+reported blockers that turned out not to be defects and the third probe that
+nearly made it four. Block D and the stages after 2 are next.
 
 - **Block D and the stages after 2** — agent runtime and recoverable scheduling,
   model access, tools and the Linux VM, the scientific kernel, unified web and
   Telegram, then packaging and migration.
 
-Carried open from Blocks A and B, none of it worked on:
+Carried open from Blocks A, B and C, none of it worked on:
 
 - `oneiro-base:latest` is an undeclared local base image, so a clean checkout
   cannot build `Dockerfile` today. This is a stage 1 exit condition.
@@ -1561,9 +1799,17 @@ Carried open from Blocks A and B, none of it worked on:
   the same entrypoint now, but the two paths should be reconciled.
 - `stop_signal: SIGINT` covers `docker compose stop` only. A host reboot, a
   `docker kill` or an OOM kill still bypasses it and still loses the graph.
-- `save_harness`, `save_harness_round`, `save_memory_bench_result`, the life and
-  organization loaders and the dream-cycle writers are still untested across a
-  restart. Unproven, which is not the same as broken.
+- **`harness/replay.py` and `python/replay/` are one module name.** The
+  publisher imports only from a process where `harness/` leads `sys.path`, so it
+  is CLI-only by construction; a rename is the only real fix. Not done here: it
+  is the owner's call, and it touches the harness subsystem.
+- **The graph checked in at `knowledge-base/kb.bin` is a bare store** with none
+  of the oneiro ontology classes. Anything that writes to it — the harness,
+  strategy and dream writers, that is — fails on keynode resolution. Either the
+  seed should be rebuilt, or those keynodes should join `RUNTIME_VOCABULARY` so
+  they self-create like the memory vocabulary already does.
+- `load_strategies`, `load_harnesses` and `load_organization_events` do not
+  deduplicate. Whether that is intended is not decided.
 - Something in the running stack rewrites the live `strings2.scdb` on its own
   while `segments.scdb` stays put. Cause unestablished.
 - `docker-compose.isolated.yml` may carry its own machine service without the
