@@ -758,6 +758,195 @@ this pass did not do. Stage 2 stays blocked until both are closed.
   a restarted server.
 - No conversation, onboarding or installer work was started.
 
+## 2026-10-02 — Write persistence settled: the record survives, the signal does not
+
+The previous pass left one question open and two candidate causes with opposite
+consequences. Either the probe record was genuinely absent from saved storage
+and the write path was still incomplete, or it was in storage and the retrieval
+agent could not find records after a reload. The mission for this pass was to
+decide between them with a read path that does not go through
+`action_retrieve_attempts`, and to leave the live deployment, `docker-compose.yml`
+and the live graph untouched. No fix was applied and no configuration was changed.
+
+### Method
+
+A fresh scratch copy of the graph was taken from the live volume
+(`.runtime/probe-addr/`, baseline `segments.scdb ba99cf01…`) and served by a
+throwaway container on a spare port with `sc-machine` as PID 1. One record was
+written through the product's own bridge, which reported where it landed:
+
+```
+{"subject_string": "addr_probe_subject_2026_10_02",
+ "subject_addr": "ScAddr(196609)", "attempt_addr": "ScAddr(196636)"}
+```
+
+The container was then stopped with the SIGINT sequence proven in the previous
+pass, and the scratch copy reloaded into a second throwaway container. Nothing
+was read back through the retrieval agent until the last step.
+
+### The read path had to be rebuilt first
+
+Two facts about reading this server had to be established before any of them
+could be used as evidence, and both would have produced false conclusions if
+assumed.
+
+**`search_by_template` returns no real results on this build.** Against arcs that
+were directly observed to exist, every raw `ScTemplate` came back empty, and the
+one non-empty result was a degenerate echo of the relation itself:
+
+```
+concrete (196609, 196612, 196610): 0 returned
+outgoing (196609, VAR, VAR):       0 returned
+attempt outgoing (196636, VAR, VAR): 0 returned
+reverse sweep (VAR, VAR, 196610): 0 returned
+sweep (VAR, 65538, VAR):           1 returned -> (0, 65538, 0)
+idtf string search "addr_probe_subject_2026_10_02": 0 returned
+```
+
+The last line is the same query that `memory.probe()` performs, run against the
+live graph on 8090, which reproduces the identical `1 returned, 0 resolved`. So
+this is not a property of the scratch copy, and it is why the earlier baseline
+already recorded a wildcard-only anchor result. Template search is therefore
+unusable as a witness in either direction, and the agent's own C++ search is a
+different implementation that is not covered by this finding.
+
+**`resolve_keynodes` creates what it cannot find.** A string that had never been
+seen resolved to a live `CONST_NODE` with a fresh identifier link, and resolved
+to the same address on a second call. On this server, "it resolved" is not
+evidence that the element existed beforehand. Any check that treats a successful
+resolve as proof of prior existence is void.
+
+**The absent-element signature** is a `ServerError` —
+`InvalidParams: Specified sc-element sc-address is invalid to get sc-type` — for
+an address outside the allocated segments, and an error-free `ScType(0)` for an
+unused offset inside one. `get_elements_types` answers; it is the only read
+primitive here that can be trusted.
+
+### What is in storage
+
+`get_elements_types` plus `get_link_content`, addressed directly with no search
+involved, over segment 3 of the reloaded copy. The write is intact — node,
+identifier link, relation arcs and all:
+
+```
+ScAddr(196609) CONST_NODE
+ScAddr(196610) CONST_NODE_LINK  content='addr_probe_subject_2026_10_02'
+ScAddr(196611) CONST_COMMON_ARC  ScAddr(196612) CONST_PERM_POS_ARC
+ScAddr(196613) CONST_NODE        ScAddr(196614) CONST_NODE_LINK content='addr_probe_action'
+ScAddr(196615) CONST_COMMON_ARC  ScAddr(196616) CONST_PERM_POS_ARC
+ScAddr(196617) CONST_NODE        ScAddr(196618) CONST_NODE_LINK content='addr_probe_object'
+ScAddr(196619) CONST_COMMON_ARC  ScAddr(196620) CONST_PERM_POS_ARC
+ScAddr(196621) CONST_NODE        ScAddr(196622) CONST_NODE_LINK content='addr_probe_outcome'
+ScAddr(196623) CONST_COMMON_ARC  ScAddr(196624) CONST_PERM_POS_ARC
+...
+ScAddr(196636) CONST_NODE                                  <- the attempt node
+ScAddr(196653) CONST_NODE_LINK  content='addr-probe'
+ScAddr(196658) CONST_NODE_LINK  content='address capture probe'
+```
+
+Segment 3 holds 79 live elements in the reloaded copy against 14 in the live
+baseline, and the extra 65 include link and arc types, not just nodes. **The
+record is in storage.** The first candidate cause is refuted.
+
+### What the retrieval agent sees
+
+Queried last, on the reloaded copy:
+
+```
+action_retrieve_attempts('addr_probe_subject_2026_10_02') -> 1
+  ScAddr(196636) | addr_probe_subject_2026_10_02 | addr_probe_action
+                | addr_probe_outcome | addr_probe_object
+```
+
+To rule out the possibility that the read probes above had put the graph into a
+retrievable state, that container was stopped with SIGINT again
+(`segments.scdb 209f4280…` → `ba8cab97…`, exit 0, `Successfully shutdown`) and
+reloaded into a third container on port 8096, where the retrieval agent was the
+*first* thing run, with no other read beforehand:
+
+```
+CLEAN RELOAD action_retrieve_attempts -> 1
+  ScAddr(196636) | addr_probe_subject_2026_10_02 | addr_probe_action
+                | addr_probe_outcome | addr_probe_object
+```
+
+Two consecutive save-and-reload cycles, both returning the record. The second
+candidate cause is refuted as well: the retrieval agent sees records after a
+reload.
+
+### Verdict
+
+Both candidate causes are resolved, and both are resolved against the hypothesis
+that motivated them.
+
+- **Is the record absent from saved storage? No.** Every element, arc and link
+  content the write created is present after reload.
+- **Is it present but invisible to `action_retrieve_attempts` after a reload?
+  No.** The agent returns it on a clean reload, twice.
+- **The earlier "0 after restart" is not reproduced.** It could not be recreated
+  from the same saved bytes, and no mechanism was found that would make it
+  reproducible. It is recorded as an unexplained result of that experiment's
+  setup, which this pass did not repeat and can no longer inspect, not as a
+  property of the system. This is a residual unknown, not a closed question.
+
+The stage 2 blocker is therefore **only** the signal. Persistence and retrieval
+both work once the save path runs; under the shipped configuration `docker stop`
+sends SIGTERM, sc-machine registers a handler and does nothing, and the record
+is lost. The fix identified in the previous pass — `stop_signal: SIGINT`, or a
+wrapper that re-raises SIGTERM as SIGINT — remains correct and remains
+deliberately unapplied.
+
+### A second defect, found on the way
+
+Raw `ScTemplate` search from the Python client is non-functional on this build,
+while the C++ agent path is not. That is a real defect in its own right and it is
+not the stage 2 blocker, because the product's sanctioned read route is the
+agent. It matters because several Python-side readers depend on the broken path
+and will return empty rather than fail:
+
+- `bridge.all_subjects()` walks `concept_attempt` with `search_by_template`.
+- `oneiro.memory._read_graph()` anchors on `nrel_system_identifier` with
+  `search_by_template` and, correctly, refuses to call a wildcard-only match a
+  populated graph — so `/api/graph` and `/oneiro/` are reporting the graph as
+  unreachable-content rather than as populated, which is honest but is not the
+  same as reading it.
+
+Stage 2 retrieval contracts must not be written against
+`sc_client.search_by_template` until this is characterised. Its cause is not
+diagnosed here and was not in scope.
+
+### Not verified
+
+- The exact arc endpoints in the segment 3 dump were inferred from the standard
+  node / membership-arc / perm-arc layout and the observed type sequence, not
+  read back, because the search that would confirm them is the broken one. The
+  elements and their link content are read directly and are not inferred.
+- Only `record_attempt` was exercised against a restarted server. Other bridge
+  writers (`save_strategy`, `save_memory_sessions`, the dream-cycle paths) are
+  untested across a restart.
+- The SIGINT fix is still unapplied and untested against the live deployment,
+  and whether `stop_signal: SIGINT` survives `docker compose up --force-recreate`
+  in this Docker Desktop version is untested.
+- The cause of the non-functional template search is undiagnosed.
+- No conversation, onboarding or installer work was started.
+
+### State left behind
+
+Test containers `kb-probe`, `kb-probe2` and `kb-probe3` were removed. The live
+deployment was not stopped, restarted or reconfigured; after all of the above its
+storage is byte-identical to the recorded baseline and it is healthy:
+
+```
+ba99cf016e3a5745afc885161a999820  segments.scdb
+f0db8422ab951f4350dd06868f4c1ed1  strings1.scdb
+3f0cb5d94b344e6bca495ce6e93f74da  strings2.scdb
+64f599223d13198412810a97935bfe9f  string_offsets_link_hashes.scdb
+6639f2b5fc8c7a833a6b87dd8cb084f8  term_string_offsets.scdb
+```
+
+`docker-compose.yml` is unchanged. The diagnostic scripts used here live in the
+gitignored `.runtime/` and are not part of the product.
+
 ## Next independent work
 
 Stage 1b: typed, versioned domain records and event envelopes in `oneiro`, and the

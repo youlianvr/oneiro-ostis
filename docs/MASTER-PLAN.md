@@ -151,10 +151,18 @@ are not completion of these phases.
 - [x] 1b: typed versioned records, event envelopes, and the memory read seam.
 - [ ] 1c: reproducible-build compatibility; the 5.7 GB build context is unfixed.
 - [ ] 2: memory/retrieval/migration contracts and live OSTIS validation.
-      BLOCKED 2026-10-02: sc-memory ignores SIGTERM, so docker stop never runs the
-      save path and no record survives a restart. SIGINT does save. Fix is
-      stop_signal: SIGINT, proven in scratch, deliberately NOT applied to the live
-      deployment. A second retrieval-side defect remains; see baseline.
+      BLOCKED 2026-10-02 on one cause only: sc-memory ignores SIGTERM, so
+      docker stop never runs the save path and no record survives a restart.
+      SIGINT does save. Fix is stop_signal: SIGINT, proven in scratch,
+      deliberately NOT applied to the live deployment.
+      Settled 2026-10-02: persistence and retrieval are NOT the problem. The
+      written record is present in reloaded storage with all its arcs and link
+      content, and action_retrieve_attempts returns it on two consecutive clean
+      reloads. The earlier "0 after restart" was not reproduced. Separately,
+      sc_client search_by_template returns no real results on this build, so
+      Python-side template readers (bridge.all_subjects, memory._read_graph)
+      silently return empty; stage 2 contracts must not rely on that path until
+      it is characterised. See REWRITE-BASELINE.md.
 - [ ] 3: concurrent, recoverable runtime/tasks/initiative.
 - [ ] 4: shared model/research/media adapters and live capabilities.
 - [ ] 5: isolated executor/tools and Linux desktop integration.
