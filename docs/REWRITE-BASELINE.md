@@ -240,6 +240,103 @@ defect. The registry still declares settings (`dashboard.port`, `world.seed`,
 `bench.*`, `workspace`, `mcp.source`) that no rewritten module consumes yet; they
 were left declared on purpose and are not consumerless dead code by accident.
 
+## 2026-10-02 — OSTIS start attempt: the knowledge base was rebuilt and cleared
+
+**Outcome: stopped before writing anything. Stage 0's exit condition is NOT
+closed, and the live graph was cleared as a side effect of starting Docker.**
+
+Sequence, as it actually happened:
+
+1. The Docker engine was down (`com.docker.service` STOPPED, the
+   `dockerDesktopLinuxEngine` pipe absent). Docker Desktop 4.82.0 and WSL2 were
+   installed, so the engine was started by launching Docker Desktop as a normal
+   user process. Engine 29.6.1 came up in about ten seconds.
+2. **The existing `oneiro-ostis` containers auto-started** through their
+   `restart: unless-stopped` policy. `oneiro-ostis-machine-1` reported healthy and
+   port 8090 began listening without any `docker compose` command from me.
+3. The container then ran `sc-builder --clear` and re-imported all **201**
+   knowledge-base sources between 13:26:31 and 13:26:35, wiping whatever the
+   graph had held.
+
+Verbatim from `docker logs -t --since 2026-10-02T13:26:00 oneiro-ostis-machine-1`:
+
+```
+13:26:31.592  Parse repo path file...
+13:26:31.597  Collect all sources...
+13:26:34.218  Build knowledge base from sources...
+13:26:34.236  [1/201]: /knowledge-base/ontology/experience.scs - ok
+...
+13:26:35.736  Using default arguments.      <- sc-machine starts, after the rebuild
+```
+
+### Why it happened, and why the pre-flight check missed it
+
+The container running the graph was created **2026-09-19** and was never
+recreated. Its configuration is therefore older than the repository:
+
+| | repository (on disk) | running container |
+|---|---|---|
+| `REBUILD_KB` | `0` (`docker-compose.yml`) | **`1`** |
+| entrypoint | three-way branch: rebuild only on `REBUILD_KB=1` or empty storage | **two-way: `REBUILD_KB=1` → `sc-builder --clear`**, no storage check |
+
+`grep -c "Existing graph found"` is `1` in `scripts/docker_entrypoint.sh` and `0`
+in `/example-app/scripts/docker_entrypoint.sh` inside the image. The fix exists
+in the repository and was never applied to the deployed container.
+
+The mistake in the pre-flight check: I read `docker-compose.yml` and
+`scripts/docker_entrypoint.sh` on disk, which both say the safe thing, instead of
+`docker inspect`ing the container that actually owns the volume. The engine was
+down when I started, so `docker inspect` was impossible at that moment — the
+correct order was to start the engine with the auto-restart prevented (or to stop
+the containers the instant they appeared, before the entrypoint ran), then
+inspect, and only then decide. The `REBUILD_KB=1` in the container is exactly the
+condition the owner asked to be ruled out first.
+
+This was not a one-off: `docker logs` shows the same `Using default arguments.`
+entry three times, at 2026-09-19 15:03, 2026-09-19 22:05 and 2026-10-02 13:26,
+and sc-memory's `Last string offset` rose 103914 → 104483 → 104870 across those
+runs, which is the signature of *rebuild then accumulate*, not *preserve*. The
+graph in this deployment has therefore never survived a restart with agent
+memory intact; the loss is cumulative and predates today.
+
+### What was lost, and what can be recovered
+
+Not quantifiable exactly: the volume was overwritten in place, and no copy was
+taken beforehand. The evidence bounds it — the graph held the 201 KB sources plus
+a small amount of runtime-written data (hundreds of bytes of strings between
+restarts), and the agent was not running between 2026-09-19 and today. All 19
+`kb-binary` volumes on the machine were inspected: every one is the same ~4.36 MB
+rebuilt baseline dated 2026-09-20, so **no volume holds a pre-clear graph** and
+there is nothing to restore from. The current volume is 4.3 MB, freshly built
+from the same sources.
+
+### Not done, deliberately
+
+No node was written, no `python/bridge.py` round-trip was exercised, and no
+snapshot or restore was attempted. Writing a test node and reporting a green
+round-trip into a graph that had just been cleared would have hidden the loss
+behind a passing check. The owner instruction was to stop and report when a start
+wipes the knowledge base; that is the case here.
+
+### State left behind
+
+Docker Desktop is running with the engine up. `oneiro-ostis-machine-1` is
+healthy, `oneiro-ostis-web-1` is up, ports 8090 and 8000 are listening,
+`RestartCount` 0. **Both containers are left running as they are** — stopping or
+recreating them is the owner's call, and either action is another start against
+this configuration.
+
+### The fix, for the owner to authorise
+
+Recreate the machine container from the current repository so the safe entrypoint
+and `REBUILD_KB=0` actually apply (`docker compose up -d --force-recreate
+machine`), then confirm from the logs that the start line reads "Existing graph
+found ... starting sc-machine without rebuilding" and that no `Build knowledge
+base from sources...` appears. Only after that is a bridge round-trip and a
+snapshot/restore meaningful evidence. The deeper fix belongs in stage 2: the
+deployment must not be able to clear the graph on a routine start, and a verified
+snapshot must exist *before* the next start, not after it.
+
 ## Next independent work
 
 Stage 1b: typed, versioned domain records and event envelopes in `oneiro`, and the
