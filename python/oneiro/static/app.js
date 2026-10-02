@@ -1,34 +1,58 @@
 "use strict";
 const form = document.querySelector("#settings");
 let csrf = "";
-async function load() {
-  const [session, settings, status] = await Promise.all([
-    fetch("/api/session").then(r => r.json()),
-    fetch("/api/settings").then(r => r.json()),
-    fetch("/api/status").then(r => r.json())
-  ]);
-  csrf = session.csrf;
-  for (const row of settings.settings) {
-    const input = form.elements.namedItem(row.key);
-    if (input && !row.secret) input.value = row.value;
-  }
+
+async function prerequisites() {
+  const response = await fetch("/api/status");
+  if (!response.ok) throw new Error("status unavailable");
+  const status = await response.json();
   document.querySelector("#status").textContent = JSON.stringify(status, null, 2);
-  document.querySelector("#availability").textContent = status.ready ? "Ready" : "Assistant not ready — see prerequisites below.";
-  document.querySelector("#title").textContent = location.pathname.startsWith("/oneiro") ? "Graph integration pending" : location.pathname === "/" ? "Conversation integration pending" : "Oneiro settings & setup";
-  if (settings.error) document.querySelector("#result").textContent = settings.error;
 }
-form.addEventListener("submit", async event => {
-  event.preventDefault();
-  const patch = {};
-  for (const [name, value] of new FormData(form)) {
-    if (name === "llm.api_key" && !value) continue;
-    patch[name] = name === "graph.port" ? Number(value) : value;
+
+// The page identity, the form and its values are rendered by the server from
+// the declared settings registry. This script only refreshes the live state and
+// submits what the owner typed.
+function watchResult(response) {
+  return response.json().then(result => {
+    document.querySelector("#result").textContent = response.ok
+      ? "Saved. Reloading to show the stored values." : result.error;
+  });
+}
+
+if (form) {
+  // Only what the owner actually changed is sent. Submitting the whole form
+  // would store every declared default explicitly and make the file lie about
+  // what is customized.
+  const asEntered = new Map();
+  for (const field of form.elements) {
+    if (field.name) asEntered.set(field.name, field.value);
   }
-  try {
-    const response = await fetch("/api/settings", {method: "POST", headers: {"Content-Type": "application/json", "X-Oneiro-CSRF": csrf}, body: JSON.stringify(patch)});
-    const result = await response.json();
-    document.querySelector("#result").textContent = response.ok ? "Saved. Live integration checks are still required." : result.error;
-    if (response.ok) { form.elements.namedItem("llm.api_key").value = ""; await load(); }
-  } catch (_) { document.querySelector("#result").textContent = "Server unavailable. No successful save confirmed."; }
-});
-load().catch(() => { document.querySelector("#availability").textContent = "Server unavailable. No readiness confirmed."; });
+  form.addEventListener("submit", async event => {
+    event.preventDefault();
+    const patch = {};
+    for (const [name, value] of new FormData(form)) {
+      const field = form.elements.namedItem(name);
+      if (field.disabled || field.value === asEntered.get(name)) continue;
+      if (name === "llm.api_key" && !value) continue;
+      patch[name] = name.endsWith(".port") ? Number(value) : value;
+    }
+    if (!Object.keys(patch).length) {
+      document.querySelector("#result").textContent = "Nothing changed; nothing written.";
+      return;
+    }
+    try {
+      const response = await fetch("/api/settings", {method: "POST",
+        headers: {"Content-Type": "application/json", "X-Oneiro-CSRF": csrf},
+        body: JSON.stringify(patch)});
+      const message = await watchResult(response);
+      if (response.ok) setTimeout(() => location.reload(), 400);
+      else return message;
+    } catch (_) {
+      document.querySelector("#result").textContent = "Server unavailable. No successful save confirmed.";
+    }
+  });
+}
+
+fetch("/api/session").then(r => r.json()).then(session => { csrf = session.csrf; })
+  .then(prerequisites)
+  .catch(() => { document.querySelector("#status").textContent = "Server unavailable. No readiness confirmed."; });

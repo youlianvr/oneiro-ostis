@@ -1,8 +1,0 @@
-<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Oneiro setup</title><link rel="stylesheet" href="/style.css"><script defer src="/app.js"></script></head>
-<body><main><header><h1>Oneiro</h1><p>Standalone rewrite foundation</p><nav><a href="/">Chat</a><a href="/settings">Oneiro settings</a><a href="/setup">Setup</a><a href="/oneiro/">Graph</a></nav></header>
-<section class="notice"><h2 id="title">Setup</h2><p id="availability">Checking runtime prerequisites…</p><p>This foundation serves configuration and diagnostics. Agent conversation and the graph panel are not yet integrated.</p></section>
-<section><h2>Prerequisites</h2><pre id="status" aria-live="polite"></pre></section>
-<section><h2>Provider and graph settings</h2><p>Saving settings does not verify a provider or start Docker. Stored keys are never returned. An empty key field leaves the current key unchanged.</p><form id="settings"><label>Provider address<input name="llm.base_url" type="url" required></label><label>Provider key<input name="llm.api_key" type="password" autocomplete="new-password"></label><label>Default model<input name="llm.model" required></label><label>Graph host<input name="graph.host" required></label><label>Graph port<input name="graph.port" type="number" min="1" max="65535" required></label><button>Save settings</button><p id="result" role="status"></p></form></section>
-<footer>No system autostart. OSTIS remains required; no substitute memory store.</footer></main></body></html>

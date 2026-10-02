@@ -8,10 +8,10 @@ from typing import Any, AsyncIterator
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from oneiro import config
+from oneiro import config, pages
 from oneiro.runtime import Runtime
 
 STATIC = Path(__file__).parent / "static"
@@ -51,12 +51,26 @@ def create_app(runtime: Runtime | None = None) -> FastAPI:
         })
         return response
 
-    @app.get("/")
-    @app.get("/settings")
-    @app.get("/setup")
-    @app.get("/oneiro/")
-    async def page() -> FileResponse:
-        return FileResponse(STATIC / "index.html")
+    def serve(page: str) -> HTMLResponse:
+        """One route, one page. `web.py` names it; `pages` renders it."""
+        description = config.describe()
+        return HTMLResponse(pages.render(page, description, error=description["error"]))
+
+    @app.get("/", response_class=HTMLResponse)
+    async def chat() -> HTMLResponse:
+        return serve("chat")
+
+    @app.get("/settings", response_class=HTMLResponse)
+    async def settings_page() -> HTMLResponse:
+        return serve("settings")
+
+    @app.get("/setup", response_class=HTMLResponse)
+    async def setup_page() -> HTMLResponse:
+        return serve("setup")
+
+    @app.get("/oneiro/", response_class=HTMLResponse)
+    async def graph_page() -> HTMLResponse:
+        return serve("graph")
 
     @app.get("/app.js")
     async def script() -> FileResponse:
