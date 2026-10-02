@@ -157,9 +157,100 @@ Product remains **not ready**. A settings shell is an independent stage-1 slice,
 not completion of stage 1's future domain contracts, nor a replacement for the old
 working assistant. Old native/control-plane entrypoints remain untouched.
 
+## Foundation defect pass (2026-10-02)
+
+An audit of `3a2e663a4` graded the foundation SPEC 2, DESIGN 4, CORRECTNESS 6,
+QUALITY 5 and named four defects. This pass fixed those four and nothing else:
+no chat, graph, onboarding, installer or shortcut work was started.
+
+### Changes
+
+1. **One data root.** `config.data_root()` is now the single answer, defaulting to
+   `~/.oneiro` and overridden by `ONEIRO_DATA_DIR`; `settings_path()` lives inside
+   it and `runtime.py` takes the runtime lease from it. The old
+   `~/.openclaw/oneiro` location — inside the agent workspace's parent — is no
+   longer referenced by the product. Settings written there are **moved** into the
+   data root on first read (`config._migrate_legacy`), never copied-and-left:
+   history first, then the settings file, and the old directory is removed only
+   when `rmdir` succeeds, so an unknown file keeps it alive for inspection.
+   Migration is skipped entirely when `ONEIRO_SETTINGS_FILE` names a path, so a
+   test or scripted run can never absorb the owner's real configuration.
+2. **Route identity on the server.** New `python/oneiro/pages.py` owns what each
+   route is; `web.py` names a page and `pages.render` produces the document from
+   `static/page.html`. `/`, `/settings`, `/setup` and `/oneiro/` are four distinct
+   documents with their own title, heading and notice. The client no longer
+   rewrites a heading from `location.pathname`. The form is rendered on the two
+   pages that need it (settings and setup); chat and graph carry status only.
+3. **`writable` is measured, not claimed.** `config._writable` opens an existing
+   file for writing without truncating it, or probes the nearest existing ancestor
+   with a temporary file that is removed again, and returns the reason on failure.
+   The page disables saving and states the reason when the file is not writable.
+4. **The form comes from the registry.** All 19 declared settings render, grouped,
+   including `llm.manager_model`, `llm.researcher_model`, `llm.executor_model` and
+   `web.port`. `llm.api_key` stays write-only: a password control with no value
+   attribute and a "currently set / not set" line. `runtime.data_dir` and
+   `web.host` are declared `readonly` — the first because a file cannot relocate
+   itself, the second because only loopback is accepted — so they render disabled
+   and `config.save` refuses them by name.
+
+Two consequences of (4) were found while verifying and are part of the same fix:
+integer controls rendered with no `value` attribute, so submitting the page would
+have posted `0` and been refused; and a full-form submit stored every declared
+default explicitly, growing the owner's file from 4 keys to 15. The page now sends
+only fields the owner actually changed and reports "Nothing changed" otherwise.
+
+### Verified live in this pass
+
+- Server started with `oneiro serve`; `/` 991 B, `/settings` 6571 B, `/setup`
+  6515 B, `/oneiro/` 994 B — four distinct bodies with the headings
+  Conversation / Oneiro settings / Setup / Graph panel. No CORS header present.
+- **Real migration of the owner's own settings**: `~/.openclaw/oneiro/settings.json`
+  and its `settings-history/` moved to `~/.oneiro/`; the file is byte-identical
+  (md5 `8b3c4025b264…` before and after) and the old directory survived holding
+  only `settings.json.write.lock`, as designed. The page reported the migration
+  for that process. The owner's file was restored byte-exact after the probes.
+- **Settings round-trip in a real browser**: changed `llm.manager_model` and
+  `graph.host`, saved, `POST /api/settings` 200, reload showed the stored values.
+  Saving with no edits reported "Nothing changed; nothing written" and wrote
+  nothing. A one-field edit wrote exactly one key, leaving the other 14 untouched.
+- `api_key` control has no `value` attribute in the served HTML; `web.host` and
+  `runtime.data_dir` are `disabled`.
+- `GET /api/settings` reports `writable: true`, empty reason, and the new root;
+  with a non-directory in the settings path it reports `writable: false` and names
+  the blocker. Save refuses `runtime.data_dir` with a read-only message.
+- Tests: **44 passed** for config + package foundation (10 new). Whole suite
+  **355 passed, 10 errors**, every error a `ConnectionAborted` to the absent
+  sc-server in the same five live-server modules as the earlier baseline — no new
+  failure. `uv run --frozen mypy`: **8 files, zero issues**.
+- `uv build --wheel` then installed-wheel HTTP smoke outside the workspace with no
+  PYTHONPATH: **passed**. A stale `build/lib` directory was packaging the deleted
+  `index.html` into the wheel; it was recycled and the rebuilt wheel contains only
+  the 8 modules and 3 static assets.
+- Server stopped; port 9899 released; no owned process left running.
+
+### Not verified in this pass
+
+Conversation, the graph panel, the real OSTIS graph, memory/retrieval, model or
+vision calls, Telegram, the Linux VM, C++ or ScAgents, scientific equivalence,
+automatic updates, installer, desktop shortcut, migration/restore of the graph
+itself, and any browser other than the loopback desktop Chromium used here. The
+`/oneiro` and `/settings/` no-trailing-slash variants still answer 307; that was
+out of scope for this pass and is recorded as a known rough edge, not a fixed
+defect. The registry still declares settings (`dashboard.port`, `world.seed`,
+`bench.*`, `workspace`, `mcp.source`) that no rewritten module consumes yet; they
+were left declared on purpose and are not consumerless dead code by accident.
+
 ## Next independent work
 
-Implement package/config/runtime shell with native ASGI lifecycle, shared settings
-and actionable prerequisite report; verify wheel outside workspace and cleanup.
-Then migrate memory/role runtime/model adapters without abandoning graph restore,
-Linux VM, full onboarding/installer/shortcut and live-production acceptance.
+Stage 1b: typed, versioned domain records and event envelopes in `oneiro`, and the
+memory/retrieval seam behind `/api/graph`. Keep the graph-dependent exit condition
+honest — attempt a consistent OSTIS snapshot and isolated restore as soon as the
+sc-machine is reachable, otherwise record the blocker and continue.
+
+The four audit items still open from the earlier review, none of which this pass
+was asked to touch: `/oneiro` and `/settings/` answer 307 without their trailing
+slash; the settings POST handler imports `json`/`asyncio` inside the function
+while its siblings are module-level; `describe()` per-row work is now hoisted but
+`_writable` still touches the filesystem on every settings page hit; and
+`tests/installed_smoke.py` still has no `test_` prefix, so a normal `pytest` run
+does not execute it.
