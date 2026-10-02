@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -eo pipefail # stop script execution if any errors are encountered
 
+# The exact phrase that must accompany REBUILD_KB=1 before the knowledge base is
+# cleared. Chosen to be impossible to set by accident.
+KB_CLEAR_CONFIRMATION="I_UNDERSTAND_THE_GRAPH_WILL_BE_CLEARED"
+
 # script help info
 function usage() {
     cat <<USAGE
@@ -37,13 +41,28 @@ function build_kb() {
 
 function start_machine {
     # Memory safety: the graph is the agent's biography and must survive restarts.
-    #   REBUILD_KB=1                 -> explicit rebuild from sources (--clear)
+    #   REBUILD_KB=1 + confirmation   -> explicit rebuild from sources (--clear)
+    #   REBUILD_KB=1 alone           -> refuse, loudly, and start nothing
     #   empty KB storage (first run) -> build once, nothing to preserve yet
     #   anything else                -> keep the graph, just start sc-machine
+    #
+    # A single environment variable was not enough. On 2026-10-02 a container
+    # carrying REBUILD_KB=1 auto-started with the restart policy and ran
+    # sc-builder --clear over a live graph, losing every record in it. Rebuilding
+    # now takes a second, unambiguous signal so a routine start can never do it.
     local storage="${KB_STORAGE:-/kb.bin}"
     if [ -n "$REBUILD_KB" ] && [ "$REBUILD_KB" -eq 1 ];
     then
-        echo "REBUILD_KB=1: explicit KB rebuild from sources (clears the graph)."
+        if [ "$CONFIRM_KB_CLEAR" != "$KB_CLEAR_CONFIRMATION" ];
+        then
+            echo "REFUSING TO CLEAR THE KNOWLEDGE BASE. Starting nothing." >&2
+            echo "  REBUILD_KB=1 asks for sc-builder --clear, which destroys every record in $storage." >&2
+            echo "  On 2026-10-02 that wiped a live graph during a routine start." >&2
+            echo "  To rebuild from sources on purpose, start the container with:" >&2
+            echo "    CONFIRM_KB_CLEAR=$KB_CLEAR_CONFIRMATION" >&2
+            exit 3
+        fi
+        echo "REBUILD_KB=1 with explicit confirmation: rebuilding $storage from sources (clears the graph)."
         # this expands to $KB_PATH if it's non-null and expands to "/knowledge-base" otherwise.
         build_kb "${KB_PATH:-"/knowledge-base"}"
     elif [ -z "$(ls -A "$storage" 2>/dev/null)" ]; then

@@ -1,0 +1,32 @@
+# Re-sync the entrypoint the container actually executes.
+#
+# Why this exists: the deployed machine container was created on 2026-09-19 and
+# carries an entrypoint whose start_machine() calls `sc-builder --clear` whenever
+# REBUILD_KB=1, with no storage check. On 2026-10-02 that cleared the graph.
+# The repository's scripts/docker_entrypoint.sh has the fix, but the container
+# was never recreated to pick it up, so the deployment and the repository
+# silently disagreed — the exact failure this file is meant to make fixable.
+#
+# A full `docker compose build` is a 5.7 GB context (5.6 GB of it another
+# agent's worktrees) plus a C++ rebuild, which is a heavy way to replace one
+# shell script. This overlay replaces exactly that script and inherits every
+# other layer of the pinned base image.
+#
+# Build from the scripts/ directory so the context stays at ~200 KB:
+#
+#   docker tag oneiro-ostis-machine:latest oneiro-ostis-machine:base-2026-09-19
+#   docker build -f Dockerfile.entrypoint-sync -t oneiro-ostis-machine:latest scripts
+#   docker compose up -d --force-recreate machine
+#
+# The base is a pinned tag, not :latest, so repeated builds cannot stack this
+# overlay on top of a previous one.
+FROM oneiro-ostis-machine:base-2026-09-19
+
+USER root
+COPY docker_entrypoint.sh /example-app/scripts/docker_entrypoint.sh
+# Windows checkouts give shell scripts \r endings; the main Dockerfile
+# normalizes for the same reason.
+RUN sed -i 's/\r$//' /example-app/scripts/docker_entrypoint.sh && \
+    chmod +x /example-app/scripts/docker_entrypoint.sh && \
+    bash -n /example-app/scripts/docker_entrypoint.sh && \
+    echo "entrypoint replaced with the repository copy and syntax-checked"
