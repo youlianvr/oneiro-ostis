@@ -337,6 +337,133 @@ snapshot/restore meaningful evidence. The deeper fix belongs in stage 2: the
 deployment must not be able to clear the graph on a routine start, and a verified
 snapshot must exist *before* the next start, not after it.
 
+## 2026-10-02 — OSTIS deployment fixed, snapshot proven, clearing guarded
+
+Follows the incident above. Three things, in the order they were done, each
+verified against the container that actually holds the volume.
+
+### 1. The deployed container now runs the repository's entrypoint
+
+The container that held the graph was created on 2026-09-19 and had never been
+recreated, so it ran an entrypoint that called `sc-builder --clear` whenever
+`REBUILD_KB=1`. The repository already had the fix; the deployment had drifted
+away from it.
+
+A full `docker compose build` was **not** used to re-sync it. `.dockerignore` is
+empty and the build context is 5.7 GB, of which 5.6 GB is another agent's
+`worktrees/`, followed by a C++ rebuild. `Dockerfile.entrypoint-sync` replaces
+exactly the one file the container executes, on a pinned base
+(`oneiro-ostis-machine:base-2026-09-19`) so repeated builds cannot stack the
+overlay on itself. The image's script is byte-identical to the repository's:
+
+```
+image    /example-app/scripts/docker_entrypoint.sh  30fadc6605e0a18e0eb46adc9b9853dd
+repo     scripts/docker_entrypoint.sh               30fadc6605e0a18e0eb46adc9b9853dd
+```
+
+**Live-verified from the container's own logs, not from the file on disk:**
+
+| start | how | entrypoint said | "Build knowledge base" | sources imported |
+|---|---|---|---|---|
+| 1 | `docker compose up -d --force-recreate machine` | `Existing graph found in /kb.bin: starting sc-machine without rebuilding.` | 0 | 0 |
+| 2 | `docker compose restart machine` (deliberate) | same | 0 | 0 |
+| 3 | after adding the guard, recreated again | same | 0 | 0 |
+
+`REBUILD_KB` is now `0` in the running container. The graph's five storage files
+were md5-checksummed before the recreate and after every start: **byte-identical
+across all three starts**, and sc-memory's `Last string offset` held at 104870
+rather than resetting. That is the proof that failed before, now passing.
+
+### 2. A snapshot, and a restore that was actually read back
+
+Taken from a deliberately stopped server so the storage was quiescent, written to
+a host file outside the Docker volume:
+
+- snapshot: `.runtime/graph-snapshots/oneiro-kb-2026-10-02T13-36Z.tar.gz` (192,912 bytes, all five `.scdb` files)
+- restored to: `.runtime/graph-restore-check/` — a scratch directory, never the live volume
+
+Checksums of the extracted files are identical to the live graph's, and the live
+volume was re-checksummed afterwards and was unchanged by the restore.
+
+The readback is not a file listing. A separate container was booted **from the
+restored copy** on port 8091, and the product's own bridge was pointed at it
+(`.runtime/verify_restored_graph.py`, read-only: a template search and a
+link-content read, no writes):
+
+```
+connected to ws://127.0.0.1:8091
+  template search on ScAddr(65538): 1 result(s)
+  relation identifier read back: nrel_system_identifier
+search results: 1; identifier strings read back: 1
+```
+
+The restored server also logged `Existing graph found in /kb.bin: starting
+sc-machine without rebuilding.` — it opened the restored storage and needed no
+rebuild. Running the same probe against the **live** server on 8090 returned an
+identical result, so the restored copy behaves like the original rather than
+merely existing.
+
+**Known limits of this readback, stated plainly:** the anchored template search
+returned 1 result, not thousands, and the per-arc link accessor in the probe
+(`triple.get(2)`) returned `ScAddr(0)`, so per-arc identifier strings were not
+read. The probe proves the restored storage is traversable and that identifier
+strings come back out of it; it does not measure graph size or enumerate content.
+A stronger check belongs in stage 2 with the typed memory layer.
+
+### 3. A routine start can no longer clear the graph silently
+
+`REBUILD_KB=1` alone is now refused. Clearing requires a second, unambiguous
+signal, and the refusal exits before either binary runs:
+
+```
+REFUSING TO CLEAR THE KNOWLEDGE BASE. Starting nothing.
+  REBUILD_KB=1 asks for sc-builder --clear, which destroys every record in /kb.bin.
+  On 2026-10-02 that wiped a live graph during a routine start.
+  To rebuild from sources on purpose, start the container with:
+    CONFIRM_KB_CLEAR=I_UNDERSTAND_THE_GRAPH_WILL_BE_CLEARED
+```
+
+**Live-verified in a real container** with `REBUILD_KB=1` and no confirmation —
+the exact 2026-10-02 condition, against the live volume: exit code **3**, the
+message above, and the live graph's checksums unchanged afterwards.
+
+Covered by `tests/test_entrypoint_guard.py` (**6 passed**), which runs the real
+script with stub binaries and asserts: refuse-and-start-nothing without the
+confirmation; a wrong phrase is still refused; a confirmed rebuild does pass
+`--clear`; an existing graph starts with `sc-machine` and never `sc-builder`; a
+first-run build happens **without** `--clear`; and two routine starts rebuild
+nothing. The tests pass the parent environment through in full and use Git's MSYS
+bash launcher, because a stripped environment or `usr\bin\bash.exe` fails to
+start in a way that looks like a test failure but is not one.
+
+### Test suite consequence
+
+The graph-backed tests that errored with `ConnectionAborted` now run:
+
+- whole suite: **371 passed, 0 errors** (was 355 passed, 10 errors)
+- `test_core_loop` + `test_replay_exactness` against the live server: **7 passed**
+- `uv run --frozen mypy`: **8 files, zero issues**
+
+### Not verified
+
+- **No write was made to the graph.** The bridge round-trip the owner originally
+  asked for (write a node, read it back) was not performed: the graph is a
+  freshly rebuilt KB, and a probe on it would describe the rebuild, not the
+  product's memory.
+- The full `Dockerfile` build was **not** re-run, so the C++ module, the venv and
+  the extensions in the image are still the 2026-09-19 build. Only the entrypoint
+  was re-synced. A `.dockerignore` is needed before that build is practical.
+- The snapshot proves restore of *this* graph. It does not prove restore of a
+  graph containing agent-written records, because none exist to snapshot.
+- The snapshot lives in the project's gitignored `.runtime/`. A copy off this
+  machine is still wanted; nothing here is protected against losing the checkout.
+- Container-level restore onto a different Docker host, and restore while the
+  live server is running, were not attempted.
+- `ostis-example-app-*` containers from an older project were left untouched.
+- The `/oneiro` and `/settings/` 307s, the settings POST handler's inline
+  imports, the per-request `_writable` probe, and `tests/installed_smoke.py`
+  lacking a `test_` prefix all remain open from the previous pass.
+
 ## Next independent work
 
 Stage 1b: typed, versioned domain records and event envelopes in `oneiro`, and the
