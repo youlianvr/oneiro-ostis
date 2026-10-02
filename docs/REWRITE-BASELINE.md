@@ -649,6 +649,115 @@ recreated or re-imported, and no substitute store was added.
 - The 13:26 rebuild is not re-examined; this pass did not re-import anything.
 - Conversation, onboarding and the installer were not started.
 
+## 2026-10-02 — Cause of the lost writes: sc-machine ignores SIGTERM
+
+The hypothesis in the brief — segment-dump configuration being off or too low —
+is **wrong**, and it is ruled out by experiment below. The cause is in how the
+process is stopped, and it is a property of the sc-machine build.
+
+### The finding
+
+`sc-machine` registers a signal handler at startup (every log ends with
+`Signal handler`) but **does nothing on SIGTERM**. Docker stops a container with
+SIGTERM, so the graceful path that dumps segments never runs, and after the grace
+period Docker SIGKILLs the container. **SIGINT runs the full save path.**
+
+### The experiment
+
+All of it in scratch copies of the storage under `.runtime/`, on ports 8092–8094.
+The live graph, its container and its configuration were not touched; the three
+test containers were removed afterwards.
+
+**Control — the live entrypoint unchanged, port 8092.** Wrote a node through
+`python/bridge.py` (`write addr = ScAddr(196636)`, read back 1), then:
+
+```
+$ docker stop -t 60 kb-test-control
+$ docker logs kb-test-control | grep -E "segments saved|Shutdown"
+(nothing)
+$ docker inspect kb-test-control --format '{{.State.ExitCode}}'
+143
+```
+
+With a 60-second grace the shutdown produced **zero** output.
+
+**Test — `sc-machine` launched with `exec` so it is PID 1, port 8093.** This was
+my first hypothesis, that the `tini → bash → sc-machine` tree (`tini` PID 1,
+`bash` PID 7, `sc-machine` PID 10) kept SIGTERM from reaching the server. The
+process tree did change to `PID 1 sc-machine` — and it made no difference:
+
+```
+$ docker inspect kb-test-exec --format '{{.State.ExitCode}}'
+137                      # SIGKILL: 60s grace expired, server never exited
+$ docker exec kb-test-exec bash -c 'ps -eo pid,comm | grep sc-machine'
+      1 sc-machine       # still alive after a direct kill -TERM
+```
+
+**The signal that works.** Sending SIGINT to the same PID:
+
+```
+[14:25:15][Info]: Shutdown ScKeynodes
+[14:25:15][Info]: [sc-memory] Shutdown extensions
+[14:25:16][Info]: [sc-fs-memory] Sc-memory segments saved
+[14:25:16][Info]: [sc-fs-memory] All sc-fs-memory dictionaries saved
+[14:25:16][Info]: [sc-fs-memory] Successfully shutdown
+```
+
+and the storage really changed:
+
+```
+baseline  ba99cf016e3a5745afc885161a999820  segments.scdb
+after     3fe89ca32c99601b4ff2997b5a9d1f46  segments.scdb
+```
+
+**What rules configuration out.** `max_loaded_segments`, `dump_memory` and the
+ini were not varied between the failing and the working case: the same image, the
+same `knowledge-base/oneiro-ostis.ini`, the same storage, the same port mapping.
+The only difference was which signal arrived. Nothing in that ini governs signal
+handling. (The stock-config control was inconclusive: without `-c` sc-machine
+exits at once with `Knowledge base binaries directory is required`.)
+
+### The fix, and what applying it would take
+
+`stop_signal: SIGINT` on the `machine` service in `docker-compose.yml`, so
+`docker stop` and `docker compose stop` deliver the signal the server honours.
+Alternative if SIGINT must not be relied on: a wrapper that traps SIGTERM and
+re-raises it as SIGINT.
+
+**Nothing was applied.** The live deployment is untouched: `oneiro-ostis-machine-1`
+is still the container started before this pass, its storage differs from the
+probe snapshot only by the dictionary entry the previous pass's probe left, and
+`docker-compose.yml`, `knowledge-base/` and `scripts/` are unmodified in git.
+
+### A second defect, still open
+
+With the save path finally running, the probe node **still did not read back**
+after the restart:
+
+```
+attempts read back after SIGINT shutdown + restart: 0
+```
+
+So SIGTERM is the reason writes were being lost, but it is not the whole story:
+either the record is not fully persisted even when segments are saved, or
+`action_retrieve_attempts` cannot find records once the server has reloaded. The
+subject string is interned in the saved `strings2.scdb` but absent from the
+SIGTERM-path control copy, so the write reached disk in the working case.
+
+Deciding between those two needs a read path that does not go through the
+retrieval agent — resolving the entity directly from a fresh connection — which
+this pass did not do. Stage 2 stays blocked until both are closed.
+
+### Not verified
+
+- No fix was applied or tested against the live deployment, by instruction.
+- Whether `stop_signal: SIGINT` survives a `docker compose up --force-recreate`
+  in this Docker Desktop version is untested.
+- The retrieval-side defect above is diagnosed but not explained.
+- Only `record_attempt` was exercised; other bridge writers are untested against
+  a restarted server.
+- No conversation, onboarding or installer work was started.
+
 ## Next independent work
 
 Stage 1b: typed, versioned domain records and event envelopes in `oneiro`, and the
