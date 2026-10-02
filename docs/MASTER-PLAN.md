@@ -166,10 +166,17 @@ are not completion of these phases.
       pure relation sweep fails. memory._read_graph used exactly that shape and
       is fixed - /api/graph and /oneiro/ now verify the graph and return a real
       identifier instead of reporting it unreadable.
-      Remaining in this stage: load_memory_sessions cannot read back what
-      save_memory_sessions writes (payload arc is findable by address; reader
-      searches the relation keynode instead) - localised, undiagnosed. Other bridge
-      writers and the dream-cycle writers are untested across a restart.
+      Both read paths CORRECTED 2026-10-02. save_memory_sessions and
+      load_memory_sessions agree and round-trip through a real save and reload;
+      the earlier "representation mismatch" was a probe writing payloads that
+      omit session_id, which the loader requires and the real producer
+      bench.memory.dataset.session_to_dict supplies. Tests pin that agreement.
+      An audit of every .triple/.quintuple/.triple_with_relation call in the
+      product tree found no remaining all-variable template, which is the one
+      shape this sc-memory build does not answer.
+      Remaining in this stage: save_harness, save_harness_round,
+      save_memory_bench_result, the life/organization loaders and the
+      dream-cycle writers are untested across a restart - unproven, not broken.
       See REWRITE-BASELINE.md.
 - [ ] 3: concurrent, recoverable runtime/tasks/initiative.
 - [ ] 4: shared model/research/media adapters and live capabilities.

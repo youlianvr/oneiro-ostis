@@ -1415,9 +1415,139 @@ decision for stage 2, not something to change inside a characterisation block.
   fix was verified by calling `probe()` against the live OSTIS server, not
   through the live HTTP surface. `/api/graph` and `/oneiro/` still serve old code.
 
+## 2026-10-02 — Block C part 2: the session loader was never broken either
+
+Stage 2's remaining blocker was reported as "load_memory_sessions cannot read
+back what save_memory_sessions writes", localised to a write/read
+representation mismatch. **That was also wrong**, and the previous localisation
+is what made it look like one. Every element involved turned out to be
+reachable. This is the second correction to a claim made in this document, and
+both came from trusting a probe over the contract.
+
+### What the carrier arc actually is
+
+`_add_json_relation` and the inlined equivalent in `save_memory_sessions` build a
+two-arc structure. For each session node:
+
+```
+node      --common_arc-->   payload_link        (A = ScAddr(327729))
+relation  --perm_pos_arc-->  A                   (B = ScAddr(327730))
+```
+
+The payload is the link `ScAddr(327727)`. The reader must therefore anchor on
+the **common arc A** and join B, which is exactly what the quintuple in
+`_relation_value_link_addr` does:
+
+```
+triple1 (node, VAR_COMMON_ARC, VAR_NODE_LINK)  -> (327723, 327729, 327727)
+triple2 (rel,  VAR_PERM_POS_ARC, 327729)       -> (327715, 327730, 327729)
+_relation_value_link_addr(node, ...)           -> ScAddr(327727)
+```
+
+Both halves resolve and the helper returns the payload link on the first try.
+There is no representation mismatch. The earlier probe that appeared to show
+one searched `(node, relation_keynode, VAR_NODE_LINK)` — the relation keynode in
+the connector slot, which is the same malformed shape that produced the
+phantom search defect two sections ago.
+
+### What actually dropped the rows
+
+```
+_json_relation(ScAddr(327723), NREL_MEMORY_SESSION_PAYLOAD)
+    -> {'answer': 'a1', 'date_epoch': 1700000000, 'question': 'q1', 'score': 0.5}
+load_memory_sessions('probe_corpus_2026_10_02') -> []
+```
+
+The payload was read perfectly. The loader then discarded it:
+
+```python
+payload = self._json_relation(node, NREL_MEMORY_SESSION_PAYLOAD)
+if payload and payload.get("session_id"):
+    rows.setdefault(str(payload["session_id"]), payload)
+```
+
+`save_memory_sessions` stores the caller's dict **verbatim** and invents
+nothing, so `session_id` is a caller guarantee. The real producer,
+`bench.memory.dataset.session_to_dict`, emits `session_id`, `date`, `date_epoch`
+and `turns`, and the real consumer `bench.memory.retrieval.rank_graph` reads
+`date_epoch` back. The loader's filter is correct for the contract. The probe
+had invented `{question, answer, date_epoch, score}`, which the contract does not
+produce, and every row was correctly dropped as unidentifiable.
+
+### Proof across a restart
+
+Re-run with contract-shaped payloads from `session_to_dict`, on the scratch copy
+at `.runtime/probe-addr/` on port 8095:
+
+```
+write   save_memory_sessions -> 2 sessions
+        in-session load_memory_sessions -> 2: ['s-0001', 's-0002']
+
+SIGINT  exit 0, segments.scdb 40eeb6ca... -> ffb286a1...
+
+read    AFTER RESTART load_memory_sessions -> 2
+        {"date": "2024-01-05", "date_epoch": 1704412800, "session_id": "s-0001",
+         "turns": [{"content": "what is ostis?", "role": "user"},
+                   {"content": "a knowledge base", "role": "assistant"}]}
+        {"date": "2024-02-11", "date_epoch": 1707225600, "session_id": "s-0002", ...}
+        AFTER RESTART load_strategies -> the strategy written before the reload,
+        with descriptor, replay_score and online_score intact
+```
+
+Both writers now have a measured round-trip through a real save and reload.
+The strategy that had been written before the stop still reads back, so the
+session work did not disturb it.
+
+### All-variable template audit
+
+The measured rule is that at least one end of a triple must be concrete; a pure
+relation sweep returns one result with both endpoints at `ScAddr(0)`. Every
+`.triple(`, `.quintuple(` and `.triple_with_relation(` call in the product tree
+was scanned for a template whose source and target are both `sc_type` values:
+
+```
+python/bridge.py                            0
+python/oneiro/*.py                          0
+whole product tree, worktrees/.runtime
+and vendored trees excluded                 0
+```
+
+`memory._read_graph` was the only one and is fixed. Nothing else to change.
+
+### Regression tests
+
+`tests/test_memory_session_contract.py` pins the producer/loader agreement: the
+real producer must emit the key the loader filters on, must emit the keys
+`rank_graph` reads back, the writer must still store the caller's dict
+verbatim, and the loader's identity key must stay the one the test names. A
+caller or probe that invents its own payload shape now fails there instead of
+returning a silent empty list.
+
+There is deliberately **no** test written to fail against
+`load_memory_sessions`. Its shape is correct; a test that failed against it
+would encode the mistake and then break the suite the moment someone fixed it
+back.
+
+### Not verified
+
+- `save_harness`, `save_harness_round`, `save_memory_bench_result`, the life and
+  organization loaders, and the dream-cycle writers are still untested across a
+  restart. `record_attempt` and `save_strategy` and `save_memory_sessions` now
+  have measured round-trips; the rest remain unproven, which is different from
+  broken.
+- `load_strategies` does not deduplicate by name: writing the same strategy
+  twice yields two rows. Whether that is intended is not decided here.
+- The contract test reads the bridge and producer sources to pin the agreement.
+  That is deliberate, and it will need attention if either is restructured.
+- Live-verified: none in this block. It ran entirely on the scratch copy at port
+  8095. The live graph was not read, written or restarted, and `docker-compose.yml`
+  is unchanged.
+
 ## Next independent work
 
-The four-block plan is approved. Blocks A, B and C are done; Block D and the stages after 2 are next.
+The four-block plan is approved. Blocks A, B and C are done, including the two
+reported blockers that turned out not to be defects. Block D and the stages
+after 2 are next.
 
 - **Block D and the stages after 2** — agent runtime and recoverable scheduling,
   model access, tools and the Linux VM, the scientific kernel, unified web and
@@ -1431,11 +1561,9 @@ Carried open from Blocks A and B, none of it worked on:
   the same entrypoint now, but the two paths should be reconciled.
 - `stop_signal: SIGINT` covers `docker compose stop` only. A host reboot, a
   `docker kill` or an OOM kill still bypasses it and still loses the graph.
-- `load_memory_sessions` cannot read back what `save_memory_sessions` writes. The
-  data is in the graph and findable by address, but the reader searches on the
-  relation keynode while the arc carrying the payload is a different element.
-  Localised, not diagnosed, unfixed. The other bridge writers and the
-  dream-cycle writers are still untested across a restart.
+- `save_harness`, `save_harness_round`, `save_memory_bench_result`, the life and
+  organization loaders and the dream-cycle writers are still untested across a
+  restart. Unproven, which is not the same as broken.
 - Something in the running stack rewrites the live `strings2.scdb` on its own
   while `segments.scdb` stays put. Cause unestablished.
 - `docker-compose.isolated.yml` may carry its own machine service without the
