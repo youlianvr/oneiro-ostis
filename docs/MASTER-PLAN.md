@@ -144,9 +144,12 @@ are not completion of these phases.
 - [x] Recover complete approved requirements and preserve delivery additions.
 - [x] Inspect actual repository, dependency/service presence and data locations.
 - [ ] Complete module disposition/equivalence evidence as modules are touched.
-- [ ] Verify consistent graph snapshot and isolated restore before migration.
+- [x] Verify consistent graph snapshot and isolated restore before migration
+      (2026-10-02: snapshot taken from a stopped server, restored to scratch, read back
+      through the bridge; note the graph was cleared before that snapshot existed).
 - [x] 1a: installed wheel/shared settings/process ownership/ASGI foundation; see baseline checks.
-- [ ] 1b: complete typed domain contracts and remaining reproducible-build compatibility.
+- [x] 1b: typed versioned records, event envelopes, and the memory read seam.
+- [ ] 1c: reproducible-build compatibility; the 5.7 GB build context is unfixed.
 - [ ] 2: memory/retrieval/migration contracts and live OSTIS validation.
 - [ ] 3: concurrent, recoverable runtime/tasks/initiative.
 - [ ] 4: shared model/research/media adapters and live capabilities.

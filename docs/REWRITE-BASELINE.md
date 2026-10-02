@@ -464,6 +464,74 @@ The graph-backed tests that errored with `ConnectionAborted` now run:
   imports, the per-request `_writable` probe, and `tests/installed_smoke.py`
   lacking a `test_` prefix all remain open from the previous pass.
 
+## 2026-10-02 — Stage 1b: typed records, event envelopes, memory seam
+
+### What was built
+
+- **`python/oneiro/records.py`** — one schema for conversation, task, run, action,
+  decision, note, experience, experiment and release. Versioned (`SCHEMA_VERSION`),
+  frozen dataclasses, and `decode` is the only way in, so a truncated store fails
+  there rather than becoming a record missing its meaning. Three decisions are
+  load-bearing: `Provenance` separates what the owner said from what a model
+  claimed from what a tool actually did; `State.UNCERTAIN` gives interrupted work a
+  real name; and `Action.may_retry()` is the single place that decides retrying,
+  and it refuses whenever an effect's outcome is unknown.
+- **`python/oneiro/events.py`** — envelopes with `causation_id` and
+  `correlation_id`, so a Telegram reply and the web request it answers share one
+  correlation while each event points at what caused it. Every event carries a
+  digest that detects an edited or replayed envelope, and `read_events` reports a
+  torn final line rather than discarding records that were already durable.
+- **`python/oneiro/memory.py`** — the read seam. No substitute store exists and
+  none was added. `sc_client` is imported inside the probe, so a wheel installed
+  without it still starts and still says why it cannot read memory.
+
+### Live-verified
+
+- `oneiro serve` on 9899; `/api/graph` answers **200** in ~0.26 s with
+  `required: OSTIS`, `fallback: null`, `reachable: true`, `verified: false`,
+  `arcs_found: 1`, and the reason in `blocked`.
+- `/oneiro/` renders those same facts server-side; the four routes remain four
+  distinct documents with their own headings.
+- Whole suite **387 passed, 0 errors** (was 371). `uv run --frozen mypy`:
+  **11 files, zero issues**. 16 new domain tests.
+
+Three bugs were caught by the new tests rather than by inspection: `to_dict` did
+not serialize the nested `Effect`; the event digest was circular because
+`to_dict` embedded the field holding the hash; and `sequence()` invented event
+names outside the declared set, so every wrapped record would have been rejected
+on the way back in.
+
+### The finding that matters more than the code
+
+**The graph answers the protocol but holds no traversable knowledge base.**
+
+The single arc matching `nrel_system_identifier` has unresolved wildcard endpoints
+on both sides — sc-memory echoing the relation itself back, not content hanging off
+it. Searching for identifier arcs attached to that node returns zero. The
+container log does show the compiled agent module subscribing to
+`action_initiated`, so the graph is not entirely empty, but a traversal cannot find
+knowledge-base content.
+
+So the 13:26 rebuild reported all 201 sources as `ok` and yet produced a graph that
+does not demonstrably contain them. **Stage 2's exit condition "old data queryable"
+cannot be evaluated until this is explained**, and nothing in this pass was built
+on the assumption that the KB is loaded.
+
+### Not verified
+
+- No node was written. The write/read-back round-trip through `python/bridge.py`
+  is still outstanding, and it is the next thing that would settle the question
+  above: if a written node reads back, the write path works and the emptiness is
+  about imported KB content; if it does not, the storage path is broken.
+- `memory.probe` proves reachability and traversal only. It does not measure graph
+  size, and its anchor search returns one result, so it cannot answer "how much is
+  in there".
+- The records are not yet persisted anywhere; `decode_many` and the JSON-lines
+  format are exercised by tests, not by a real store.
+- The 5.7 GB build context is unfixed, so reproducible-build compatibility (the
+  remainder of stage 1, tracked as 1c) is untouched.
+- Conversation is still `503`; `/api/message` is unchanged and honest.
+
 ## Next independent work
 
 Stage 1b: typed, versioned domain records and event envelopes in `oneiro`, and the

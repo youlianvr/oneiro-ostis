@@ -43,6 +43,17 @@ def fake_home(monkeypatch, home: Path) -> None:
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
 
 
+def _tcp_open() -> bool:
+    import socket
+    host = str(config.value("graph.host"))
+    port = int(config.value("graph.port"))
+    try:
+        with socket.create_connection((host, port), timeout=1):
+            return True
+    except OSError:
+        return False
+
+
 def test_legacy_import_is_same_settings_owner():
     from config import save, settings
     assert save is config.save
@@ -138,7 +149,15 @@ def test_lifespan_same_origin_and_honest_health():
         status = client.get("/api/status").json()
         assert status["memory"]["fallback"] is None
         assert status["runtime_connected"] is False
-        assert client.get("/api/graph").status_code == 503
+        graph = client.get("/api/graph")
+        facts = graph.json()
+        # The endpoint reports what could actually be read, so its status
+        # follows reachability. What must never change: OSTIS is required and
+        # there is no substitute store behind either answer.
+        assert facts["required"] == "OSTIS"
+        assert facts["fallback"] is None
+        assert graph.status_code == (200 if facts["reachable"] else 503)
+        assert facts["reachable"] == _tcp_open(), "reachability must be measured, not assumed"
         assert client.post("/api/settings", json={"graph.port": 8001}).status_code == 403
         token = client.get("/api/session").json()["csrf"]
         assert client.post("/api/settings", headers={"X-Oneiro-CSRF": token, "Origin": "https://evil.invalid"}, json={"graph.port": 8001}).status_code == 403
