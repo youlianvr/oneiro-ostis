@@ -149,22 +149,27 @@ are not completion of these phases.
       through the bridge; note the graph was cleared before that snapshot existed).
 - [x] 1a: installed wheel/shared settings/process ownership/ASGI foundation; see baseline checks.
 - [x] 1b: typed versioned records, event envelopes, and the memory read seam.
-- [ ] 1c: reproducible-build compatibility; the 5.7 GB build context is unfixed.
 - [x] 1c: reproducible build context. 6.02 GB -> 23.50 MB via a new
       .dockerignore; full build runs and the image boots and round-trips a
       record. Still open: oneiro-base:latest is an undeclared local base image.
 - [ ] 2: memory/retrieval/migration contracts and live OSTIS validation.
       Persistence blocker CLEARED 2026-10-02 and applied to live. The cause was
       two-part, not one: sc-memory ignores SIGTERM, AND scripts/docker_entrypoint.sh
-      ran it under bash, which does not forward signals, so SIGINT was
-      swallowed too. Fix is the pair - exec in the entrypoint plus
-      stop_signal: SIGINT with a 90s grace - verified through
-      docker -> tini -> sc-machine on scratch (records survive) and on live
-      (stop exits 0 in 2s, save runs, graph intact). Snapshot and rollback tag
-      preserved. Next in this stage: the read path. sc_client search_by_template
-      returns no real results on this build while the C++ agent path works, so
-      bridge.all_subjects() and memory._read_graph() silently return empty and
-      contracts must not be written against it until it is characterised.
+      ran it under bash, which does not forward signals, so SIGINT was swallowed
+      too. Fix is the pair - exec in the entrypoint plus stop_signal: SIGINT with
+      a 90s grace - verified through docker -> tini -> sc-machine on scratch
+      (records survive) and on live (stop exits 0 in 2s, save runs, graph intact).
+      Snapshot and rollback image preserved.
+      Read path CORRECTED 2026-10-02: template search is not broken. The earlier
+      claim came from probes that placed a node type in the connector slot. The
+      rule measured is that at least one end of a triple must be concrete; only a
+      pure relation sweep fails. memory._read_graph used exactly that shape and
+      is fixed - /api/graph and /oneiro/ now verify the graph and return a real
+      identifier instead of reporting it unreadable.
+      Remaining in this stage: load_memory_sessions cannot read back what
+      save_memory_sessions writes (payload arc is findable by address; reader
+      searches the relation keynode instead) - localised, undiagnosed. Other bridge
+      writers and the dream-cycle writers are untested across a restart.
       See REWRITE-BASELINE.md.
 - [ ] 3: concurrent, recoverable runtime/tasks/initiative.
 - [ ] 4: shared model/research/media adapters and live capabilities.

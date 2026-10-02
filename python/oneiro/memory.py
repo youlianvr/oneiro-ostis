@@ -108,11 +108,25 @@ def _read_graph(host: str, port: int) -> GraphFacts:
 
     connect(f"ws://{host}:{port}")
     try:
-        # A fully variable triple is rejected by sc-machine, so the search is
-        # anchored on a relation address the client resolved.
+        # Anchor on a CONCRETE SOURCE, not on the relation.
+        #
+        # A sweep that varies the source and fixes the connector - the obvious
+        # way to "find everything using this relation" - does not work on this
+        # sc-memory build. Measured 2026-10-02 against sc-server 0.10.5 on a
+        # graph known to contain such arcs, every one of these returned exactly
+        # one result whose endpoints were both ScAddr(0):
+        #     (VAR, anchor, VAR)  (VAR_NODE, anchor, VAR_NODE)
+        #     (VAR_NODE, anchor, VAR_NODE_LINK)  (VAR_NODE, anchor, VAR_CONNECTOR)
+        # while the same server returned real triples the moment the SOURCE was
+        # concrete:
+        #     (ScAddr(196609), VAR_CONNECTOR, VAR_NODE) -> (196609, 196611, 196610)
+        #
+        # So: walk outward from a resolved relation instead of sweeping on it.
+        # A relation node carries its own identifier through a common arc, and
+        # reading that string back is exactly the proof this module exists for.
         anchor = ScKeynodes[ANCHOR_RELATION]
         template = ScTemplate()
-        template.triple(sc_type.VAR_NODE_LINK, anchor, sc_type.VAR_NODE_LINK)
+        template.triple(anchor, sc_type.VAR_COMMON_ARC, sc_type.VAR_NODE_LINK)
         found = search_by_template(template)
         concrete = [t for t in found if t.get(0).value != 0 and t.get(2).value != 0]
         identifiers = []

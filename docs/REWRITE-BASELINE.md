@@ -947,7 +947,9 @@ f0db8422ab951f4350dd06868f4c1ed1  strings1.scdb
 `docker-compose.yml` is unchanged. The diagnostic scripts used here live in the
 gitignored `.runtime/` and are not part of the product.
 
-## 2026-10-02 — Block A: reproducible build, 1c
+> **Correction (Block C, later the same day).** The section immediately above blamed `search_by_template` for returning no real results. That was wrong: the probes placed a node type (`VAR_NODE_LINK`, `0x43`) in the connector slot, which matches nothing. Template search works; the real defect was one reader of our own. See 'Block C: template search was never broken'.
+
+
 
 The approved four-block plan runs A reproducible build (1c), B the SIGINT fix
 in the live compose, C the OSTIS read-path characterisation, D the stages after
@@ -1286,15 +1288,137 @@ oneiro-ostis-web-1       untouched, up throughout
   examined and may carry its own machine service without the fix.
 - No conversation, onboarding or installer work was started.
 
-The four-block plan is approved. Blocks A and B are done; C and D are next.
+## 2026-10-02 — Block C: template search was never broken; one of our readers was
 
-- **Block C — the OSTIS read path.** `search_by_template` returns no real results
-  on this build while the C++ agent path works, so `bridge.all_subjects()` and
-  `memory._read_graph()` silently return empty and `/oneiro/` reports the graph
-  as unreachable-content rather than reading it. Stage 2 retrieval contracts
-  must not be written against the broken path. Also still unproven across a
-  restart: `save_strategy`, `save_memory_sessions` and the dream-cycle writers,
-  which have only ever been exercised through `record_attempt`.
+### The previous two sections are wrong about the cause
+
+The "write persistence settled" section reported that `search_by_template`
+"returns no real results on this build", that the C++ agent path works while
+the raw template machinery does not, and that half the Python-side readers
+silently return empty as a result. **That diagnosis was wrong.** The searches
+returned nothing because the probes were malformed. Template search works.
+
+The mistake was mine and it was a specific one. In OSTIS a template triple is
+`(source, connector, target)`, and the connector slot must hold a **connector
+type**. The probes used `sc_type.VAR_NODE_LINK`, which is `0x43` — the var bit
+plus `NODE_LINK`, i.e. a *node* type. Put in the connector slot it matches
+nothing:
+
+```
+VAR_NODE_LINK              0x43     <- a NODE type
+VAR_CONNECTOR             0x4040   <- connector types live in the 0x40xx range
+VAR_COMMON_ARC            0xc048
+VAR_PERM_POS_ARC          0xc8d0
+```
+
+What the probes actually established, restated correctly:
+
+- **`(concrete, VAR_CONNECTOR, concrete)` works.** On a scratch graph whose
+  layout had already been read directly, it returned `(196609, 196611, 196610)`
+  — exactly the arc the per-address type census had predicted.
+- **A pure relation sweep — variable source AND variable target with a concrete
+  connector — does not work.** `(VAR, nrel_system_identifier, VAR)` returned
+  exactly one result whose endpoints were both `ScAddr(0)`, for every
+  combination of variable types tried.
+- **A variable source with a concrete target works.** `(VAR_NODE,
+  VAR_COMMON_ARC, <corpus node>)` returned both session nodes.
+- `get_elements_types` and `get_link_content` work, as they always did.
+- `resolve_keynodes` creates what it cannot find, as previously recorded.
+
+So the rule is narrow: **at least one end of the triple must be concrete.** The
+C++ agents were never evidence of a working alternative path; they simply anchor
+on concrete sources, which is why they worked. `py-sc-client` 0.4.0 is the
+current release and is not the problem, though it remains an undeclared and
+unpinned dependency of this repository.
+
+### The real defect, and its fix
+
+Exactly one place in the product used the one shape that cannot work:
+`oneiro.memory._read_graph`, which swept `(VAR_NODE_LINK, anchor,
+VAR_NODE_LINK)`. It is now anchored on the resolved relation as the **source**
+instead:
+
+```python
+anchor = ScKeynodes[ANCHOR_RELATION]
+template.triple(anchor, sc_type.VAR_COMMON_ARC, sc_type.VAR_NODE_LINK)
+```
+
+A relation node carries its own identifier through a common arc, so reading
+that string back is still the proof the module exists for. Against both the
+scratch copy and the live graph:
+
+```
+reachable: True | verified: True | arcs: 1 | identifiers: ['nrel_system_identifier']
+```
+
+Before this change the same probe reported `verified: False` and the message
+"the graph answers the protocol but holds no traversable knowledge base", so
+`/api/graph` and `/oneiro/` have been under-reporting a loaded, readable graph
+as empty. `bridge.idtf_of` and every other loader in `bridge.py` were checked and
+use concrete sources correctly.
+
+`tests/test_memory_probe_template.py` pins the shape: the triple's source must
+not be a `sc_type` variable, the relation slot must hold a connector type, and
+an unreachable server must still produce `reachable=False` with a reason.
+
+### Writers other than `record_attempt`
+
+`save_strategy` was exercised end to end against a scratch server and survives
+a restart. `save_memory_sessions` does not round-trip at all, and the failure
+has nothing to do with persistence.
+
+`save_strategy`, before and after a SIGINT save and reload:
+
+```
+{"derived_from": null, "descriptor": {"policy": ["left", "right"], "seed": 7},
+ "dream_round": null, "name": "probe_strategy_2026_10_02",
+ "online_score": 2.5, "replay_score": 1.5}
+```
+
+`save_memory_sessions("probe_corpus_2026_10_02", [2 sessions])` reports 2
+written. `load_memory_sessions` returns 0 — in-session, before any restart.
+Localised to the payload relation:
+
+```
+bridge quintuple as written   -> 2 resolved, both session nodes
+session node 327723 outgoing  -> 3 arcs
+(327723, 327729, 327727)      -> 1 resolved          <- the payload arc, findable
+(327723, 327715, VAR_NODE_LINK)-> 0 resolved         <- what the reader searches for
+link 327727 content           -> {"answer": "a1", "date_epoch": 1700000000,
+                                   "question": "q1", "score": 0.5}
+```
+
+The data is in the graph and is reachable by address. The reader searches for
+the relation keynode `nrel_memory_session_payload` (`ScAddr(327715)`, idtf
+confirmed) as the connector, but the arc that actually joins the session node to
+its payload is `ScAddr(327729)`, type `0xc028` — a different element. So this
+is a mismatch between how `_add_json_relation` writes the attribute and how
+`_json_relation` looks for it, not a storage or search failure. It is left
+unfixed: it is bridge write-path behaviour with test implications and is a
+decision for stage 2, not something to change inside a characterisation block.
+
+### Not verified
+
+- Whether a concrete **connector** with two variable ends ever works. Every such
+  probe returned one unresolved tuple, but no case was found where such an arc
+  was independently proven to exist, so the rule above is "at least one end must
+  be concrete", not a proven impossibility.
+- Only `save_strategy` and `save_memory_sessions` were exercised. `save_harness`,
+  `save_harness_round`, `save_memory_bench_result`, the life/organization
+  loaders and the dream-cycle writers are untested against a restarted server.
+- The `_add_json_relation` / `_json_relation` mismatch is localised but not
+  diagnosed.
+- The memory fix was verified against the live graph read-only. No live write
+  was performed in this block.
+- The rewrite is **not deployed**. `oneiro-ostis-web-1` runs the legacy
+  `ostis/sc-web:0.9.0` image and has no `oneiro` module at all, so the memory
+  fix was verified by calling `probe()` against the live OSTIS server, not
+  through the live HTTP surface. `/api/graph` and `/oneiro/` still serve old code.
+
+## Next independent work
+
+The four-block plan is approved. Blocks A, B and C are done; Block D and the stages after 2 are next.
+
 - **Block D and the stages after 2** — agent runtime and recoverable scheduling,
   model access, tools and the Linux VM, the scientific kernel, unified web and
   Telegram, then packaging and migration.
@@ -1307,6 +1431,11 @@ Carried open from Blocks A and B, none of it worked on:
   the same entrypoint now, but the two paths should be reconciled.
 - `stop_signal: SIGINT` covers `docker compose stop` only. A host reboot, a
   `docker kill` or an OOM kill still bypasses it and still loses the graph.
+- `load_memory_sessions` cannot read back what `save_memory_sessions` writes. The
+  data is in the graph and findable by address, but the reader searches on the
+  relation keynode while the arc carrying the payload is a different element.
+  Localised, not diagnosed, unfixed. The other bridge writers and the
+  dream-cycle writers are still untested across a restart.
 - Something in the running stack rewrites the live `strings2.scdb` on its own
   while `segments.scdb` stays put. Cause unestablished.
 - `docker-compose.isolated.yml` may carry its own machine service without the
