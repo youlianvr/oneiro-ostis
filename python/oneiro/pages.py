@@ -13,6 +13,7 @@ from __future__ import annotations
 import html
 from pathlib import Path
 from string import Template
+from typing import Any
 
 TEMPLATE = Path(__file__).parent / "static" / "page.html"
 
@@ -30,8 +31,9 @@ PAGES: dict[str, tuple[str, str, str]] = {
               "key, the dependencies the memory layer needs. It never starts Docker or "
               "changes a setting for you."),
     "graph": ("Oneiro — graph", "Graph panel",
-              "The graph panel is not integrated in this foundation. /api/graph answers 503 "
-              "by design; no graph is faked and no substitute memory store is used."),
+              "OSTIS is the memory substrate and the only one. This page reports what "
+              "could actually be read from the running server just now — reachability "
+              "alone is not counted as success. No substitute memory store exists."),
 }
 
 NAV = (("/", "Chat", "chat"), ("/settings", "Oneiro settings", "settings"),
@@ -97,14 +99,46 @@ def _form(description: dict) -> str:
             f'<p id="result" role="status"></p></form>')
 
 
-def render(page: str, description: dict, error: str = "") -> str:
+def _graph_section(facts: Any) -> str:
+    """What the probe could read, and what it could not. Nothing is inferred."""
+    if facts is None:
+        return ('<section><h2>Memory substrate</h2>'
+                '<p class="bad">The graph was not probed for this page.</p></section>')
+    if not facts.reachable:
+        reasons = "".join(f"<li>{html.escape(reason)}</li>" for reason in facts.blocked)
+        return ('<section><h2>Memory substrate</h2>'
+                f'<p class="bad">Unreachable. OSTIS is required; there is no substitute '
+                f'store, so nothing is shown in its place.</p><ul>{reasons}</ul></section>')
+    if not facts.verified:
+        reasons = "".join(f"<li>{html.escape(reason)}</li>" for reason in facts.blocked)
+        return ('<section><h2>Memory substrate</h2>'
+                f'<p class="bad">Reachable, but nothing could be read back out of the '
+                f'graph.</p><ul>{reasons}</ul></section>')
+    rows = "".join(
+        f"<li><code>{html.escape(identifier)}</code></li>" for identifier in facts.identifiers
+    )
+    return ('<section><h2>Memory substrate</h2>'
+            f'<p class="ok">Readable. {facts.arcs_found} anchor arc(s) traversable via '
+            f'<code>{html.escape(facts.anchor)}</code>; identifier strings read back out '
+            f'of the graph in {facts.elapsed_ms} ms.</p>'
+            f'<p class="muted">Checked {html.escape(facts.checked_at)}. This is a '
+            f'reachability-and-traversal check, not a memory benchmark.</p>'
+            f'<ul>{rows}</ul></section>')
+
+
+def render(page: str, description: dict, error: str = "", facts: Any = None) -> str:
     """The complete HTML document for one route."""
     title, heading, notice = PAGES[page]
     nav = "".join(
         f'<a href="{href}"{" aria-current=page" if active == page else ""}>{html.escape(label)}</a>'
         for href, label, active in NAV
     )
-    body = _form(description) if page in FORM_PAGES else ""
+    if page in FORM_PAGES:
+        body = _form(description)
+    elif page == "graph":
+        body = _graph_section(facts)
+    else:
+        body = ""
     return Template(TEMPLATE.read_text(encoding="utf-8")).safe_substitute(
         title=html.escape(title), heading=html.escape(heading), nav=nav,
         notice=html.escape(notice), body=body,

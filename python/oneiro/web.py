@@ -1,6 +1,7 @@
 """Same-origin foundation; chat and graph remain explicitly unavailable."""
 from __future__ import annotations
 
+import asyncio
 import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -11,7 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from oneiro import config, pages
+from oneiro import config, memory, pages
 from oneiro.runtime import Runtime
 
 STATIC = Path(__file__).parent / "static"
@@ -51,26 +52,34 @@ def create_app(runtime: Runtime | None = None) -> FastAPI:
         })
         return response
 
-    def serve(page: str) -> HTMLResponse:
+    async def serve(page: str) -> HTMLResponse:
         """One route, one page. `web.py` names it; `pages` renders it."""
         description = config.describe()
-        return HTMLResponse(pages.render(page, description, error=description["error"]))
+        facts = None
+        if page == "graph":
+            host = str(config.value("graph.host"))
+            port = int(config.value("graph.port"))
+            facts = await asyncio.wait_for(
+                asyncio.to_thread(memory.probe, host, port),
+                timeout=memory.PROBE_TIMEOUT + 2)
+        return HTMLResponse(pages.render(page, description, error=description["error"],
+                                        facts=facts))
 
     @app.get("/", response_class=HTMLResponse)
     async def chat() -> HTMLResponse:
-        return serve("chat")
+        return await serve("chat")
 
     @app.get("/settings", response_class=HTMLResponse)
     async def settings_page() -> HTMLResponse:
-        return serve("settings")
+        return await serve("settings")
 
     @app.get("/setup", response_class=HTMLResponse)
     async def setup_page() -> HTMLResponse:
-        return serve("setup")
+        return await serve("setup")
 
     @app.get("/oneiro/", response_class=HTMLResponse)
     async def graph_page() -> HTMLResponse:
-        return serve("graph")
+        return await serve("graph")
 
     @app.get("/app.js")
     async def script() -> FileResponse:
@@ -117,8 +126,22 @@ def create_app(runtime: Runtime | None = None) -> FastAPI:
             return JSONResponse({"error": "Invalid settings or settings file unavailable; existing data preserved"}, status_code=400)
 
     @app.post("/api/message")
-    @app.get("/api/graph")
     async def not_integrated() -> JSONResponse:
-        return JSONResponse({"error": "Agent/graph adapter is not integrated in this foundation", "ready": False}, status_code=503)
+        return JSONResponse({"error": "The agent runtime is not integrated yet", "ready": False}, status_code=503)
+
+    @app.get("/api/graph")
+    async def graph() -> JSONResponse:
+        """What the memory substrate can actually be read for, right now.
+
+        The probe blocks on a socket and a graph traversal, so it runs off the
+        request thread and is bounded: an unresponsive graph must not hold the
+        page open. There is no substitute store, so an unreachable graph is a
+        503 carrying the reason, never an empty graph that reads like success.
+        """
+        host = str(config.value("graph.host"))
+        port = int(config.value("graph.port"))
+        facts = await asyncio.wait_for(asyncio.to_thread(memory.probe, host, port),
+                                       timeout=memory.PROBE_TIMEOUT + 2)
+        return JSONResponse(facts.to_dict(), status_code=200 if facts.reachable else 503)
 
     return app
