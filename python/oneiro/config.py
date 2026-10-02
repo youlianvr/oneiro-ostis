@@ -11,9 +11,14 @@ Declared here once: the key a human sees, the environment variable, the older
 names still honoured, the type, the default, and the sentence that explains it.
 A value is looked up in this order:
 
-  1. the settings file  (``~/.openclaw/oneiro/settings.json``; what the UI writes)
+  1. the settings file  (``~/.oneiro/settings.json``; what the UI writes)
   2. the environment    (what scripts and the workspace ``.env`` set)
   3. the declared default
+
+Everything Oneiro keeps for itself — settings, ownership files, the runtime
+lock — lives under one root, :func:`data_root`. Settings written by the
+pre-package location (``~/.openclaw/oneiro``, inside the agent workspace's
+parent) are moved there on first read; see :func:`_migrate_legacy`.
 
 The file wins over the environment on purpose: a value the owner saved in the
 settings page must survive a shell that still exports the old one. Every read
@@ -29,6 +34,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import tempfile
 import threading
 import uuid
 from contextlib import contextmanager
@@ -39,11 +46,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-# Keep the existing file location until an explicit, verified migration.
-# New installations can choose ONEIRO_SETTINGS_FILE / ONEIRO_DATA_DIR without
-# depending on the parent workspace or reading its .env files.
-SETTINGS_DIR = Path.home() / ".openclaw" / "oneiro"
-SETTINGS_PATH = SETTINGS_DIR / "settings.json"
+# One root for the product. The old settings directory sat inside the agent
+# workspace's parent (``~/.openclaw``), which coupled a standalone product to
+# where it happened to be developed; ``~/.oneiro`` is outside it.
+DEFAULT_DATA_DIR = "~/.oneiro"
+SETTINGS_FILENAME = "settings.json"
+_lock = threading.RLock()   # guards the cache and a migration; see _read_file
+_cache: tuple[str, int, int, dict] | None = None   # (path, mtime_ns, size, values)
+_load_error: str = ""
+_migrated_from: str = ""    # where settings were moved from, this process only
 
 
 @dataclass(frozen=True)
@@ -64,6 +75,7 @@ class Setting:
     group: str
     kind: str = "str"           # str | int | bool | path | secret
     aliases: tuple[str, ...] = ()
+    readonly: bool = False      # resolved by code, never stored in the file
 
     @property
     def secret(self) -> bool:
@@ -77,11 +89,14 @@ class Setting:
 
 SETTINGS: tuple[Setting, ...] = (
     Setting("web.host", "ONEIRO_WEB_HOST", "127.0.0.1", "Web address",
-            "Foundation server binds loopback only.", "Interface"),
+            "Fixed to loopback: Oneiro is not reachable from the network.",
+            "Interface", readonly=True),
     Setting("web.port", "ONEIRO_WEB_PORT", 9899, "Web port",
             "One origin for chat, settings and /oneiro/.", "Interface", kind="int"),
-    Setting("runtime.data_dir", "ONEIRO_DATA_DIR", "~/.oneiro", "Runtime data",
-            "Application ownership files; never an OSTIS memory fallback.", "Work", kind="path"),
+    Setting("runtime.data_dir", "ONEIRO_DATA_DIR", DEFAULT_DATA_DIR, "Runtime data",
+            "Where Oneiro keeps its own files. Read-only here: changing it moves "
+            "the settings file, so it is set with ONEIRO_DATA_DIR before first start.",
+            "Work", kind="path", readonly=True),
     Setting("llm.manager_model", "ONEIRO_MANAGER_MODEL", "main", "Manager model",
             "Model alias for conversation and coordination.", "Model"),
     Setting("llm.researcher_model", "ONEIRO_RESEARCHER_MODEL", "auto/coding", "Researcher model",
@@ -172,21 +187,72 @@ _BY_KEY: dict[str, Setting] = {s.key: s for s in SETTINGS}
 # Attribute spelling for the `settings` object: graph_port -> graph.port.
 _ATTR: dict[str, str] = {s.key.replace(".", "_"): s.key for s in SETTINGS}
 
-_lock = threading.RLock()
-_cache: tuple[str, int, int, dict] | None = None   # (path, mtime_ns, size, values)
-_load_error: str = ""
+
+def data_root() -> Path:
+    """The one directory Oneiro keeps its own state in.
+
+    Answered by the environment (``ONEIRO_DATA_DIR``) or the default; never by
+    the settings file, because the settings file is inside this directory and a
+    file cannot relocate itself. ``runtime.data_dir`` declares the same value
+    for the settings page; ``data_root`` is what the code reads.
+    """
+    override = os.environ.get("ONEIRO_DATA_DIR")
+    return (Path(override) if override else Path(DEFAULT_DATA_DIR)).expanduser()
 
 
 def settings_path() -> Path:
     """Where the file lives. `ONEIRO_SETTINGS_FILE` moves it, for tests."""
     override = os.environ.get("ONEIRO_SETTINGS_FILE")
-    return Path(override).expanduser() if override else SETTINGS_PATH
+    return Path(override).expanduser() if override else data_root() / SETTINGS_FILENAME
+
+
+def _legacy_settings_path() -> Path:
+    """Where the pre-package build kept settings, if it ever wrote any."""
+    return Path.home() / ".openclaw" / "oneiro" / SETTINGS_FILENAME
+
+
+def _migrate_legacy() -> None:
+    """Move pre-package settings into the data root, once, without destroying.
+
+    Skipped when `ONEIRO_SETTINGS_FILE` names a path: a test or a scripted run
+    must never pick up the owner's real configuration. Nothing is deleted —
+    files are moved, and the old directory goes only if it is left empty, so a
+    lock marker or an unknown file keeps it alive for the owner to inspect.
+    """
+    global _migrated_from
+    if os.environ.get("ONEIRO_SETTINGS_FILE"):
+        return
+    target = settings_path()
+    legacy = _legacy_settings_path()
+    with _lock:
+        if target.exists() or not legacy.is_file():
+            return
+        # History first: it may hold credentials, and a half-moved history is
+        # recoverable while a half-moved settings file would not be.
+        source_history = legacy.parent / "settings-history"
+        if source_history.is_dir():
+            destination = target.parent / "settings-history"
+            if not destination.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(source_history), str(destination))
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if not target.exists():
+                shutil.move(str(legacy), str(target))
+        except OSError:
+            return          # the old copy stays exactly where it was
+        _migrated_from = str(legacy)
+        try:
+            legacy.parent.rmdir()      # only succeeds when nothing is left
+        except OSError:
+            pass
 
 
 def _read_file() -> dict:
     """The file's contents, or an empty mapping with the reason recorded."""
     global _load_error, _cache
     file_path = settings_path()
+    _migrate_legacy()
     try:
         stat = file_path.stat()
     except FileNotFoundError:
@@ -320,11 +386,41 @@ class _Settings:
 settings = _Settings()
 
 
+def _writable() -> tuple[bool, str]:
+    """Whether the settings file can actually be written, and why not.
+
+    Asked of the filesystem rather than assumed: an existing file is opened for
+    writing without truncating it, and a directory that does not exist yet is
+    probed with a temporary file in the nearest existing ancestor, because the
+    directory is created by the first save. Nothing is left behind.
+    """
+    target = settings_path()
+    if target.exists():
+        try:
+            os.close(os.open(target, os.O_WRONLY))
+            return True, ""
+        except OSError:
+            return False, f"{target} cannot be opened for writing"
+    ancestor = target.parent
+    while not ancestor.exists() and ancestor != ancestor.parent:
+        ancestor = ancestor.parent
+    if not ancestor.is_dir():
+        return False, f"{ancestor} is not a directory"
+    try:
+        handle, probe = tempfile.mkstemp(dir=ancestor, prefix=".oneiro-write-probe-")
+        os.close(handle)
+        os.remove(probe)
+        return True, ""
+    except OSError:
+        return False, f"{ancestor} is not writable"
+
+
 def describe() -> dict:
     """Everything the settings page needs, with secrets never handed out."""
+    stored = _read_file()
+    writable, writable_error = _writable()
     rows = []
     for s in SETTINGS:
-        stored = _read_file()
         raw, source = _raw_layers(s)
         in_file = s.key in stored and stored[s.key] is not None
         if s.secret:
@@ -349,12 +445,16 @@ def describe() -> dict:
             "changed": changed,
             "stored": in_file,
             "secret": s.secret,
+            "readonly": s.readonly,
             "set": bool(str(raw or "").strip()),
         })
     return {
         "settings": rows,
         "path": str(settings_path()),
-        "writable": True,
+        "data_root": str(data_root()),
+        "writable": writable,
+        "writable_error": writable_error,
+        "migrated_from": _migrated_from,
         "error": _load_error,
     }
 
@@ -370,6 +470,9 @@ def save(patch: dict) -> dict:
     unknown = [k for k in patch if k not in _BY_KEY]
     if unknown:
         raise ValueError(f"unknown settings: {', '.join(sorted(unknown))}")
+    locked = [k for k in patch if _BY_KEY[k].readonly]
+    if locked:
+        raise ValueError(f"read-only settings, set in the environment instead: {', '.join(sorted(locked))}")
     problems: list[str] = []
     coerced: dict[str, Any] = {}
     for key, raw in patch.items():
@@ -485,6 +588,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         print(json.dumps(description, ensure_ascii=False, indent=2))
         return 0
+    print(f"root: {description['data_root']}")
     print(f"file: {description['path']}")
     if description["error"]:
         print(f"error: {description['error']}")

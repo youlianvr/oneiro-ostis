@@ -27,7 +27,7 @@ class Runtime:
     async def start(self) -> None:
         if self._lease is not None:
             raise RuntimeError("Runtime already started")
-        lease = FileLease(config.path("runtime.data_dir") / "runtime.lock")
+        lease = FileLease(config.data_root() / "runtime.lock")
         lease.acquire()
         self._lease = lease
         self.started_at = time.time()
