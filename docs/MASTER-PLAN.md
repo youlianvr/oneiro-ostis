@@ -151,6 +151,8 @@ are not completion of these phases.
 - [x] 1b: typed versioned records, event envelopes, and the memory read seam.
 - [ ] 1c: reproducible-build compatibility; the 5.7 GB build context is unfixed.
 - [ ] 2: memory/retrieval/migration contracts and live OSTIS validation.
+      BLOCKED 2026-10-02: sc-memory drops node/arc writes at shutdown, so no record
+      survives a restart. Bridge round-trip passes in-session; see baseline.
 - [ ] 3: concurrent, recoverable runtime/tasks/initiative.
 - [ ] 4: shared model/research/media adapters and live capabilities.
 - [ ] 5: isolated executor/tools and Linux desktop integration.

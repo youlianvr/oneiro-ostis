@@ -532,6 +532,123 @@ on the assumption that the KB is loaded.
   remainder of stage 1, tracked as 1c) is untouched.
 - Conversation is still `503`; `/api/message` is unchanged and honest.
 
+## 2026-10-02 — Probe round-trip: writes do not survive a restart
+
+Stage 1b left one open question that a single round-trip would settle: the graph
+answers the protocol but a traversal finds no knowledge-base content. This pass
+took the snapshot first, wrote one clearly-marked probe through
+`python/bridge.py`, and read it back through the same path.
+
+**The answer is not the one that was hoped for. The write works inside one server
+session and does not survive a restart.**
+
+### Recovery point taken first
+
+Clean stop, then tar of the quiescent storage to
+`.runtime/graph-snapshots/oneiro-kb-preprobe-20261002T1412Z.tar.gz` (199,940
+bytes). Storage checksums recorded before the stop and again at snapshot time
+were **identical**, which establishes that a clean stop by itself moves nothing —
+so any later difference is attributable to the probe and not to the shutdown.
+
+```
+1afa09c4734479ea7714b8401641ae49  strings2.scdb
+64f599223d13198412810a97935bfe9f  string_offsets_link_hashes.scdb
+6639f2b5fc8c7a833a6b87dd8cb084f8  term_string_offsets.scdb
+ba99cf016e3a5745afc885161a999820  segments.scdb
+f0db8422ab951f4350dd06868f4c1ed1  strings1.scdb
+```
+
+### The write, through the product's own path
+
+`python .runtime/probe_bridge_roundtrip.py` — `OneiroBridge.record_attempt`, which
+resolves four entities through `resolve_entity` (creating ConstNodes when absent)
+and runs the compiled C++ agent `action_record_attempt`:
+
+```
+connecting to localhost:8090
+connected; running the product's own agents
+write returned addr=ScAddr(196645)
+re-reading through the same path
+read back 1 attempt(s) for the marker
+["probe_2026_10_02_bridge_roundtrip", "verify_storage_roundtrip", "oneiro_probe_node", "written_through_python_bridge", "rewrite-stage-1b-probe", "", null]
+OK: the written node came back through the product's own path
+exit=0
+```
+
+**That part genuinely works.** The bridge, the entities, the C++ agents and the
+retrieval path are all sound.
+
+### What the restart exposes
+
+`record_attempt` writes before it reads, so on its own it cannot distinguish a
+persisted node from one it just created. `.runtime/probe_readonly.py` writes
+nothing and asks the server what it already holds.
+
+After a clean stop and start, with **no write in between**:
+
+```
+=== step 1: read-only BEFORE the stop ===
+attempts stored for the marker: 1
+  addr=ScAddr(196637) subject=probe_2026_10_02_bridge_roundtrip action=verify_storage_roundtrip outcome=written_through_python_bridge
+RESULT: at least one attempt survived
+=== step 2: clean stop ===
+ Container oneiro-ostis-machine-1 Stopped
+=== step 3: start (no rebuild expected) ===
+ Container oneiro-ostis-machine-1 Started
+=== step 4: read-only AFTER the stop/start, nothing written in between ===
+attempts stored for the marker: 0
+RESULT: nothing persisted
+```
+
+One attempt before, **zero** after. The node does not survive.
+
+### Where the write goes
+
+Of the five storage files, exactly one changed across the whole probe:
+
+```
+< 1afa09c4734479ea7714b8401641ae49  strings2.scdb      (before the probe)
+> 3f0cb5d94b344e6bca495ce6e93f74da  strings2.scdb      (after)
+```
+
+`segments.scdb` — the file that holds node and arc data — is **byte-identical**.
+Only the string dictionary grew. There is no container-internal `kb.bin` at
+`/example-app/kb.bin` or `/example-app/install/sc-machine/kb.bin`, so the
+dictionary is genuinely reaching the named volume while the segment data is not.
+
+That is the defect: sc-memory is updating its string dictionary on disk but not
+persisting node and arc content, so every write is lost at shutdown. The probe
+marker is still sitting in `strings2.scdb` as dangling dictionary strings; it is
+clearly marked and safe to discard, and it was left in place rather than
+"cleaned up" so the residue is visible.
+
+### What this means for stage 2
+
+Stage 2's exit condition — "new records survive restart" — **cannot be met on
+this stack**, and it is not a contract problem that typed records can solve: the
+storage underneath drops writes. "Old data queryable" cannot be evaluated for the
+same reason, and the near-empty graph reported in the previous pass is now
+explained better than "imported content is missing": content that was written is
+discarded on shutdown, so the graph can only ever hold what a single session
+wrote.
+
+The 201 sources sc-builder reported as `ok` were also written in a session that
+has since ended, which is consistent with what the traversal now shows.
+
+Nothing was worked around: no configuration was changed, no container was
+recreated or re-imported, and no substitute store was added.
+
+### Not verified
+
+- The root cause inside sc-memory is not diagnosed. Whether it is
+  `max_loaded_segments`, the dump manager being off, or a shutdown-flush
+  behaviour is unestablished; that needs the sc-machine sources or a controlled
+  experiment, not another guess.
+- Only `record_attempt` was exercised. Other bridge writers may behave
+  differently, though a storage-layer failure would affect all of them.
+- The 13:26 rebuild is not re-examined; this pass did not re-import anything.
+- Conversation, onboarding and the installer were not started.
+
 ## Next independent work
 
 Stage 1b: typed, versioned domain records and event envelopes in `oneiro`, and the
