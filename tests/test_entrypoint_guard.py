@@ -152,3 +152,34 @@ def test_graph_survives_two_routine_starts(tmp_path):
     for _ in range(2):
         assert _run(tmp_path, binaries, storage, REBUILD_KB="0").returncode == 0
     assert log.read_text(encoding="utf-8").count("sc-builder") == 0
+
+
+def test_sc_machine_is_executed_with_exec(tmp_path):
+    """sc-machine must REPLACE the entrypoint shell, not run beneath it.
+
+    The image entrypoint is `tini -- docker_entrypoint.sh run`, so without
+    `exec` the tree is tini -> bash -> sc-machine. A shutdown signal from
+    `docker stop` reaches tini and then bash, and bash does not forward signals
+    to its foreground child: sc-machine never sees it and never saves. Measured
+    with `docker stop --signal SIGINT`: exit 137 after the whole grace period,
+    no shutdown output, segments.scdb unchanged.
+
+    This asserts the shape of the script rather than the container behaviour,
+    because the behaviour needs a container. The runtime proof is the
+    round-trip recorded in docs/REWRITE-BASELINE.md; this is here so the exec
+    cannot be removed as if it were cosmetic.
+    """
+    source = ENTRYPOINT.read_text(encoding="utf-8")
+
+    # Match the two real invocations, not the usage text that also names
+    # sc-machine: they are the lines that run "$BINARY_PATH"/sc-machine.
+    invocations = [
+        line for line in source.splitlines()
+        if 'BINARY_PATH"/sc-machine' in line
+    ]
+    assert invocations, "no sc-machine invocation found in the entrypoint"
+    for line in invocations:
+        assert line.lstrip().startswith("exec "), (
+            "sc-machine must be launched with exec so it becomes the direct "
+            f"child of tini and receives shutdown signals; found: {line.strip()}"
+        )

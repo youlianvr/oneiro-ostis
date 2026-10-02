@@ -16,6 +16,26 @@ services:
     build:
       context: ./
     restart: unless-stopped
+    # Shutdown signal: the graph is the assistant's memory and must be written.
+    #
+    # sc-memory registers a handler for SIGTERM and then does nothing, so
+    # `docker stop` used to kill the process (exit 143) without ever running
+    # the save path, losing every record written since the last save.
+    #
+    # SIGINT does run it: "Sc-memory segments saved" -> "All sc-fs-memory
+    # dictionaries saved" -> "Successfully shutdown", exit 0, and a changed
+    # segments.scdb. Verified 2026-10-02 through the real chain
+    # docker -> tini -> sc-machine; evidence in docs/REWRITE-BASELINE.md.
+    #
+    # This only works because scripts/docker_entrypoint.sh execs sc-machine.
+    # Without that exec the tree is tini -> bash -> sc-machine, bash does not
+    # forward signals to its foreground child, and SIGINT stops working too:
+    # measured exit 137 after the full grace period with segments.scdb
+    # unchanged. The two changes are a pair; neither is sufficient alone.
+    stop_signal: SIGINT
+    # The save takes about ten seconds. The 10s default grace races it and the
+    # container would be SIGKILLed part-way through writing the graph.
+    stop_grace_period: 90s
     volumes:
       # Mount KB sources (our ontology + IMS common KB) at the location the
       # entrypoint expects: /knowledge-base. Paths in repo.path resolve

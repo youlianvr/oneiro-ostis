@@ -74,13 +74,25 @@ function start_machine {
     fi
 
     # if arguments were provided, use them instead of the default ones.
+    # `exec` is load-bearing, not style. The image entrypoint is
+    # `tini -- docker_entrypoint.sh run`, so without exec the process tree is
+    #   tini(1) -> bash(7) -> sc-machine(10)
+    # and a shutdown signal delivered to the container reaches tini and then
+    # bash. Bash does not forward signals to its foreground child, so
+    # sc-machine never receives it and the save path never runs. Measured
+    # 2026-10-02 with `docker stop --signal SIGINT`: exit 137 after the full
+    # grace period, no shutdown output, segments.scdb unchanged.
+    #
+    # With exec, sc-machine replaces this shell and becomes tini's direct
+    # child, tini forwards the signal, and the same command exits 0 in about
+    # two seconds with "Successfully shutdown" and a changed segments.scdb.
     if [ $# -eq 0 ];
     then
         # you should provide the config file path and host settings yourself in case you want to use custom options!
         echo "Using default arguments."
-        "$BINARY_PATH"/sc-machine -c "$CONFIG_PATH" -e "$EXTENSIONS_PATH"
+        exec "$BINARY_PATH"/sc-machine -c "$CONFIG_PATH" -e "$EXTENSIONS_PATH"
     else
-        "$BINARY_PATH"/sc-machine "$@"
+        exec "$BINARY_PATH"/sc-machine "$@"
     fi
 }
 

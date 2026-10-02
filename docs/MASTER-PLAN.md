@@ -150,19 +150,22 @@ are not completion of these phases.
 - [x] 1a: installed wheel/shared settings/process ownership/ASGI foundation; see baseline checks.
 - [x] 1b: typed versioned records, event envelopes, and the memory read seam.
 - [ ] 1c: reproducible-build compatibility; the 5.7 GB build context is unfixed.
+- [x] 1c: reproducible build context. 6.02 GB -> 23.50 MB via a new
+      .dockerignore; full build runs and the image boots and round-trips a
+      record. Still open: oneiro-base:latest is an undeclared local base image.
 - [ ] 2: memory/retrieval/migration contracts and live OSTIS validation.
-      BLOCKED 2026-10-02 on one cause only: sc-memory ignores SIGTERM, so
-      docker stop never runs the save path and no record survives a restart.
-      SIGINT does save. Fix is stop_signal: SIGINT, proven in scratch,
-      deliberately NOT applied to the live deployment.
-      Settled 2026-10-02: persistence and retrieval are NOT the problem. The
-      written record is present in reloaded storage with all its arcs and link
-      content, and action_retrieve_attempts returns it on two consecutive clean
-      reloads. The earlier "0 after restart" was not reproduced. Separately,
-      sc_client search_by_template returns no real results on this build, so
-      Python-side template readers (bridge.all_subjects, memory._read_graph)
-      silently return empty; stage 2 contracts must not rely on that path until
-      it is characterised. See REWRITE-BASELINE.md.
+      Persistence blocker CLEARED 2026-10-02 and applied to live. The cause was
+      two-part, not one: sc-memory ignores SIGTERM, AND scripts/docker_entrypoint.sh
+      ran it under bash, which does not forward signals, so SIGINT was
+      swallowed too. Fix is the pair - exec in the entrypoint plus
+      stop_signal: SIGINT with a 90s grace - verified through
+      docker -> tini -> sc-machine on scratch (records survive) and on live
+      (stop exits 0 in 2s, save runs, graph intact). Snapshot and rollback tag
+      preserved. Next in this stage: the read path. sc_client search_by_template
+      returns no real results on this build while the C++ agent path works, so
+      bridge.all_subjects() and memory._read_graph() silently return empty and
+      contracts must not be written against it until it is characterised.
+      See REWRITE-BASELINE.md.
 - [ ] 3: concurrent, recoverable runtime/tasks/initiative.
 - [ ] 4: shared model/research/media adapters and live capabilities.
 - [ ] 5: isolated executor/tools and Linux desktop integration.

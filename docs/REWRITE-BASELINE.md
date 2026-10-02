@@ -1121,30 +1121,199 @@ unestablished and is recorded as an open item, not as a finding.
 - The image built here is tagged `verify-1c` and is not deployed. The live
   service still runs the 2026-09-19 image with the overlay.
 
-## Next independent work
+## 2026-10-02 — Block B: the SIGINT fix, and the half that does not work
 
-The four-block plan is approved and Block A is done. What remains, in order:
+Block A turned up a process-model fact that changed how Block B had to be
+verified, so Block B ran in the reverse order: the mechanism was proven on a
+scratch compose project first, and the live service was stopped once, for the
+snapshot and the application together.
 
-- **Block B — the SIGINT fix in the live compose.** This is the only thing
-  standing between the current state and the stage 2 exit condition. Step 4 is a
-  snapshot with the proven procedure, taken under the pre-authorised
-  `docker compose stop machine`. Step 5 verifies the fix on a scratch compose
-  project first, as *docker → tini → sc-machine*. Step 6 applies it live with
-  the rollback being snapshot restore plus reverting the line. Report the live
-  checksums before and after.
-- **Block C — the OSTIS read path.** `search_by_template` returns no real
-  results on this build while the C++ agent path works, so `bridge.all_subjects()`
-  and `memory._read_graph()` silently return empty. Stage 2 retrieval contracts
-  must not be written against the broken path. Also unproven across a restart:
-  `save_strategy`, `save_memory_sessions` and the dream-cycle writers, which
-  have been exercised only through `record_attempt`.
+### The approved fix does not work on its own
+
+`stop_signal: SIGINT` was proposed by the previous pass and authorised for the
+live compose. Applied on its own to a scratch compose project, it fails
+completely:
+
+```
+docker compose stop      20:44:11 -> 20:45:42   (the full 90s grace period)
+exit code                137                    (SIGKILL)
+shutdown output          none
+segments.scdb            ba99cf01... -> ba99cf01...  (unchanged)
+```
+
+The container was killed after the grace period expired having never run the
+save path. Applying exactly that to live would have left the graph just as
+unsafe as before, with a longer stop and an extra line in the compose file to
+show for it.
+
+### Why
+
+The process tree in the real image is three deep, not two:
+
+```
+1   /usr/bin/tini -- /example-app/scripts/docker_entrypoint.sh run
+7   bash /example-app/scripts/docker_entrypoint.sh run
+10  /example-app/install/sc-machine/bin/sc-machine -c ...
+```
+
+`docker stop` signals PID 1. tini forwards to bash. Bash does not forward
+signals to its foreground child, so sc-machine never receives anything. SIGINT
+and SIGTERM both stop there — which is why the save has never run on a stop,
+and why the earlier probes that appeared to contradict this had overridden the
+entrypoint and made sc-machine a direct child of the container.
+
+### The fix is a pair, and both halves are now in place
+
+`scripts/docker_entrypoint.sh` launches sc-machine with `exec`, so it replaces
+the shell and becomes tini's direct child. `docker-compose.yml` then sets
+`stop_signal: SIGINT` and `stop_grace_period: 90s`.
+
+Proven as a pair, first on scratch, through the real `docker compose stop`:
+
+```
+process tree        tini(1) -> sc-machine(7)          (bash gone)
+docker compose stop 20:52:31 -> 20:52:35
+exit code           0
+log                 [sc-fs-memory] Successfully shutdown
+segments.scdb       22a714f5... -> 15c7a4d1...
+reload              action_retrieve_attempts -> 2
+                    ScAddr(196636) and ScAddr(262156), both intact
+```
+
+Both records written before the stop were still there after it. The same test
+against a container whose entrypoint lacked the `exec` gave exit 137 and an
+unchanged `segments.scdb`, so the two halves are individually insufficient and
+individually necessary.
+
+The `exec` is protected by `tests/test_entrypoint_guard.py`, which asserts both
+sc-machine invocations are exec-prefixed, so it cannot be removed later as if it
+were cosmetic. That test checks the shape of the script rather than container
+behaviour, because the behaviour needs a container; the runtime proof is the
+round-trip above.
+
+### Applied to live
+
+Live checksums before, taken while the container was running:
+
+```
+ba99cf016e3a5745afc885161a999820  segments.scdb
+f0db8422ab951f4350dd06868f4c1ed1  strings1.scdb
+ec64501ab153efc57e80006b4100265a  strings2.scdb
+64f599223d13198412810a97935bfe9f  string_offsets_link_hashes.scdb
+6639f2b5fc8c7a833a6b87dd8cb084f8  term_string_offsets.scdb
+```
+
+Snapshot taken from the stopped container with the proven procedure:
+`.runtime/graph-snapshots/oneiro-kb-preSIGINT-20261002T1754Z.tar.gz`, 200,141
+bytes, five files, `segments.scdb` inside it checksumming to `ba99cf01…` and so
+matching what the live container reported.
+
+The pre-fix `docker compose stop machine` exited **143** — SIGTERM, no save —
+which is the defect reproducing live, on demand.
+
+The image was replaced with the entrypoint-sync overlay rebuilt from the
+updated script, and the container recreated:
+
+```
+Existing graph found in /kb.bin: starting sc-machine without rebuilding.
+process tree      tini(1) -> sc-machine(7)
+docker compose stop machine   17:56:00 -> 17:56:02
+exit code         0
+log               [sc-fs-memory] Successfully shutdown
+```
+
+Live checksums after:
+
+```
+93cea54c02b22a92f6ee329c15639e61  segments.scdb              <- rewritten
+f0db8422ab951f4350dd06868f4c1ed1  strings1.scdb              <- unchanged
+ec64501ab153efc57e80006b4100265a  strings2.scdb              <- unchanged
+7cfb78b61334e53e703838e39fec016e  string_offsets_link_hashes.scdb  <- rewritten
+7062aafff1e16e6ee2ba47cc978b7c1a  term_string_offsets.scdb        <- rewritten
+```
+
+Restarted, `health=healthy`, `Existing graph found ... without rebuilding`, the
+graph intact, and the checksums identical across the restart. The web container
+was never recreated and has been up throughout. Container healthcheck exit 0.
+
+**No test record was written to the live graph.** Verifying the save path does
+not require one: that `segments.scdb` was rewritten and the log ends
+`Successfully shutdown` is the proof, and record survival across the same chain
+was proven on scratch. The live graph was not used as a test fixture.
+
+### Rollback
+
+Two independent parts, either sufficient on its own.
+
+- **Data**: `docker run --rm -v oneiro-ostis_kb-binary:/from -v <abs>:/to
+  alpine sh -c "tar xzf /to/oneiro-kb-preSIGINT-20261002T1754Z.tar.gz -C /from"`
+  with the machine stopped, then start it.
+- **Configuration**: revert `stop_signal` / `stop_grace_period` in
+  `docker-compose.yml` and drop the `exec` from `scripts/docker_entrypoint.sh`,
+  or simply recreate from the preserved image
+  `oneiro-ostis-machine:rollback-20261002` (`8db1f0887f7c`), which is the exact
+  image the live container was running before this block.
+
+### The strings2 question, now with two more samples
+
+The unexplained `strings2.scdb` change from Block A is confirmed to be
+recurring: `3f0cb5d9…` at the start of the session, `a8569a7f…` at 20:44, and
+`ec64501a…` at 20:53, while `segments.scdb` stayed `ba99cf01…` throughout and no
+save had run. Something in the running stack rewrites the string dictionary on
+its own. Since this block it has stayed at `ec64501a…`, so the writer stopped
+around the recreate. Cause unestablished; recorded as an open item, not a
+finding.
+
+### Live state
+
+```
+oneiro-ostis-machine-1   healthy, image sha256:93542a08 (entrypoint-sync overlay
+                         rebuilt from the exec-carrying script)
+oneiro-ostis-web-1       untouched, up throughout
+```
+
+### Not verified
+
+- Record survival was proven on scratch, not by writing to the live graph. The
+  live evidence is that the save path executes and rewrites storage.
+- `stop_signal: SIGINT` was verified for `docker compose stop`. A host reboot,
+  `docker kill`, or an OOM kill still bypasses it and will still lose the graph.
+  Nothing here changes that.
+- The full `Dockerfile` build with the `exec` is proven in Block A
+  (`oneiro-ostis-machine:verify-1c`, `:sigint-fix`), but live runs the overlay,
+  not a full build. Reconciling the two is open.
+- Only the SIGINT path is characterised. `docker-compose.isolated.yml` was not
+  examined and may carry its own machine service without the fix.
+- No conversation, onboarding or installer work was started.
+
+The four-block plan is approved. Blocks A and B are done; C and D are next.
+
+- **Block C — the OSTIS read path.** `search_by_template` returns no real results
+  on this build while the C++ agent path works, so `bridge.all_subjects()` and
+  `memory._read_graph()` silently return empty and `/oneiro/` reports the graph
+  as unreachable-content rather than reading it. Stage 2 retrieval contracts
+  must not be written against the broken path. Also still unproven across a
+  restart: `save_strategy`, `save_memory_sessions` and the dream-cycle writers,
+  which have only ever been exercised through `record_attempt`.
 - **Block D and the stages after 2** — agent runtime and recoverable scheduling,
   model access, tools and the Linux VM, the scientific kernel, unified web and
   Telegram, then packaging and migration.
 
-Still open from the earlier review, untouched by this pass because they are not
-in Block A: `/oneiro` and `/settings/` answer 307 without their trailing slash;
-the settings POST handler imports `json`/`asyncio` inside the function while its
-siblings are module-level; `_writable` still touches the filesystem on every
-settings page hit; and `tests/installed_smoke.py` has no `test_` prefix, so a
-normal `pytest` run does not execute it.
+Carried open from Blocks A and B, none of it worked on:
+
+- `oneiro-base:latest` is an undeclared local base image, so a clean checkout
+  cannot build `Dockerfile` today. This is a stage 1 exit condition.
+- Live runs the entrypoint-sync overlay rather than a full build. Both carry
+  the same entrypoint now, but the two paths should be reconciled.
+- `stop_signal: SIGINT` covers `docker compose stop` only. A host reboot, a
+  `docker kill` or an OOM kill still bypasses it and still loses the graph.
+- Something in the running stack rewrites the live `strings2.scdb` on its own
+  while `segments.scdb` stays put. Cause unestablished.
+- `docker-compose.isolated.yml` may carry its own machine service without the
+  SIGINT fix; it was not examined.
+
+Still open from the earlier review: `/oneiro` and `/settings/` answer 307 without
+their trailing slash; the settings POST handler imports `json`/`asyncio` inside
+the function while its siblings are module-level; `_writable` still touches the
+filesystem on every settings page hit; and `tests/installed_smoke.py` has no
+`test_` prefix, so a normal `pytest` run does not execute it.
