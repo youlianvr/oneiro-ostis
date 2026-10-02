@@ -947,17 +947,204 @@ f0db8422ab951f4350dd06868f4c1ed1  strings1.scdb
 `docker-compose.yml` is unchanged. The diagnostic scripts used here live in the
 gitignored `.runtime/` and are not part of the product.
 
+## 2026-10-02 — Block A: reproducible build, 1c
+
+The approved four-block plan runs A reproducible build (1c), B the SIGINT fix
+in the live compose, C the OSTIS read-path characterisation, D the stages after
+2. Block A is complete. It stopped or restarted nothing: the live machine ran
+3 hours uninterrupted through it and its graph was not written to.
+
+### What the 5.6 GB was
+
+`projects/ostis/oneiro-ostis/worktrees/` held four directories, 1.42 GB each:
+
+```
+oneiro-live-tg2855-a1-a023212-c1        [agent/live-tg2855-a1-a023212-c1]
+oneiro-live-tg2855-a1-a023354-c1        [agent/live-tg2855-a1-a023354-c1]
+oneiro-live-tg2855-a2-a023951-c1        [agent/live-tg2855-a2-a023951-c1]
+oneiro-live-tgtrehearsal-1-a021621-c1   [agent/live-tgtrehearsal-1-a021621-c1]
+```
+
+They are registered git worktrees of the **parent workspace repository**, not of
+oneiro-ostis, created 2026-09-23 by a Telegram ("live-tg") session and all
+checked out at the same commit `dc8661682`. Each is a full checkout of the
+entire workspace — `projects/` alone is 750 MB of it. They are another agent's
+working copies. Nothing in this pass read, moved or removed them; they are
+excluded from the build context only.
+
+### `.dockerignore` did not exist
+
+The previous baseline recorded it as "empty"; it was in fact absent, so Docker
+was packing everything. Measured before the change:
+
+```
+6.02 GB in 61,095 files across 17,876 directories
+```
+
+Written as 15 rules covering the worktrees, build outputs, the local virtualenv
+and tool caches, `.runtime/`, the live graph directory, runtime state and
+repository history. Every rule is justified in the file itself. What the C++
+build actually reads was checked first, so the rules exclude only things no
+stage uses: `CMakeLists.txt` adds only `problem-solver/`, `SC_BUILD_TESTS` is
+off, and `cmake/` is referenced solely for the test and clang-format modules
+that are not included. Measured after:
+
+```
+31.2 MiB in 7,619 files across 4,394 directories   (computed)
+23.50 MB                                          (Docker's own report)
+```
+
+The second figure is BuildKit's, from `transferring context: 23.50MB 2.8s`, and
+is the one to trust.
+
+### Full build
+
+Built with `docker build -f Dockerfile -t oneiro-ostis-machine:verify-1c .`.
+Deliberately **not** tagged `oneiro-ostis-machine:latest`, because that tag
+carries the deployed image and overwriting it would change what a future
+`docker compose up` deploys. The live container is unaffected by a retag in any
+case, but there was no reason to disturb the reference.
+
+Every stage ran; only the base pull was cached. The C++ module compiled from
+scratch — GCC 13.3.0, CMake configured fresh, all three sources built and
+`liboneiro-module.so` linked:
+
+```
+[1/4] Building CXX object .../oneiroModule.cpp.o
+[2/4] Building CXX object .../agents/RetrieveAttemptsAgent.cpp.o
+[3/4] Building CXX object .../agents/RecordAttemptAgent.cpp.o
+[4/4] Linking CXX shared library extensions/liboneiro-module.so
+```
+
+It took 1.5 s because the ccache mount was warm, so this proves the dependency
+graph and the link step, not a cold-cache compile time. The sc-machine 0.10.5
+release archive was downloaded during the build, so network reachability held.
+
+### The overlay is no longer needed
+
+`Dockerfile.entrypoint-sync` exists because the deployed container had been
+created on 2026-09-19 with a stale entrypoint and a full build was not available
+to replace it. The freshly built image carries the repository entrypoint
+byte-for-byte:
+
+```
+30fadc6605e0a18e0eb46adc9b9853dd  /example-app/scripts/docker_entrypoint.sh   (image)
+30fadc6605e0a18e0eb46adc9b9853dd  scripts/docker_entrypoint.sh                (repo)
+```
+
+That md5 is the one recorded for the guard commit and for the deployed
+container, so the full build and the overlay agree. The overlay is still the
+cheaper way to ship a one-line shell change; it is no longer the only way, which
+is what made the entrypoint drift possible in the first place. Nothing was
+changed to remove it — see the open items.
+
+### The built image boots and answers
+
+Run from `oneiro-ostis-machine:verify-1c` on port 8097 against a scratch copy of
+the graph taken from the live volume **read-only**, with the live container
+running throughout. The real image entrypoint was used, so this also exercised
+tini.
+
+```
+Existing graph found in /kb.bin: starting sc-machine without rebuilding.
+[sc-memory] Initialize module: /example-app/build/Release/extensions/liboneiro-module.so
+[sc-server] Sc-server run
+[sc-memory] Successfully initialized
+```
+
+Health check inside the container: exit 0.
+
+Product round-trip through the bridge against that container — write, SIGINT
+save, reload, read back:
+
+```
+write   {"subject_addr": "ScAddr(196610)", "attempt_addr": "ScAddr(196637)"}
+        in-session retrieval agent sees: 1
+save    Successfully shutdown, exit 0, segments.scdb ba99cf01… -> 2c23b826…
+reload  action_retrieve_attempts -> 1
+        ScAddr(196637) | addr_probe_subject_2026_10_02 | addr_probe_action
+                      | addr_probe_outcome | addr_probe_object
+```
+
+### One process-model fact for Block B
+
+The image entrypoint is `tini -- docker_entrypoint.sh`, so in the real deployment
+`sc-machine` is **not** PID 1 — it is a child of tini:
+
+```
+1  /usr/bin/tini -- /example-app/scripts/docker_entrypoint.sh run
+10 /example-app/install/sc-machine/bin/sc-machine -c ...
+```
+
+This pass's earlier persistence probes ran `sc-machine` as PID 1 via an
+overridden entrypoint, which is why `kill -INT 1` worked there. In the real
+image, `kill -INT 1` reaches tini alone and the container stayed up; signalling
+the child (`kill -INT 10`) ran the save and the container exited 0. Block B's
+`stop_signal: SIGINT` therefore has to be verified as *docker → tini →
+sc-machine*, not as a direct signal, and that verification is Step 5.
+
+### Live state after Block A
+
+Never stopped, never restarted, never written to by this pass:
+
+```
+ba99cf016e3a5745afc885161a999820  segments.scdb
+f0db8422ab951f4350dd06868f4c1ed1  strings1.scdb
+a8569a7fdf0cefdd6f682ea77b41c214  strings2.scdb
+64f599223d13198412810a97935bfe9f  string_offsets_link_hashes.scdb
+6639f2b5fc8c7a833a6b87dd8cb084f8  term_string_offsets.scdb
+health=healthy  running=true  up 3h
+```
+
+One observation that is not a Block A result and is not explained: the live
+`strings2.scdb` reads `3f0cb5d9…` at the start of this pass and `a8569a7f…` now,
+while `segments.scdb` is unchanged and the container has not saved. Something in
+the running stack interned strings into the live graph. No write was issued
+against port 8090 from this pass — the two scripts run there use
+`get_elements_types`, `search_by_template`, `search_links_by_contents_substrings`
+and `get_link_content`, all reads, and neither resolves keynodes. The cause is
+unestablished and is recorded as an open item, not as a finding.
+
+### Not verified
+
+- The build used a warm ccache, so cold-cache compile time is unmeasured.
+- `oneiro-base:latest` is a **local, undeclared base image**. It exists here
+  (782 MB), so the build ran, but a clean checkout on another machine cannot
+  build this Dockerfile today. This is a stage 1 exit condition ("reproducible
+  build") and stage 8's "clean Docker build without undeclared local base image"
+  at the same time. Not fixed here: publishing or vendoring a base image is a
+  larger decision than Block A authorises, and it borders on publication.
+- The build was verified for `oneiro-ostis-machine` only. The `web` service
+  pulls `ostis/sc-web:0.9.0` from a registry and is out of scope.
+- No `docker compose build` was run, only a direct `docker build`; the compose
+  build path itself is therefore unverified with the new `.dockerignore`.
+- The image built here is tagged `verify-1c` and is not deployed. The live
+  service still runs the 2026-09-19 image with the overlay.
+
 ## Next independent work
 
-Stage 1b: typed, versioned domain records and event envelopes in `oneiro`, and the
-memory/retrieval seam behind `/api/graph`. Keep the graph-dependent exit condition
-honest — attempt a consistent OSTIS snapshot and isolated restore as soon as the
-sc-machine is reachable, otherwise record the blocker and continue.
+The four-block plan is approved and Block A is done. What remains, in order:
 
-The four audit items still open from the earlier review, none of which this pass
-was asked to touch: `/oneiro` and `/settings/` answer 307 without their trailing
-slash; the settings POST handler imports `json`/`asyncio` inside the function
-while its siblings are module-level; `describe()` per-row work is now hoisted but
-`_writable` still touches the filesystem on every settings page hit; and
-`tests/installed_smoke.py` still has no `test_` prefix, so a normal `pytest` run
-does not execute it.
+- **Block B — the SIGINT fix in the live compose.** This is the only thing
+  standing between the current state and the stage 2 exit condition. Step 4 is a
+  snapshot with the proven procedure, taken under the pre-authorised
+  `docker compose stop machine`. Step 5 verifies the fix on a scratch compose
+  project first, as *docker → tini → sc-machine*. Step 6 applies it live with
+  the rollback being snapshot restore plus reverting the line. Report the live
+  checksums before and after.
+- **Block C — the OSTIS read path.** `search_by_template` returns no real
+  results on this build while the C++ agent path works, so `bridge.all_subjects()`
+  and `memory._read_graph()` silently return empty. Stage 2 retrieval contracts
+  must not be written against the broken path. Also unproven across a restart:
+  `save_strategy`, `save_memory_sessions` and the dream-cycle writers, which
+  have been exercised only through `record_attempt`.
+- **Block D and the stages after 2** — agent runtime and recoverable scheduling,
+  model access, tools and the Linux VM, the scientific kernel, unified web and
+  Telegram, then packaging and migration.
+
+Still open from the earlier review, untouched by this pass because they are not
+in Block A: `/oneiro` and `/settings/` answer 307 without their trailing slash;
+the settings POST handler imports `json`/`asyncio` inside the function while its
+siblings are module-level; `_writable` still touches the filesystem on every
+settings page hit; and `tests/installed_smoke.py` has no `test_` prefix, so a
+normal `pytest` run does not execute it.

@@ -1,0 +1,47 @@
+# Docker build context for the oneiro-ostis machine image.
+#
+# Measured 2026-10-02: with no .dockerignore the context was 6.02 GB in 61,095
+# files, of which worktrees/ alone was 5.67 GB. The machine build never reads
+# that directory - Docker was packing it anyway. After these rules the context
+# is a few tens of MB of actual sources.
+#
+# Everything the C++ build reads is kept: CMakeLists.txt, CMakePresets.json,
+# cmake/, problem-solver/, requirements.txt and scripts/. The image produces
+# everything else itself.
+
+# Four git worktrees of the PARENT workspace repo (.git/worktrees/oneiro-live-tg*),
+# checked out by an unrelated Telegram session and still registered with that
+# repository. They are another agent's working copies, not build inputs.
+worktrees/
+
+# Build outputs the image regenerates for itself: cmake --preset release writes
+# build/Release, install_cxx_problem_solver.sh downloads sc-machine into
+# install/sc-machine. Excluding install/ also stops a stale host copy from
+# overlaying the freshly downloaded one when the builder stage runs COPY . .
+build/
+install/
+dist/
+*.egg-info/
+
+# Local virtualenv and tool caches.
+.venv/
+.mypy_cache/
+.pytest_cache/
+**/__pycache__/
+*.pyc
+
+# .runtime/ is this project's own diagnostic area: graph snapshots, scratch
+# graph copies and probe scripts. 73 MB of evidence, not build inputs.
+.runtime/
+
+# Live graph storage. The deployment mounts the named volume kb-binary at
+# /kb.bin and never reads this directory, and a graph must never be baked into
+# an image where a rebuild would silently carry a stale copy forward.
+kb.bin/
+
+# Runtime state and server logs.
+logs/
+state/
+
+# Repository history is not a build input.
+.git/
