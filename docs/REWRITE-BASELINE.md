@@ -1781,6 +1781,144 @@ The rule that catches all three:
 check rather than a lesson: a writer added to `bridge.py` without a contract
 test against its real producer fails the suite.
 
+## 2026-10-05 — Stage 2: bounded queries, additive migration, honest failures
+
+### Method
+
+Two scratch machines, both from the image the live machine runs
+(`oneiro-ostis-machine:latest` = `sha256:93542a08…`), both with
+`stop_signal: SIGINT`, `stop_grace_period: 90s`, `REBUILD_KB=0` and the same two
+compose keys the live service carries:
+
+- **A — the live graph, copied.** `docker cp` from the stopped live container
+  gave a byte-copy of `/kb.bin` (five `.scdb` files, mtimes = the container's
+  final save of 2026-10-02 22:28:16). Project `oneiro-s2`, port 8096.
+- **B — the checked-in bare seed.** `knowledge-base/kb.bin` copied into
+  `.runtime/probe-s2-bare/` (so the checked-in seed is never written), project
+  `oneiro-s2-bare`, port 8097.
+
+The live stack was never started. The live volume's MD5s were identical before
+and after the whole pass — `segments.scdb 100e8c44…`, `strings1 f0db8422…`,
+`strings2 38bd6b31…`, `string_offsets 0f8fc26c…`, `term_strings 9392e361…` — and
+both live containers remained `Exited` with their original codes and start
+times. (The recorded `93cea54c…` for segments.scdb was taken at 20:56 that day;
+the container's graceful stop at 22:28:16 wrote a final save, and that save is
+the current baseline.)
+
+The probes are `.runtime/probe_stage2.py` (A: `queries`, `migration`,
+`malformed`, `stopped`) and `.runtime/probe_stage2_bare.py` (B); every phase is
+a separate process because `ScKeynodes._dict` is a class-level cache and one
+process may touch one server only. Raw logs are the `.runtime/probe_s2_*.txt`
+files; the compose files and probes are not committed.
+
+### What was built
+
+- `python/oneiro/query.py` — `entity`, `page` (address-ordered, resumable
+  cursors), `range`, `recent` and `latest` over a `GraphBackend`; limits refuse
+  with a code; a record that exists but will not decode is reported in
+  `skipped`, never dropped; a missing class is `class_missing`, a dead server is
+  `server_unreachable`, an absent identifier is `None`, and nothing returns an
+  empty page for a query that could not run.
+- `python/oneiro/migrate.py` — additive, idempotent migration from
+  `knowledge-base/ontology/experience.scs` (18 classes / 30 relations, asserted
+  equal to the file). Missing relations are created; missing classes are
+  reported as `missing_classes` with `needs_kb_build` and never faked as bare
+  nodes; there is no delete path, and a test asserts that by parsing the module.
+- `python/bridge.py` — a small public read surface (`relation_text`,
+  `relation_number`, `json_payload`) so a bounded read and a loader read cannot
+  drift apart.
+- `tests/test_graph_query_contract.py` (26 tests) and
+  `tests/test_migrate_contract.py` (11 tests) pin all of it offline.
+
+### Proven on the real graph
+
+Against A (a live copy holding 3270 attempts, 18 sessions and 12 organisation
+records):
+
+| Check | Result |
+|---|---|
+| entity by identifier | the newest organisation record resolved to its own address and payload; an absent id returned `None` and created nothing |
+| page candidates | `candidates` == the independent template count, sessions 18/18 and attempts 3270/3270 |
+| page cursor | three pages of 50 were consecutive and disjoint; a full walk of the session class returned every member exactly once |
+| page cost | 50 payloads in 0.64–0.76 s, where the recorded full-class payload read costs 11.2 s |
+| range | the organisation window matched `load_organization_events()` filtered in Python (6/6 rows), scanning 7–8 rows rather than the class |
+| recent | 10 reads for the 10 newest attempts, oldest-first |
+| latest | the newest session snapshot (revision 2) matched `load_latest_life_session()` |
+| malformed record | the written bad record arrived in `skipped` with its reason, the page still returned its 12 readable rows, and `entity()` on it returned `{"__unreadable__": …}` |
+| stopped server | `page()` and `entity()` both raised `GraphQueryError(server_unreachable)` |
+
+Two genuine defects were found and fixed on the way, both by checking the real
+producer and consumer before calling anything a defect:
+
+1. **`created_at` was not a timestamp key.** `LifeSession.payload()` writes
+   `created_at`, and `load_life_sessions()` orders by it, but `TIMESTAMP_KEYS`
+   knew only `recorded_at|ts|timestamp`. Measured before the fix: `timestamp()`
+   returned `None` for a session, and a range over sessions skipped all 18 rows
+   as "no ordering timestamp". Fixed in `query.py` with one `row_timestamp()`
+   helper used by both `recent()` and the range walk; the same probe is green
+   after it, and an offline test pins the rule.
+2. **A transport failure leaked raw out of `page()`.** The first stopped-server
+   run raised a raw `ConnectionAbortedError` from `search_by_template`: the
+   keynode was already in the class-level caches, so the earlier lookup wrapper
+   never ran. Fixed by wrapping the search itself, plus the reader, the
+   timestamp read and the identifier lookup; re-proven green.
+
+Migration, run twice on both machines:
+
+- **A (live copy):** all 18 classes and 30 relations present; run 1 created
+  nothing, run 2 created nothing (`changed: false` both times).
+- **B (bare seed):** run 1 created 24 of the 30 declared relations and reported
+  **9 missing classes** with `needs_kb_build: true`; run 2 created nothing
+  (`changed: false`) and reported the same 9. `concept_strategy` stayed absent
+  after the migration and still answered `class_missing`, so a missing class is
+  reported rather than turned into a bare node. (A class in `RUNTIME_VOCABULARY`
+  self-heals through `bridge.keynode` by design — `concept_memory_bench_result`
+  is created on first use — which is why the missing-class failure was induced
+  with a declared class instead.)
+
+### Live-verified versus unverified
+
+Live-verified in this pass:
+
+- The whole proof ran against a byte-copy of the current live graph
+  (`segments.scdb 100e8c44…`), and the live volume's hashes were identical
+  before and after; the live containers were never started.
+- Offline suite: **435 passed**. Its 10 "requires a live stack" tests error
+  without one; against machine A, pointed there with a scratch settings file
+  (`ONEIRO_SETTINGS_FILE`, graph.port 8096), they all ran: **10 passed**.
+- `uv run --frozen mypy python/oneiro`: 13 source files, clean.
+- One unrelated flake was seen once (`test_oneiro_setup.py` stub-server test
+  failed inside a full run, passes standalone and in the re-run); not caused by
+  this work.
+
+Not verified in this pass:
+
+- The live stack itself was not started, so nothing here claims a behaviour
+  against a running live deployment.
+- The attempts page proof uses a probe reader (identifier + `nrel_timestamp`)
+  because attempts have no single JSON payload; `range`/`recent` over attempts
+  were not compared against a compiled-agent read.
+- The stage-2 exit condition "restored/migrated counts/content pass" still needs
+  the restore-and-compare procedure.
+- Fault validation (connections, concurrency, partial writes, reconnect) is not
+  in this pass.
+
+### The two reported questions, answered
+
+- **Does stage 2 need the `harness.publish` / `replay` rename?** No. The query
+  layer never imports either name; the collision stays what Block C measured —
+  the publisher is CLI-only by construction because it needs `harness/` to lead
+  `sys.path`. The rename remains a separate, owner-owned change and nothing here
+  depends on it.
+- **Is a query path that bypasses the compiled agent needed?** Yes.
+  `RetrieveAttemptsAgent` is the only retrieval agent, and it walks every
+  5-tuple for one subject with no limit, no order, no time bound and no
+  pagination. Consumers ask for "the newest N" and "the newest matching
+  session", and every working read measured in Block C anchors on a concrete
+  source — exactly the shape `BridgeBackend` uses. The bounded path is the
+  product-side answer; the agent keeps doing what it is good at (per-subject
+  attempt history).
+
 ## Next independent work
 
 The four-block plan is approved. Blocks A, B and C are done, including the two

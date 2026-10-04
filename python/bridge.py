@@ -1007,6 +1007,25 @@ class OneiroBridge:
         except ValueError:
             return None
 
+    # ---------- public read surface ----------
+    #
+    # The bounded query layer (oneiro/query.py) has to read a single relation off
+    # a single node without going through a full-log loader. These expose the
+    # readers the loaders already use rather than adding a second implementation,
+    # so a bounded read and a loader read cannot drift apart.
+
+    def relation_text(self, source_addr: ScAddr, relation_idtf: str) -> Optional[str]:
+        """One nrel-relation's string content, or None."""
+        return self._relation_value_text(source_addr, relation_idtf)
+
+    def relation_number(self, source_addr: ScAddr, relation_idtf: str) -> Optional[float]:
+        """One nrel-relation's numeric content, or None."""
+        return self._relation_value_number(source_addr, relation_idtf)
+
+    def json_payload(self, source_addr: ScAddr, relation_idtf: str):
+        """One nrel-relation's decoded JSON payload, or None."""
+        return self._json_relation(source_addr, relation_idtf)
+
     def _add_json_relation(self, constr: ScConstruction, node: ScAddr, relation_idtf: str, payload) -> None:
         """JSON relation: the payload is stored as a string link on an arc."""
         link_alias = f"json_link_{relation_idtf}"

@@ -188,9 +188,20 @@ are not completion of these phases.
       Contract tests are the default for this seam: a writer added to bridge.py
       without a contract test against its real producer fails the suite, and the
       producers are called rather than re-implemented.
-      Remaining in this stage: the query and migration contracts, and live
-      validation through the web surface - the web container still runs the
-      legacy ostis/sc-web:0.9.0 with no oneiro module.
+      Query and migration contracts DONE 2026-10-05: entity/cursor/range/
+      page/recent/latest reads and the additive idempotent ontology
+      migration are proven against a byte-copy of the live graph on a spare
+      port (a page of 50 reads in 0.64-0.76s where the full class cost
+      11.2s; the migration run twice, the second run creates nothing;
+      missing classes are reported, never faked; a stopped server, a missing
+      class and a malformed record each report instead of reading as empty).
+      Tests: tests/test_graph_query_contract.py,
+      tests/test_migrate_contract.py.
+      Still open in this stage: fault validation (connections, concurrency,
+      partial writes, reconnect), the content/time/entity/relation retrieval
+      benchmark against the existing arms, and live validation through the
+      web surface - the web container still runs the legacy
+      ostis/sc-web:0.9.0 with no oneiro module.
       See REWRITE-BASELINE.md.
 - [ ] 3: concurrent, recoverable runtime/tasks/initiative.
 - [ ] 4: shared model/research/media adapters and live capabilities.
