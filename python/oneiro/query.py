@@ -36,8 +36,7 @@ layers away.
 
 `sc_client` is imported inside the functions that use it, as in `memory.py`: a
 wheel without it still installs and its absence is reported rather than raised at
-import time. The paging logic talks to a `GraphBackend`, so all of it is
-testable without a server.
+import time.
 """
 from __future__ import annotations
 
@@ -62,10 +61,10 @@ MAX_LIMIT = 500
 
 DEFAULT_LIMIT = 50
 
-#: Relations that carry an ordering timestamp, cheapest first. An attempt carries
-#: `nrel_timestamp` as a numeric link, so a range read over attempts needs no
-#: JSON payload at all; the payload keys below are the fallback for writers that
-#: only ever stored the timestamp inside the JSON.
+#: Relation carrying an ordering timestamp as a numeric link, tried before the
+#: payload: an attempt writes `nrel_timestamp`, so a range read over attempts
+#: needs no JSON at all. `TIMESTAMP_KEYS` is the fallback for writers that only
+#: stored the stamp inside the payload.
 TIMESTAMP_RELATIONS = ("nrel_timestamp",)
 
 #: Payload keys a record may carry its timestamp under, in the order the writers
@@ -89,9 +88,7 @@ RECORD_RELATIONS = {
 class GraphQueryError(RuntimeError):
     """A query that could not be answered, with the reason attached.
 
-    Raised instead of returning an empty page. An empty page is a claim about
-    the graph's contents; this is a claim about the query, and the two must not
-    look alike.
+    Raised instead of returning an empty page.
     """
 
     def __init__(self, code: str, message: str) -> None:
@@ -122,10 +119,6 @@ class QueryPage:
     scanned: int = 0
     skipped: tuple[Skipped, ...] = ()
     truncated: bool = False
-    order: str = "address_desc"
-
-    def __bool__(self) -> bool:
-        return bool(self.items)
 
 
 class GraphBackend(Protocol):
@@ -205,8 +198,7 @@ def row_timestamp(row: dict[str, Any]) -> Optional[float]:
     """The ordering stamp a row carries, by the keys the writers use.
 
     One function, so `recent()` and a range walk cannot disagree about which key
-    places a record. None means the row cannot be placed in time, which the
-    caller reports rather than guessing.
+    places a record; None means the row cannot be placed in time.
     """
     for key in TIMESTAMP_KEYS:
         if key in row:
@@ -231,10 +223,8 @@ class GraphQuery:
     def entity(self, identifier: str) -> Optional[dict[str, Any]]:
         """One record by stable identifier, or None when it is absent.
 
-        Absence is an answer. An identifier that does not resolve must not
-        raise, because "no such record" and "the server is gone" have different
-        consequences and the caller has to tell them apart - which is why
-        transport failures surface as `GraphQueryError` instead.
+        Absence is an answer and must not raise; a transport failure must, so
+        the caller can tell "no such record" from "the server is gone".
         """
         address = self._backend.exists(identifier)
         if address is None:
@@ -371,6 +361,12 @@ class GraphQuery:
 # ---------- the production backend ----------
 
 
+def _unreachable(action: str, exc: Exception) -> GraphQueryError:
+    """A failure that is not the graph's answer, reported as transport with context."""
+    return GraphQueryError(
+        "server_unreachable", f"{action}: {type(exc).__name__}: {exc}")
+
+
 def json_record_reader(bridge: Any, payload_relation: str) -> Callable[[int], dict[str, Any]]:
     """A reader for the classes whose writer stored one JSON payload.
 
@@ -396,17 +392,17 @@ class BridgeBackend:
     shape Block C measured, where at least one end of a triple must be concrete -
     and what it yields is the address. Payloads are read through the bridge's own
     relation readers, so a bounded read here and a loader read there cannot drift.
+
+    A reader may reject one record with `ValueError` - it becomes `Skipped` - or
+    report an unreachable graph with `GraphQueryError`, which passes through;
+    any other failure is `server_unreachable`.
     """
 
     def __init__(self, bridge: Any, *,
                  reader: Optional[Callable[[int], dict[str, Any]]] = None,
-                 payload_relation: Optional[str] = None,
-                 concept: Optional[str] = None,
-                 timestamp_relations: tuple[str, ...] = TIMESTAMP_RELATIONS) -> None:
+                 concept: Optional[str] = None) -> None:
         if reader is None:
-            relation = payload_relation
-            if relation is None and concept is not None:
-                relation = RECORD_RELATIONS.get(concept)
+            relation = RECORD_RELATIONS.get(concept or "")
             if relation is None:
                 raise GraphQueryError(
                     "no_reader",
@@ -415,7 +411,6 @@ class BridgeBackend:
             reader = json_record_reader(bridge, relation)
         self._bridge = bridge
         self._reader = reader
-        self._timestamp_relations = timestamp_relations
 
     @classmethod
     def for_concept(cls, bridge: Any, concept: str,
@@ -436,20 +431,13 @@ class BridgeBackend:
                 "class_missing",
                 f"{concept} is not in this graph: {exc}") from None
         except Exception as exc:                    # noqa: BLE001 - not an absence: the query never ran
-            raise GraphQueryError(
-                "server_unreachable",
-                f"could not resolve {concept}: {type(exc).__name__}: {exc}") from None
+            raise _unreachable(f"could not resolve {concept}", exc) from None
         template = ScTemplate()
         template.triple(anchor, sc_type.VAR_PERM_POS_ARC, sc_type.VAR_NODE)
         try:
             results = list(search_by_template(template))
-        except GraphQueryError:
-            raise
         except Exception as exc:                    # noqa: BLE001 - the class is not empty, the server is gone
-            raise GraphQueryError(
-                "server_unreachable",
-                f"could not search members of {concept}: "
-                f"{type(exc).__name__}: {exc}") from None
+            raise _unreachable(f"could not search members of {concept}", exc) from None
         found: list[int] = []
         for item in results:
             address = item.get(2)
@@ -466,29 +454,27 @@ class BridgeBackend:
         except (ValueError, GraphQueryError):
             raise
         except Exception as exc:                    # noqa: BLE001 - a dead client is not a bad record
-            raise GraphQueryError(
-                "server_unreachable",
-                f"could not read a record at {address}: {type(exc).__name__}: {exc}") from None
+            raise _unreachable(f"could not read a record at {address}", exc) from None
 
     def timestamp(self, address: int) -> Optional[float]:
         from sc_client.models import ScAddr
 
         node = ScAddr(int(address))
         try:
-            for relation in self._timestamp_relations:
+            for relation in TIMESTAMP_RELATIONS:
                 value = self._bridge.relation_number(node, relation)
                 if value is not None:
                     return float(value)
-            try:
-                payload = self._reader(int(address))
-            except ValueError:
-                return None
+        except Exception as exc:                    # noqa: BLE001 - a dead client is not a missing timestamp
+            raise _unreachable(f"could not read a timestamp at {address}", exc) from None
+        try:
+            payload = self._reader(int(address))
+        except ValueError:
+            return None
         except GraphQueryError:
             raise
         except Exception as exc:                    # noqa: BLE001 - a dead client is not a missing timestamp
-            raise GraphQueryError(
-                "server_unreachable",
-                f"could not read a timestamp at {address}: {type(exc).__name__}: {exc}") from None
+            raise _unreachable(f"could not read a timestamp at {address}", exc) from None
         return row_timestamp(payload)
 
     def exists(self, identifier: str) -> Optional[int]:
@@ -507,7 +493,5 @@ class BridgeBackend:
         except (InvalidValueError, KeyError):
             return None
         except Exception as exc:                    # noqa: BLE001 - absent is an answer; unreachable is not
-            raise GraphQueryError(
-                "server_unreachable",
-                f"could not resolve {identifier!r}: {type(exc).__name__}: {exc}") from None
+            raise _unreachable(f"could not resolve {identifier!r}", exc) from None
         return int(address.value) if address.is_valid() else None

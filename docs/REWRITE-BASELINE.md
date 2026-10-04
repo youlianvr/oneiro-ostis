@@ -1824,9 +1824,8 @@ files; the compose files and probes are not committed.
   equal to the file). Missing relations are created; missing classes are
   reported as `missing_classes` with `needs_kb_build` and never faked as bare
   nodes; there is no delete path, and a test asserts that by parsing the module.
-- `python/bridge.py` — a small public read surface (`relation_text`,
-  `relation_number`, `json_payload`) so a bounded read and a loader read cannot
-  drift apart.
+- `python/bridge.py` — a small public read surface (`relation_number`,
+  `json_payload`) so a bounded read and a loader read cannot drift apart.
 - `tests/test_graph_query_contract.py` (26 tests) and
   `tests/test_migrate_contract.py` (11 tests) pin all of it offline.
 

@@ -115,10 +115,8 @@ class MigrationReport:
 
     @property
     def needs_kb_build(self) -> bool:
-        """True when the graph cannot serve the classes the product writes to.
-
-        Reported rather than papered over: no additive write can turn an absent
-        node class into a node class.
+        """True when the graph cannot serve the classes the product writes to;
+        the answer is a KB build, not an additive write.
         """
         return bool(self.missing_classes)
 
@@ -190,9 +188,8 @@ def ensure_ontology(bridge: Any, *, ontology: Optional[Path] = None,
                     present: Optional[Callable[[str], bool]] = None) -> MigrationReport:
     """Bring a graph up to the declared vocabulary, additively.
 
-    Missing relation keynodes are created. Missing classes are reported, because
-    creating a `ConstNode` in a class's place would produce an ontology that reads
-    correctly and is wrong. Running this twice creates nothing the second time.
+    Missing relation keynodes are created; missing classes are reported, never
+    faked. Running this twice creates nothing the second time.
 
     `present` is the existence check, injectable so the rules above can be tested
     without a server. It defaults to the graph's own keynode table.

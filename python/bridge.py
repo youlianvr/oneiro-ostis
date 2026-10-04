@@ -1009,14 +1009,9 @@ class OneiroBridge:
 
     # ---------- public read surface ----------
     #
-    # The bounded query layer (oneiro/query.py) has to read a single relation off
-    # a single node without going through a full-log loader. These expose the
-    # readers the loaders already use rather than adding a second implementation,
-    # so a bounded read and a loader read cannot drift apart.
-
-    def relation_text(self, source_addr: ScAddr, relation_idtf: str) -> Optional[str]:
-        """One nrel-relation's string content, or None."""
-        return self._relation_value_text(source_addr, relation_idtf)
+    # What the bounded query layer (oneiro/query.py) reads a relation at a time
+    # with: thin wrappers over the readers the loaders already use, so a bounded
+    # read and a full-log read cannot drift apart.
 
     def relation_number(self, source_addr: ScAddr, relation_idtf: str) -> Optional[float]:
         """One nrel-relation's numeric content, or None."""
