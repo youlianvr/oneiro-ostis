@@ -157,16 +157,32 @@ def test_a_page_of_nothing_but_broken_records_is_not_an_empty_page():
 
 # ---------- range ----------
 
-def test_range_returns_the_window_and_stops_early():
+def test_range_returns_the_window_and_scans_to_its_bound():
     backend = FakeBackend(records(40))            # recorded_at 1000..1039
     query = GraphQuery(backend)
     page = query.range(CONCEPT, since=1030.0, until=1035.0, limit=10)
 
     assert sorted(row["recorded_at"] for row in page.items) == [1030, 1031, 1032,
                                                                1033, 1034, 1035]
-    assert page.scanned == 11, (
-        "ten addresses for the window, plus one read past it to confirm the end - "
-        f"not the whole class of {page.candidates}")
+    assert page.scanned == 40, (
+        "every candidate is stamped before the window is decided - addresses are "
+        "insertion order, not time order")
+
+
+def test_range_finds_a_match_below_a_stamp_that_ran_backwards():
+    """The measured defect, 2026-10-05: a higher address carried an older stamp,
+    and the walk that stopped at the first stamp below `since` omitted matches."""
+    backend = FakeBackend({
+        100: {"record_id": "r_low_address_new_stamp", "recorded_at": 30},
+        110: {"record_id": "r_backwards_middle", "recorded_at": 5},
+        120: {"record_id": "r_high_address_mid_stamp", "recorded_at": 10},
+    })
+    page = GraphQuery(backend).range(CONCEPT, since=10.0, limit=10)
+
+    assert [row["record_id"] for row in page.items] == [
+        "r_low_address_new_stamp", "r_high_address_mid_stamp"], (
+            "the row below the backwards stamp is in the window and must be returned")
+    assert page.scanned == 3
 
 
 def test_range_reports_a_record_it_cannot_place():

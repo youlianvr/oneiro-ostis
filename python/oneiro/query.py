@@ -18,9 +18,10 @@ organisation record that could be compared, and the entity lookup it enables is
 a single `ScKeynodes` hit.
 
 That is insertion order, and it is deliberately not claimed to be time order. A
-clock that steps backwards makes the two disagree, which is why `recent()` sorts
-what it returns and why `range()` reads a timestamp per candidate instead of
-trusting the address.
+clock that steps backwards makes the two disagree, and the live attempts were
+measured to do so (79 inversions over 3270 members, 2026-10-05), so `recent()`
+sorts what it returns and `range()` stamps and sorts every candidate in its scan
+window rather than stopping where the address says the window ends.
 
 **A page reports what it could not read.** A record whose payload will not decode
 is returned in `skipped` with its address and the reason. It is never dropped
@@ -285,15 +286,17 @@ class GraphQuery:
               limit: Optional[int] = None) -> QueryPage:
         """Records whose timestamp falls in [since, until], newest first.
 
-        Walks addresses downward and stops as soon as it passes `since`, so a
-        recent window reads a page's worth of timestamps rather than the class's
-        whole history. `scanned` and `truncated` say how much was actually read,
-        because the walk costs depend on where the window sits.
+        Reads a timestamp per candidate for the whole scan window and sorts the
+        matches. Addresses are insertion order, not time order - the live
+        attempts were measured to disagree - and a walk that stopped at the
+        first stamp below `since` omitted matching rows that sat below it. The
+        sort is stable, so equal stamps keep address order. `scanned` and
+        `truncated` say how far the walk got.
         """
         want = _check_limit(limit)
         addresses = self._backend.member_addresses(concept)
 
-        items: list[dict[str, Any]] = []
+        stamped: list[tuple[float, dict[str, Any]]] = []
         skipped: list[Skipped] = []
         scanned = 0
         truncated = False
@@ -311,16 +314,18 @@ class GraphQuery:
             if until is not None and stamp > until:
                 continue
             if since is not None and stamp < since:
-                break                # addresses descend, so timestamps do too
+                continue
             try:
-                items.append(self._backend.read(address))
+                row = self._backend.read(address)
             except ValueError as exc:
                 skipped.append(Skipped(address, str(exc)))
-            if len(items) >= want:
-                break
+                continue
+            stamped.append((stamp, row))
+        stamped.sort(key=lambda pair: pair[0], reverse=True)
 
-        return QueryPage(tuple(items), None, len(addresses), scanned,
-                         tuple(skipped), truncated=truncated)
+        return QueryPage(tuple(row for _, row in stamped[:want]), None,
+                         len(addresses), scanned, tuple(skipped),
+                         truncated=truncated)
 
     def recent(self, concept: str, *, limit: Optional[int] = None) -> QueryPage:
         """The newest N records, returned oldest-first for display.

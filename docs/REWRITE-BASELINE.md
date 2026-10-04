@@ -1826,7 +1826,7 @@ files; the compose files and probes are not committed.
   nodes; there is no delete path, and a test asserts that by parsing the module.
 - `python/bridge.py` — a small public read surface (`relation_number`,
   `json_payload`) so a bounded read and a loader read cannot drift apart.
-- `tests/test_graph_query_contract.py` (26 tests) and
+- `tests/test_graph_query_contract.py` (27 tests) and
   `tests/test_migrate_contract.py` (11 tests) pin all of it offline.
 
 ### Proven on the real graph
@@ -1840,7 +1840,7 @@ records):
 | page candidates | `candidates` == the independent template count, sessions 18/18 and attempts 3270/3270 |
 | page cursor | three pages of 50 were consecutive and disjoint; a full walk of the session class returned every member exactly once |
 | page cost | 50 payloads in 0.64–0.76 s, where the recorded full-class payload read costs 11.2 s |
-| range | the organisation window matched `load_organization_events()` filtered in Python (6/6 rows), scanning 7–8 rows rather than the class |
+| range | the organisation window matched `load_organization_events()` filtered in Python (6/6 rows); the early stop this row measured was found unsound later the same day and removed — see the gap-probe section |
 | recent | 10 reads for the 10 newest attempts, oldest-first |
 | latest | the newest session snapshot (revision 2) matched `load_latest_life_session()` |
 | malformed record | the written bad record arrived in `skipped` with its reason, the page still returned its 12 readable rows, and `entity()` on it returned `{"__unreadable__": …}` |
@@ -1894,9 +1894,10 @@ Not verified in this pass:
 
 - The live stack itself was not started, so nothing here claims a behaviour
   against a running live deployment.
-- The attempts page proof uses a probe reader (identifier + `nrel_timestamp`)
-  because attempts have no single JSON payload; `range`/`recent` over attempts
-  were not compared against a compiled-agent read.
+- The attempts reads use a probe reader (identifier + `nrel_timestamp`) because
+  attempts have no single JSON payload. The gap probe compared `range` over
+  attempts against a full scan with that same reader; a compiled-agent read
+  (`action_retrieve_attempts`) is still not part of the bounded path by design.
 - The stage-2 exit condition "restored/migrated counts/content pass" still needs
   the restore-and-compare procedure.
 - Fault validation (connections, concurrency, partial writes, reconnect) is not
@@ -1917,6 +1918,73 @@ Not verified in this pass:
   source — exactly the shape `BridgeBackend` uses. The bounded path is the
   product-side answer; the agent keeps doing what it is good at (per-subject
   attempt history).
+
+## 2026-10-05 — Stage 2 gap probes: the four audit gaps on the real surface
+
+The Stage 2 audit left four correctness questions to fakes or unit tests. Each
+was then run against machine A, seeded again with `docker cp` from the stopped
+live container (five MD5s verified pristine), project `oneiro-s2`, port 8096,
+`--pull never`. The probe is `.runtime/probe_stage2_gaps.py` (four phases, one
+process per phase because `ScKeynodes._dict` is process-level); logs are
+`.runtime/probe_s2_gaps_*.txt`. Nothing uses a FakeBackend: reads go through
+`BridgeBackend`'s readers over the server, the write through
+`bridge.record_organization_event` (the writer `heartbeat` and `life_loop`
+call). Class and relation names are taken from
+`knowledge-base/ontology/experience.scs` first, so an undeclared name would be
+reported as a skip rather than a defect — three earlier probes had produced
+false defects by checking keynodes the ontology never promised.
+
+| Gap | Result |
+|---|---|
+| truncated scan, resumed by cursor | sessions (18 members, `scan_limit=5`): pages [5, 5, 5, 3], the first three `truncated` with cursors, every member exactly once, each page a consecutive slice; attempts (3270 members, `scan_limit=400`): 9 pages [400×8, 70] in 41.4 s, same result, 8 `truncated` |
+| a writer appending mid-walk | `record_organization_event` appended a 13th organisation record after page 1 of a 4-row walk: the ongoing walk returned exactly the 12 pre-append members, no repeats; the appended record was outside the remaining window, as `page()`'s docstring states; `candidates` on later pages grew to 13; a fresh page and `load_organization_events()` both saw it |
+| MAX_LIMIT through the real backend | 501, 0, -5 and "many" refused with `bad_limit`; 500 accepted and returned all 18 sessions |
+| `range` and address order | **failed — a real defect; fixed, re-proven** |
+
+### The defect `range` had: it trusted address order to end the scan
+
+Measured on the same copy: 3240 of 3270 attempts carry an `nrel_timestamp`, and
+**79 address-adjacent pairs run backwards** (first: 1790963957 → 1790963921, a
+36 s inversion). The producers are the product's own — `metrics.score_episode`
+(`ts + i`), `episode.run_episode_on` (`ts + i`) and `agents.observe_step`
+(wall clock) — and interleaved runs are enough to invert insertion order.
+`range()` stopped at the first stamp below `since` ("addresses descend, so
+timestamps do too") and therefore omitted matching rows: the newest window
+returned **156 of 291**, the middle window **271 of 306**, both with
+`truncated=False`. Reproduced at address level: window
+`[1790965611.5, 1790965636.0]` returned 103 of 156 and omitted addresses
+344424, 344488, … because address 348680 carried a stamp below `since`.
+
+The fix is the module docstring's own stated intent, made complete: `range()`
+reads a timestamp for every candidate inside its scan bound, keeps the matches,
+sorts them newest-first (stable, so equal stamps keep address order) and slices
+to `limit`; the address-order break is gone, and `scanned`/`truncated` describe
+how far the walk got. `tests/test_graph_query_contract.py` gains
+`test_range_finds_a_match_below_a_stamp_that_ran_backwards`; the old
+`scanned == 11` assertion, which encoded the early stop, becomes
+`test_range_returns_the_window_and_scans_to_its_bound`.
+
+Re-proven after the fix on the same copy: both windows equal a full-scan oracle
+restricted to the scanned prefix (**291/291** and **306/306**), the six windows
+that previously dropped rows drop none, sessions and organisations are
+unchanged (18/18 and 12/12 scanned, `truncated=False`), and an attempts walk
+reports its bound honestly (`scanned=2000 of 3270, truncated=True`).
+
+Cost, stated because it changed: `range` now reads one timestamp per member
+inside its bound — 21.9 s for the 3270 attempts (≈6.7 ms each) where the early
+stop read 157–568; organisations (12) and sessions (18) are unaffected.
+`page()`, `recent()` and `latest()` were not touched.
+
+Not verified here, honestly: the appending writer ran in the probe's own
+process (a second process is the same address filter by construction, not
+exercised); no live window had more matches than `limit` 500, so the
+over-limit slice of `range` is not exercised; `scan_limit` beyond 5, 400 and
+the 2000 default has no caller.
+
+Teardown: the `oneiro-s2` project was brought down (no containers left) and the
+live volume's five MD5s are again `segments 100e8c44…`, `strings1 f0db8422…`,
+`strings2 38bd6b31…`, `string_offsets 0f8fc26c…`, `term_strings 9392e361…`;
+the live containers stayed `Exited`.
 
 ## Next independent work
 
