@@ -1981,6 +1981,15 @@ exercised); no live window had more matches than `limit` 500, so the
 over-limit slice of `range` is not exercised; `scan_limit` beyond 5, 400 and
 the 2000 default has no caller.
 
+`latest()` was settled on the same copy (2026-10-05) because the range defect
+raised the question: it returned exactly the record the session consumers ask
+for — the loader and the prefix scans, newest by `(created_at, session_id)` —
+and the stamp-newest attempt globally and for all 24 subjects despite the 79
+inversions; nothing consumes `latest()` for attempts. What stays unexercised is
+its mechanism — a class whose newest-by-stamp record is not its highest-address
+record — and the `host-cowagent` prefix scan, which has no host session on this
+copy.
+
 Teardown: the `oneiro-s2` project was brought down (no containers left) and the
 live volume's five MD5s are again `segments 100e8c44…`, `strings1 f0db8422…`,
 `strings2 38bd6b31…`, `string_offsets 0f8fc26c…`, `term_strings 9392e361…`;
