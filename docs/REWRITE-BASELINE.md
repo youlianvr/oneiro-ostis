@@ -1882,9 +1882,13 @@ Live-verified in this pass:
 - The whole proof ran against a byte-copy of the current live graph
   (`segments.scdb 100e8c44…`), and the live volume's hashes were identical
   before and after; the live containers were never started.
-- Offline suite: **435 passed**. Its 10 "requires a live stack" tests error
-  without one; against machine A, pointed there with a scratch settings file
-  (`ONEIRO_SETTINGS_FILE`, graph.port 8096), they all ran: **10 passed**.
+- Offline suite: **436 passed** — the count a fresh run produces on the
+  committed tree (`dfeba3b51`, 2026-10-05), one more than 435 because the
+  range fix added a test; re-run twice: one clean at 436 passed + 10 errors,
+  the other hit the flake below once. Its 10 "requires a live stack" tests
+  error without one; against machine A, pointed there with a scratch
+  settings file (`ONEIRO_SETTINGS_FILE`, graph.port 8096), they all ran:
+  **10 passed** — re-proven against a fresh copy of the stopped live graph.
 - `uv run --frozen mypy python/oneiro`: 13 source files, clean.
 - One unrelated flake was seen once (`test_oneiro_setup.py` stub-server test
   failed inside a full run, passes standalone and in the re-run); not caused by
