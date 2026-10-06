@@ -2065,17 +2065,198 @@ Not verified:
   share them but were not re-probed on a live surface in this pass.
 - Nothing here says what a thousand records do; the probe wrote five.
 
-## Next independent work
+## 2026-10-07 — Approved full local Mission recovered; prerequisite A blocked
 
-The four-block plan is approved. Blocks A, B and C are done, including the two
-reported blockers that turned out not to be defects and the third probe that
-nearly made it four. Block D and the stages after 2 are next.
+Authority is the complete approved plan in the current conversation, not the
+truncated mission excerpt. Its full units A-I, exact target paths and 21-row
+acceptance checklist now live in [MASTER-PLAN.md](MASTER-PLAN.md); binding owner
+decisions in [GOAL-NATIVE-ONEIRO.md](GOAL-NATIVE-ONEIRO.md) are reconciled with it.
+The earlier uncommitted order/first-version/snapshot/paired-run decisions remain
+in place; new edits are task-local patches, not restoration of a file from HEAD.
+No product source/runtime configuration was changed in this unit.
 
-- **Block D and the stages after 2** — agent runtime and recoverable scheduling,
-  model access, tools and the Linux VM, the scientific kernel, unified web and
-  Telegram, then packaging and migration.
+Explicit supersession: the old graph is archived once, retained stopped/intact,
+not migrated and not used as seed; new data uses a separate volume. Local-only
+Windows 11 native/tray delivery replaces eventual-push scope. Shared conversation
+and important-notification fan-out use a new private bot; userbot stays read-only.
+Supported v1 media is text/image/PDF only. Writer GUI must produce reopened and
+verified ODT/PDF; memory explorer and literal strategy tree share real provenance.
+Measured dream gain remains mandatory. Bilingual slides/talks/demo are end-stage
+artifacts. Hard-kill graph-memory loss is <=300 seconds, without blind effect
+retries. Approval does not mean any of these capabilities is implemented.
 
-Carried open from Blocks A, B and C, none of it worked on:
+### Current execution blocker and completed source inspection
+
+The normal terminal tool was asked for `pwd`, project-scoped `git status --short
+--branch` and `git log -3 --oneline` from the workspace. It failed before spawning:
+
+```text
+ENOENT: no such file or directory, uv_spawn 'C:\Program Files\Git\bin\bash.exe'
+```
+
+This proves the configured executable could not be spawned, not that Git is
+absent at every possible installation path or that a privilege is required.
+The host's terminal configuration/installation must be repaired through its
+supported owner/client route. No privilege wrapper, browser-driven shell,
+installed-client edit or unrelated container/remote shell was used as a bypass.
+Docker connector discovery exposed only `run_command` inside a configured
+Compose service (default `laravel_app`), not inspection/export of this stopped
+local volume. It was not called: that schema does not establish a safe route to
+Oneiro's old Docker volume. Knowledge-RAG BM25 scoped to the project docs yielded
+no matches; current project files and conversation, not an empty retrieval, are
+the source for the recovered decisions.
+
+Source/directory inspection is current; Git/service/data-state claims are not:
+
+| Area | Current source evidence | Remaining verification |
+|---|---|---|
+| Boundary | project path `projects/ostis/oneiro-ostis`; own code under `python`, `problem-solver`, `harness`, `dashboard`, `host`, `scripts`, `tests` | Git root/branch/HEAD/status and index must be read when terminal works; `master`/`b68f52fe6` are historical context only |
+| Settings/package | pyproject: installable `oneiro`, Python >=3.11,<3.15; pinned FastAPI/Uvicorn; pytest/mypy dev group; CLI `doctor`/`serve` | current dependency availability, installed wheel and runtime readiness are not tested |
+| Foundation | `python/oneiro/runtime.py` explicitly reports `phase: foundation`, `ready: False`; `web.py` refuses `/api/message` as not integrated | real assistant/native window/tray/Telegram integration remains open |
+| Query | `query.py` calls `list(search_by_template(...))` to enumerate class addresses; `latest()` does not apply `_scan_limit` | bounded backend/consumer integration and representative 1k/10k/100k trials remain open |
+| Build | Dockerfile starts `FROM oneiro-base:latest`; Compose retains legacy sc-web service | current images/build availability unknown; reproducible clean build not proven |
+| Lifecycle/access | Compose publishes `8000:8000`/`8090:8090` without loopback and uses `restart: unless-stopped` | repair locality/manual-start in new product; do not change/start old containers incidentally |
+| Persistence | graph config has `dump_memory=false`, period 3600; SIGINT/grace fixes exist in Compose | periodic consistent save/restore and <=300s hard-kill loss unproven |
+| Runtime data | `.runtime`, `kb.bin`, `knowledge-base/kb.bin`, `state`, `dist`, `worktrees` directories exist | source inventory is not a tracked/ignored/untracked Git audit or a complete data export |
+| Ignore rule | project `.gitignore` includes `.runtime/` and `dist/` | confirm with `git check-ignore` before creating/staging archive artifacts |
+| Existing archives | `.runtime/graph-snapshots` lists exactly three Oct 2 tar.gz names below | no current hashes/extraction/source match performed; not substitutes for the requested archive |
+| Coordination | parity files read: historical Buffy entry dated Sep 28 and closed workspace-rebuild record dated Oct 6 | old alive markers do not prove activity; current overlapping edits/processes not verified |
+
+Existing archive names (directory listing only):
+
+- `oneiro-kb-2026-10-02T13-36Z.tar.gz`
+- `oneiro-kb-preprobe-20261002T1412Z.tar.gz`
+- `oneiro-kb-preSIGINT-20261002T1754Z.tar.gz`
+
+Historical source-volume locator: `oneiro-ostis_kb-binary`, mounted at `/kb.bin`
+by `oneiro-ostis-machine-1`. Confirm it through current Docker inspect before
+reading/exporting; do not mistake either host `kb.bin` directory for this volume.
+Old containers were stopped in the Oct 6 evidence, but this unit cannot attest
+their present state. No containers/processes were started/stopped, no volume was
+mounted/exported/changed, and no archive was created by this unit.
+
+### Prerequisite acceptance and resume route
+
+- [x] Recover complete approved plan, all interview decisions, exact final outputs
+      and remaining unit order on disk; reread the edited plan/goal.
+- [x] Record source-level inventory and current blockers without treating history
+      as current live verification.
+- [ ] Working terminal and current project-scoped branch/status/index/data/process
+      inventory, preserving unrelated workspace edits.
+- [ ] Confirm the old source volume and every writer stopped; retain original
+      unchanged and never boot its graph for validation.
+- [ ] Create **one** `.runtime/graph-snapshots/pre-rewrite-<UTC>.tar.gz`, plus
+      SHA-256 manifest and report; verify archive is Git-ignored.
+- [ ] Full source paths/types/sizes/hash inventory before/after; safe extraction
+      of that exact archive into a separate fresh directory, identical file set
+      and content, including explicit handling of links/metadata if present.
+- [ ] Check archive checksum independently, confirm old volume still stopped/
+      unchanged; do not claim an old-server restore or use it as seed.
+- [ ] Run workspace `python _scripts/validate_doc_routes.py` and task-scoped
+      `git diff --check`; review diff and current ownership before staging.
+- [ ] Review recent commit style; small local commit of own document hunks only.
+      Archive, credentials, unrelated edits and workspace rebuild are excluded.
+
+Final verification in this unit: edited MASTER-PLAN and GOAL were reread;
+REWRITE-BASELINE's new section was reread. Targeted text search confirmed the
+former active eventual-publication/old-data-query/audio-video clauses were
+replaced; remaining publication mentions describe exclusion, consent or history.
+File tools show the plan/baseline retained CRLF and the goal retained LF.
+This is source review, not a byte-level line-ending audit or automated pass.
+
+The explicit attempt to run `python _scripts/validate_doc_routes.py` also failed
+before spawn with the same missing-Bash ENOENT: the validator did not execute,
+so it is NOT a passing check (nor a found document-route failure). Configured
+file-change hooks report `File change hooks are not supported in SDK mode`.
+No tests/typecheck were run; this unit changes documentation only, but its
+required docs/Git checks still must run before a commit.
+
+No unit A archive/check/commit requirement is marked passed. All edits remain
+pending automated verification and uncommitted; no stage/push/deploy/PR occurred.
+Do not weaken this exit condition to call a documentation-only unit complete.
+
+Next after terminal repair: inspect current Git/index and the source-volume
+writer state without restarting old storage; preserve the exact stopped-volume
+archive with checks above, validate the final docs and commit only own hunks.
+Then B (Stage 2 and required Stage 1 clean foundation), C (3 runtime), D (4
+models/media), E (5 VM), F (7 app/channels), G (8 install), H (6 science/update)
+and I (full installed acceptance and bilingual local kit). Each unit's exit and
+artifact names are in MASTER-PLAN; do not skip Stage 2 for attractive UI work.
+
+## 2026-10-07 — Terminal restored; old-volume archive verified
+
+The preceding blocked-unit notes are historical. The normal host terminal now
+works without client modifications/elevation or a connector workaround. Actual
+Git status: `master`, HEAD `b68f52fe6` at the start; 525 tracked project files,
+no non-ignored project untracked files, empty index, and exactly the three
+own document changes. Unrelated workspace/skill/rebuild edits remain untouched.
+Docker engine is 29.6.1. Volume inspection confirms `oneiro-ostis_kb-binary`,
+mounted at `/kb.bin` by `oneiro-ostis-machine-1`; the only container found with
+that volume is exited (code 0), started 2026-10-02T17:56:19Z and finished
+2026-10-02T19:28:16Z. Legacy web remains exited (143). No container was started,
+stopped or mounted anew; source read used `docker cp <stopped-container>:/kb.bin/. -`.
+
+The host's local date is Oct 7 while the artifact UTC timestamp is Oct 6;
+retain that timestamp instead of renaming or creating a duplicate archive.
+Exactly one new pre-rewrite archive was created:
+
+- `.runtime/graph-snapshots/pre-rewrite-20261006T211110Z.tar.gz`
+- `.runtime/graph-snapshots/pre-rewrite-20261006T211110Z.sha256`
+- `.runtime/graph-snapshots/pre-rewrite-20261006T211110Z-verification.json`
+- `.runtime/graph-snapshots/pre-rewrite-20261006T211110Z-extracted/`
+
+The checksum is
+`087f76573058767197722a0a1d920b47f171a37c7f02684d55ae3a585ad58a38`.
+Compressed size is 5,675,458 bytes; source/extracted regular files total
+48,511,789 bytes. The entire source volume contains five regular files and no
+subdirectories, links or special entries; no known-file-only assumption was used.
+
+| file | bytes | SHA-256 |
+|---|---:|---|
+| segments.scdb | 29,359,798 | fee83d42c839514643281b638cfcb1871b0d9160b75963ee210b86588a682e2f |
+| string_offsets_link_hashes.scdb | 18,767,272 | 61309e495245abb672d9946ce5f8702599a80d537c158b0c3b044c4c48e5bf8c |
+| strings1.scdb | 100,011 | c4de6c5088d1398f764e6fd18ead8e7cdb885d26ba2d8dfc353227d235cc6a89 |
+| strings2.scdb | 75,948 | d1cb4be38742e8afb68b0da202aaeac12dec2a9ac88fbc707a79ac08d9380351 |
+| term_string_offsets.scdb | 208,760 | 9051e91ba5a5866ba323db89e7e6fe77c522d8f4a2b5d945a5373289cb00f145 |
+
+The source tar inventory validates path safety/types and retains mode/uid/gid/
+mtime. Gzip was decompressed and the full inventory compared; safe extraction
+used Python's data filter into a new directory. Extracted paths/types/sizes and
+SHA-256 equal the source. A second independent `docker cp` inventory matches
+all content/metadata, and before/after container state matches exactly. Linux
+ownership metadata is retained in the archive, not falsely claimed to be applied
+to the Windows extraction. File recovery is proved; the old server was never
+booted, and this is not new-graph semantic restore/RPO evidence.
+
+Verification script `.runtime/archive_old_graph.py` initially failed its checksum
+comparison because GNU sha256sum escapes a Windows backslash path. Reusing the
+same archive with basename/cwd fixed that parser; source/extraction checks were
+rerun. `sha256sum -c` then exposed a CRLF manifest filename; its line endings were
+corrected to LF and the check rerun: OK. No second archive was created. An initial
+validator invocation had an incorrect relative cwd; rerunning from the actual
+workspace root reports `document routes: OK`. The file inventory switched to Git
+NUL-delimited output after quoted Unicode paths broke a line-based counter.
+These failed probes are corrected, not hidden or counted as passes.
+
+- [x] Current terminal/Git/Docker inventory and correct stopped source mapping.
+- [x] One archive, independent SHA-256 and safe full extraction/content checks.
+- [x] Source reread and stopped container state unchanged; no old-graph restart.
+- [x] `git check-ignore -v` confirms archive/script under ignored `.runtime/`.
+- [x] Docs route validator and project-doc `git diff --check`; final document
+      edits require these checks again before the local commit.
+
+Plan/baseline byte checks before this continuation found pure CRLF, goal pure LF;
+only own docs will be committed. The existing Oct 2 snapshots remain untouched.
+Next: unit B, true bounded queries plus clean reproducible ontology/stack. Do not
+restart or use the archived volume in those trials. Product acceptance other than
+the archive row remains unchecked.
+
+## Historical carried-open inventory (2026-10-06)
+
+The earlier four-block progress referred to the tested slices then, not to the
+new approved A-I execution units or full Stage 2 acceptance. It does not bypass
+the current archive/fault/bounded-query prerequisites. Carried-open findings:
+
 
 - `oneiro-base:latest` is an undeclared local base image, so a clean checkout
   cannot build `Dockerfile` today. This is a stage 1 exit condition.
