@@ -22,8 +22,10 @@ restart behaviour is proven by the probe runs recorded in
 docs/REWRITE-BASELINE.md.
 
 All eight pairs were measured across a real SIGINT save and reload on
-2026-10-02 and all eight hold. There is intentionally no test written to fail
-against a loader: the loaders examined were correct.
+2026-10-02 and all eight hold. A test here can also fail against a loader: on
+2026-10-06 the record readers were not correct - a record written twice read
+back its first payload and every loader returned one row per class arc. The
+duplicate-retry section at the end of this file pins the repair.
 """
 from __future__ import annotations
 
@@ -362,3 +364,203 @@ def test_bridge_has_no_all_variable_template_left():
     assert not offenders, (
         "at least one end of a template triple must be concrete; "
         f"all-variable triples found: {offenders}")
+
+# ---------- a record written twice is one logical event ----------
+#
+# Stage 2's exit line is "no duplicate logical events on retries". Measured on a
+# byte-copy of the live graph on 2026-10-06 (probe in gitignored .runtime):
+# three writes of one record_id left three payload links and three class arcs,
+# the production reader returned the *oldest* link on 10 of 10 reads, and
+# load_organization_events returned three rows, all carrying the first payload.
+# A record re-written after a crash read back stale in every consumer.
+#
+# The rules the fix pins: one relation has one current value, and memory only
+# appends and never reuses an address, so the last write is the greatest
+# address; and a class is a set, so a member with two membership arcs is one row.
+
+class _Addr:
+    """The only thing bridge.py reads off an address is `.value`."""
+
+    def __init__(self, value: int):
+        self.value = value
+
+    def __repr__(self) -> str:
+        return f"ScAddr({self.value})"
+
+
+class _Result:
+    """One ScTemplateResult: slot 2 is the value every reader here wants."""
+
+    def __init__(self, value: _Addr):
+        self._value = value
+
+    def get(self, index: int):
+        return self._value if index == 2 else None
+
+
+class _Content:
+    def __init__(self, data):
+        self.data = data
+
+
+#: What the fake keynode singleton resolves every identifier to, so a template's
+#: first source tells the fake which of the two searches it is answering.
+KEYNODE = _Addr(1000)
+
+#: What resolve_entity hands back for a name it is asked to create or find.
+RESOLVED = _Addr(500000)
+
+
+@pytest.fixture
+def fake_graph(monkeypatch):
+    """A graph faked at the module seam, so the real reader code runs offline.
+
+    `members` answers the class template (its source is a keynode) and `values`
+    answers every relation read (its source is the record node); `contents` maps
+    a link address to the payload text stored in it.
+    """
+    import bridge as bridge_module
+
+    class _Keynodes:
+        def __getitem__(self, idtf):
+            return KEYNODE
+
+    class _Graph:
+        members: list = []
+        values: list = []
+        contents: dict[int, str] = {}
+
+        def search(self, template):
+            source = template.triple_list[0].source.value
+            return self.values if source is not KEYNODE else self.members
+
+        def content(self, addr):
+            text = self.contents.get(addr.value)
+            return [] if text is None else [_Content(text)]
+
+    graph = _Graph()
+    bridge = OneiroBridge()
+    monkeypatch.setattr(bridge_module, "ScKeynodes", _Keynodes())
+    monkeypatch.setattr(bridge_module, "search_by_template", graph.search)
+    monkeypatch.setattr(bridge_module, "get_link_content", graph.content)
+    monkeypatch.setattr(bridge, "resolve_entity", lambda name: RESOLVED)
+    return bridge, graph
+
+
+def test_a_relation_read_returns_the_last_write(fake_graph):
+    """Three writes to one node, answered in graph order, not address order."""
+    bridge, graph = fake_graph
+    node = _Addr(524289)
+    graph.contents.update({524294: '{"n": 1}', 524299: '{"n": 2}',
+                           524304: '{"n": 3}'})
+    graph.values = [_Result(_Addr(524299)), _Result(_Addr(524294)),
+                    _Result(_Addr(524304))]
+
+    picked = bridge._relation_value_link_addr(node, "nrel_organization_record")
+
+    assert picked is not None and picked.value == 524304, (
+        "the reader must return the last write: the probe measured the oldest "
+        "one on 10 of 10 reads, so a rewritten record read back stale")
+    assert bridge._json_relation(node, "nrel_organization_record") == {"n": 3}
+
+    # provenance reads the other end: the round that proposed a strategy must
+    # not be rewritten by a later dream that replays it (test_two_rounds pins
+    # this, and the live graph already holds both values on the same node).
+    graph.contents.update({524294: "1", 524304: "2"})
+    assert bridge._relation_value_number(node, "nrel_dream_round") == 2.0
+    assert bridge._relation_value_number(node, "nrel_dream_round", first=True) == 1.0
+
+
+def test_a_record_written_twice_is_one_row_with_its_latest_payload(fake_graph):
+    """A retry leaves two class arcs to one node; the loader returns one row."""
+    bridge, graph = fake_graph
+    node = _Addr(524289)
+    first = OrganizationRecord(record_id="r-1", session_id="s-1", role="agent",
+                              kind="probe", payload={"n": 1}, recorded_at=100)
+    latest = OrganizationRecord(record_id="r-1", session_id="s-1", role="agent",
+                               kind="probe", payload={"n": 2}, recorded_at=100)
+    graph.contents.update({
+        524294: json.dumps(first.as_payload(), sort_keys=True),
+        524304: json.dumps(latest.as_payload(), sort_keys=True),
+    })
+    graph.members = [_Result(node), _Result(node)]
+    graph.values = [_Result(_Addr(524294)), _Result(_Addr(524304))]
+
+    rows = bridge.load_organization_events()
+
+    assert len(rows) == 1, "a class is a set: one member, one row, not one per arc"
+    assert rows[0].payload == {"n": 2}, "the row carries the last write's payload"
+
+
+@pytest.mark.parametrize("loader, prefix", [("load_strategies", "strategy"),
+                                            ("load_harnesses", "harness")])
+def test_a_rewritten_member_is_one_row_in_the_search_tree(fake_graph, loader, prefix):
+    """save_strategy and save_harness rewrite one node; the loaders must agree."""
+    bridge, graph = fake_graph
+    node = _Addr(524289)
+    bridge._addr_to_idtf[node.value] = f"{prefix}_cand"    # idtf_of's own answer
+    graph.members = [_Result(node), _Result(node)]
+    graph.values = []
+
+    rows = getattr(bridge, loader)()
+
+    assert [row["name"] for row in rows] == ["cand"]
+
+
+def test_a_class_membership_arc_is_added_once(fake_graph):
+    """A retry must leave no second membership arc either.
+
+    The payload and the membership arc were both appended, so one written record
+    showed up as three payload links and three class arcs. Readers collapse the
+    arcs; the graph should not have grown them in the first place.
+    """
+    from bridge import ScConstruction
+
+    bridge, graph = fake_graph
+    node = _Addr(524289)
+
+    graph.members = []                          # the class does not hold it yet
+    first = ScConstruction()
+    bridge._add_class_once(first, "concept_organization_record", node)
+    assert len(first.commands) == 1
+
+    graph.members = [_Result(node)]              # the class holds it now
+    again = ScConstruction()
+    bridge._add_class_once(again, "concept_organization_record", node)
+    assert not again.commands, "a member needs no second arc"
+
+
+def test_a_later_dream_does_not_rewrite_where_a_strategy_came_from(fake_graph, monkeypatch):
+    """The dream round is provenance; a replay score is a measurement.
+
+    python/dream.py re-saves every candidate every round, the incumbent included,
+    so round 2 wrote dream_round=2 onto the strategy round 1 had produced. The
+    two-round live test caught it (tests/test_two_rounds.py:68).
+    """
+    import bridge as bridge_module
+    from bridge import NREL_DREAM_ROUND, NREL_STRATEGY_REPLAY_SCORE
+
+    bridge, graph = fake_graph
+    node = _Addr(524289)
+    captured: list = []
+    monkeypatch.setattr(bridge_module, "generate_elements",
+                        lambda constr: captured.append(constr) or [])
+
+    def aliases() -> list[str]:
+        return list(captured[-1].aliases)
+
+    # the node already carries the round that proposed it
+    graph.values = [_Result(_Addr(524304))]
+    graph.contents = {524304: "1"}
+    bridge.save_strategy("cand", {"name": "cand"}, replay_score=42.0, dream_round=2)
+    assert not [a for a in aliases() if a.startswith(f"num_link_{NREL_DREAM_ROUND}")], (
+        "a later dream must not rewrite the round a strategy came from")
+    assert [a for a in aliases() if a.startswith(f"num_link_{NREL_STRATEGY_REPLAY_SCORE}")], (
+        "the judge's estimate is a measurement: it does update")
+
+    # a strategy nobody has dreamed yet does get its round recorded
+    graph.values = []
+    graph.contents = {}
+    bridge.save_strategy("fresh", {"name": "fresh"}, dream_round=2)
+    assert [a for a in aliases() if a.startswith(f"num_link_{NREL_DREAM_ROUND}")], (
+        "the first dream that proposes a strategy records its round")

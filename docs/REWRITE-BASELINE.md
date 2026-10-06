@@ -1736,9 +1736,10 @@ Still unverified:
   exercised through a web surface.
 - Many records per corpus, ordering, and size limits. Each writer was measured
   with one record per kind; nothing here says what a thousand rows do.
-- `load_strategies`, `load_harnesses` and `load_organization_events` do not
-  deduplicate. Measured as a note, never as a defect: writing the same record
-  twice yields two rows. Whether that is intended is still not decided.
+- `load_strategies`, `load_harnesses` and `load_organization_events` did not
+  deduplicate: writing the same record twice yielded two rows. **Decided and
+  fixed 2026-10-06** - one row per member, and a rewritten record is one
+  logical event carrying its last payload. See the 2026-10-06 section.
 - The `_add_json_relation` / `_json_relation` mismatch listed as unverified in
   the Block C section above **is resolved**: part 2 showed the reader is correct
   and the rows were dropped by a missing `session_id`. It is removed from the
@@ -1999,6 +2000,71 @@ live volume's five MD5s are again `segments 100e8c44…`, `strings1 f0db8422…`
 `strings2 38bd6b31…`, `string_offsets 0f8fc26c…`, `term_strings 9392e361…`;
 the live containers stayed `Exited`.
 
+## 2026-10-06 — Stage 2 exit line: a rewritten record is one event
+
+Stage 2's checklist says "no duplicate logical events on retries". The record
+writers put a payload on an arc from the record node, and `_add_json_relation`
+always generated a *new* link, so writing one record_id twice left two payload
+links and two class arcs. Probed against a byte-copy of the live graph on port
+8096 (compose file and probes in gitignored `.runtime`; live was never started):
+
+| measured on the scratch copy | before | after |
+|---|---|---|
+| one record_id written three times | 3 payload links, 3 class arcs | two distinct payloads, 2 links, 1 arc |
+| what the reader returns | the oldest link, 10 of 10 reads | the last write's link |
+| `load_organization_events()` for that record_id | 3 rows, all the first payload | 1 row, the last payload |
+| the data the first probe had left on the volume | 3 rows, stale payload | 1 row, `{'n': 3, 'note': 'third'}` |
+| a rewrite with an identical payload | +1 link, +1 arc | nothing written at all |
+| a score re-marked with the same number | +1 numeric link | nothing written at all |
+
+The rules, now in `python/bridge.py`:
+
+- **A relation has one current value.** Memory only appends and never reuses an
+  address, so addresses grow in write order: the last write is the greatest
+  address, the first is the smallest. `_value_addr(found, first=...)` reads one
+  or the other, and the five relation readers take `first`.
+- **A measurement reads the last write; provenance reads the first.** Payloads
+  and scores update; `dream_round` and `derived_from` are recorded once and read
+  from the first write.
+- **A class is a set.** `load_organization_events`, `load_native_events`,
+  `load_strategies` and `load_harnesses` return one row per member, not one per
+  membership arc, and `_add_class_once` stops a rewrite from growing a second arc.
+- **A write of the value already there appends nothing** (`_add_json_relation`,
+  `_add_numeric_relation`), and a provenance field is only written when the node
+  has none.
+
+Verified on the same copy after the change:
+
+| check | result |
+|---|---|
+| `load_organization_events()` over the volume the first probe left dirty | 14 rows over the same 14 members (was 17), each with its last payload; the 3-link legacy node reads `{'n': 3, 'note': 'third'}`, the 2-link one `{'n': 7, 'note': 'same'}` |
+| a fresh record written 1, then 2, then 2 again | 1 link/1 arc, then 2 links/1 arc, then 2 links/1 arc; one row carrying the latest payload throughout |
+| `mark_strategy_online_score` 0.5, 0.5, 0.75 | 1 link, then no new link, then 2 links; the reader follows to 0.75; one row for the name |
+| offline suite | 442 passed, 10 errors (the live-stack tests: no server on 8090) |
+| mypy `python/oneiro` | clean, 13 files |
+| the 10 live-stack tests, pointed at the scratch with `ONEIRO_SETTINGS_FILE=.runtime/settings-8096.json` | all 10 pass — core-loop round trip, two rounds, dream improvement, workshop dream, replay exactness |
+| live volume | its container was never started; the five `kb.bin` MD5s were re-read from it and are identical to the earlier check (`.runtime/_live_check8` matches `_live_check7`) |
+
+The first run of those 10 failed one: `tests/test_two_rounds.py:68` expects the
+round-1 winner's node to carry `dream_round == 1.0`, and round 2's dream re-saves
+every candidate, the incumbent included (`python/dream.py:108`), so the round was
+rewritten to 2. The test was right and the writer was wrong: the round that
+proposed a strategy is provenance, and reading it as the last write also let the
+dashboard's round column drift. It is now written once and read from the first
+write, which repairs legacy nodes holding both values as well.
+
+Not verified:
+
+- Nothing here was measured through HTTP or sc-web; the web container runs the
+  legacy `ostis/sc-web:0.9.0` with no oneiro module.
+- Legacy duplicates are preserved rather than removed (never-destroy): a node the
+  old code wrote twice still carries two payload links and two class arcs. No
+  reader sees them any more, and a retry no longer adds any.
+- The reader and the writers were measured on the organisation and strategy
+  paths. `save_harness_round`, `save_memory_bench_result` and `save_memory_sessions`
+  share them but were not re-probed on a live surface in this pass.
+- Nothing here says what a thousand records do; the probe wrote five.
+
 ## Next independent work
 
 The four-block plan is approved. Blocks A, B and C are done, including the two
@@ -2026,8 +2092,9 @@ Carried open from Blocks A, B and C, none of it worked on:
   strategy and dream writers, that is — fails on keynode resolution. Either the
   seed should be rebuilt, or those keynodes should join `RUNTIME_VOCABULARY` so
   they self-create like the memory vocabulary already does.
-- `load_strategies`, `load_harnesses` and `load_organization_events` do not
-  deduplicate. Whether that is intended is not decided.
+- **Resolved 2026-10-06:** `load_strategies`, `load_harnesses` and
+  `load_organization_events` returned one row per membership arc, and a record
+  written twice read back its first payload. Both are fixed; see that section.
 - Something in the running stack rewrites the live `strings2.scdb` on its own
   while `segments.scdb` stays put. Cause unestablished.
 - `docker-compose.isolated.yml` may carry its own machine service without the

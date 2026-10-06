@@ -597,12 +597,7 @@ class OneiroBridge:
         )
         node = self.resolve_entity(ORGANIZATION_PREFIX + _safe_graph_identifier(record.record_id))
         construction = ScConstruction()
-        construction.generate_connector(
-            sc_type.CONST_PERM_POS_ARC,
-            self.keynode(CONCEPT_ORGANIZATION_RECORD),
-            node,
-            "organization_class_arc",
-        )
+        self._add_class_once(construction, CONCEPT_ORGANIZATION_RECORD, node)
         self._add_json_relation(
             construction,
             node,
@@ -613,14 +608,18 @@ class OneiroBridge:
         return record
 
     def load_organization_events(self, session_id: Optional[str] = None) -> list[OrganizationRecord]:
-        """Read organization events from the graph in recorded order."""
+        """Read organization events from the graph in recorded order.
+
+        One row per logical event: the class is a set, so a record node written
+        twice is one member with two membership arcs, not two events.
+        """
         template = ScTemplate()
         template.triple(
             self.keynode(CONCEPT_ORGANIZATION_RECORD),
             sc_type.VAR_PERM_POS_ARC,
             sc_type.VAR_NODE,
         )
-        records: list[OrganizationRecord] = []
+        records: dict[str, OrganizationRecord] = {}
         for item in search_by_template(template):
             payload = self._json_relation(item.get(2), NREL_ORGANIZATION_RECORD)
             if not isinstance(payload, dict):
@@ -628,7 +627,7 @@ class OneiroBridge:
             if session_id is not None and payload.get("session_id") != session_id:
                 continue
             try:
-                records.append(OrganizationRecord(
+                record = OrganizationRecord(
                     record_id=str(payload["record_id"]),
                     session_id=str(payload["session_id"]),
                     role=str(payload["role"]),
@@ -638,10 +637,11 @@ class OneiroBridge:
                     verified=bool(payload.get("verified", False)),
                     recorded_at=int(payload.get("recorded_at", 0)),
                     revision=int(payload.get("revision", 0)),
-                ))
+                )
             except (KeyError, TypeError, ValueError):
                 continue
-        return sorted(records, key=lambda row: (row.recorded_at, row.record_id))
+            records.setdefault(record.record_id, record)
+        return sorted(records.values(), key=lambda row: (row.recorded_at, row.record_id))
 
     def record_native_event(self, event: dict, *, session_id: str) -> None:
         """One construction for native evidence AND semantic graph membership.
@@ -652,9 +652,8 @@ class OneiroBridge:
         """
         node = self.resolve_entity(ORGANIZATION_PREFIX + event["id"])
         construction = ScConstruction()
-        for index, kind in enumerate((CONCEPT_ORGANIZATION_RECORD, "concept_native_event")):
-            construction.generate_connector(sc_type.CONST_PERM_POS_ARC,
-                                           self.keynode(kind), node, f"native_class_{index}")
+        for kind in (CONCEPT_ORGANIZATION_RECORD, "concept_native_event"):
+            self._add_class_once(construction, kind, node)
         data = event["data"]
         if event["kind"] in ("task", "approval", "note", "interest", "message"):
             subject = self.resolve_entity("native_" + event["kind"] + "_" +
@@ -682,15 +681,20 @@ class OneiroBridge:
         generate_elements(construction)
 
     def load_native_events(self, *, session_id: str) -> list[OrganizationRecord]:
-        """Query only the native subgraph, not the entire research biography."""
+        """Query only the native subgraph, not the entire research biography.
+
+        One row per recorded event, for the reason `load_organization_events`
+        gives: a re-recorded event must not read back as two.
+        """
         template = ScTemplate()
         template.triple(self.keynode("concept_native_event"), sc_type.VAR_PERM_POS_ARC, sc_type.VAR_NODE)
-        records = []
+        records: dict[str, OrganizationRecord] = {}
         for item in search_by_template(template):
             row = self._json_relation(item.get(2), NREL_ORGANIZATION_RECORD)
             if isinstance(row, dict) and row.get("session_id") == session_id:
-                records.append(OrganizationRecord(**row))
-        return records
+                record = OrganizationRecord(**row)
+                records.setdefault(record.record_id, record)
+        return list(records.values())
 
     # ---------- strategy store ----------
 
@@ -711,9 +715,7 @@ class OneiroBridge:
         """
         node = self.resolve_entity(STRATEGY_PREFIX + name)
         constr = ScConstruction()
-
-        # class membership: concept_strategy -> strategy node
-        constr.generate_connector(sc_type.CONST_PERM_POS_ARC, self.keynode(CONCEPT_STRATEGY), node, "class_arc")
+        self._add_class_once(constr, CONCEPT_STRATEGY, node)
 
         # descriptor JSON as a string link
         constr.generate_link(
@@ -730,9 +732,16 @@ class OneiroBridge:
             self._add_numeric_relation(constr, node, NREL_STRATEGY_REPLAY_SCORE, float(replay_score))
         if online_score is not None:
             self._add_numeric_relation(constr, node, NREL_STRATEGY_ONLINE_SCORE, float(online_score))
-        if dream_round is not None:
+        # The dream round is provenance, not a measurement: the round that
+        # proposed a strategy is recorded once, when it is first dreamed. A later
+        # dream replays the same candidates and re-saves their scores, and it must
+        # not rewrite where the strategy came from - the dashboard's round column
+        # and the two-round live test both read it as the round that produced it.
+        if dream_round is not None and self._relation_value_number(node, NREL_DREAM_ROUND) is None:
             self._add_numeric_relation(constr, node, NREL_DREAM_ROUND, int(dream_round))
-        if derived_from is not None:
+        # The parent in the search tree is provenance too: recorded when the
+        # strategy is created, never re-parented by a later dream.
+        if derived_from is not None and self._relation_value_addr(node, NREL_DERIVED_FROM) is None:
             parent = self.resolve_entity(STRATEGY_PREFIX + derived_from)
             arc_alias = "derived_arc"
             constr.generate_connector(sc_type.CONST_COMMON_ARC, node, parent, arc_alias)
@@ -749,14 +758,20 @@ class OneiroBridge:
         generate_elements(constr)
 
     def load_strategies(self) -> list[dict]:
-        """All strategy nodes of class concept_strategy with their stored fields."""
+        """All strategy nodes of class concept_strategy with their stored fields.
+
+        One row per strategy node: the class is a set, so writing the same
+        strategy twice is one member with two arcs, not two strategies.
+        """
         template = ScTemplate()
         template.triple(self.keynode(CONCEPT_STRATEGY), sc_type.VAR_PERM_POS_ARC, sc_type.VAR_NODE)
         found = search_by_template(template)
 
-        strategies: list[dict] = []
+        strategies: dict[int, dict] = {}
         for item in found:
             node = item.get(2)
+            if node.value in strategies:
+                continue
             idtf = self.idtf_of(node) or ""
             name = idtf[len(STRATEGY_PREFIX):] if idtf.startswith(STRATEGY_PREFIX) else idtf
             descriptor_text = self._relation_value_text(node, NREL_STRATEGY_DESCRIPTOR)
@@ -766,20 +781,19 @@ class OneiroBridge:
                     descriptor = json.loads(descriptor_text)
                 except ValueError:
                     descriptor = None
-            derived = self._relation_value_idtf(node, NREL_DERIVED_FROM)
+            # both provenance fields read the first write, the scores the last
+            derived = self._relation_value_idtf(node, NREL_DERIVED_FROM, first=True)
             if derived and derived.startswith(STRATEGY_PREFIX):
                 derived = derived[len(STRATEGY_PREFIX):]
-            strategies.append(
-                {
-                    "name": name,
-                    "descriptor": descriptor,
-                    "replay_score": self._relation_value_number(node, NREL_STRATEGY_REPLAY_SCORE),
-                    "online_score": self._relation_value_number(node, NREL_STRATEGY_ONLINE_SCORE),
-                    "dream_round": self._relation_value_number(node, NREL_DREAM_ROUND),
-                    "derived_from": derived,
-                }
-            )
-        return strategies
+            strategies[node.value] = {
+                "name": name,
+                "descriptor": descriptor,
+                "replay_score": self._relation_value_number(node, NREL_STRATEGY_REPLAY_SCORE),
+                "online_score": self._relation_value_number(node, NREL_STRATEGY_ONLINE_SCORE),
+                "dream_round": self._relation_value_number(node, NREL_DREAM_ROUND, first=True),
+                "derived_from": derived,
+            }
+        return list(strategies.values())
 
     # ---------- harness policies (the RSI search tree) ----------
 
@@ -802,9 +816,7 @@ class OneiroBridge:
         """
         node = self.resolve_entity(HARNESS_PREFIX + name)
         constr = ScConstruction()
-        constr.generate_connector(
-            sc_type.CONST_PERM_POS_ARC, self.keynode(CONCEPT_HARNESS), node, "class_arc"
-        )
+        self._add_class_once(constr, CONCEPT_HARNESS, node)
         self._add_json_relation(constr, node, NREL_HARNESS_DESCRIPTOR, descriptor)
         if gate is not None:
             self._add_json_relation(constr, node, NREL_HARNESS_GATE, gate)
@@ -812,9 +824,11 @@ class OneiroBridge:
             self._add_json_relation(constr, node, NREL_HARNESS_ONLINE_RESULT, online_result)
         if replay_saving is not None:
             self._add_numeric_relation(constr, node, NREL_HARNESS_REPLAY_SAVING, float(replay_saving))
-        if round_index is not None:
+        # the search round is provenance, like a strategy's dream round
+        published = self._relation_value_number(node, NREL_HARNESS_SEARCH_ROUND) is not None
+        if round_index is not None and not published:
             self._add_numeric_relation(constr, node, NREL_HARNESS_SEARCH_ROUND, int(round_index))
-        if derived_from is not None:
+        if derived_from is not None and self._relation_value_addr(node, NREL_DERIVED_FROM) is None:
             parent = self.resolve_entity(HARNESS_PREFIX + derived_from)
             constr.generate_connector(sc_type.CONST_COMMON_ARC, node, parent, "derived_arc")
             constr.generate_connector(
@@ -828,37 +842,41 @@ class OneiroBridge:
         name = f"{HARNESS_ROUND_PREFIX}{index}"
         node = self.resolve_entity(name)
         constr = ScConstruction()
-        constr.generate_connector(
-            sc_type.CONST_PERM_POS_ARC, self.keynode(CONCEPT_HARNESS_ROUND), node, "class_arc"
-        )
+        self._add_class_once(constr, CONCEPT_HARNESS_ROUND, node)
         self._add_json_relation(constr, node, NREL_HARNESS_ROUND_RECORD, record)
         generate_elements(constr)
         return name
 
     def load_harnesses(self) -> list[dict]:
-        """Every harness policy node with the fields the loop wrote to it."""
+        """Every harness policy node with the fields the loop wrote to it.
+
+        One row per policy node, for the reason `load_strategies` gives.
+        """
         template = ScTemplate()
         template.triple(self.keynode(CONCEPT_HARNESS), sc_type.VAR_PERM_POS_ARC, sc_type.VAR_NODE)
         found = search_by_template(template)
 
-        rows: list[dict] = []
+        rows: dict[int, dict] = {}
         for item in found:
             node = item.get(2)
+            if node.value in rows:
+                continue
             idtf = self.idtf_of(node) or ""
             name = idtf[len(HARNESS_PREFIX):] if idtf.startswith(HARNESS_PREFIX) else idtf
-            derived = self._relation_value_idtf(node, NREL_DERIVED_FROM)
+            derived = self._relation_value_idtf(node, NREL_DERIVED_FROM, first=True)
             if derived and derived.startswith(HARNESS_PREFIX):
                 derived = derived[len(HARNESS_PREFIX):]
-            rows.append({
+            rows[node.value] = {
                 "name": name,
                 "descriptor": self._json_relation(node, NREL_HARNESS_DESCRIPTOR),
                 "replay_saving": self._relation_value_number(node, NREL_HARNESS_REPLAY_SAVING),
                 "gate": self._json_relation(node, NREL_HARNESS_GATE),
                 "online_result": self._json_relation(node, NREL_HARNESS_ONLINE_RESULT),
-                "round_index": self._relation_value_number(node, NREL_HARNESS_SEARCH_ROUND),
+                "round_index": self._relation_value_number(
+                    node, NREL_HARNESS_SEARCH_ROUND, first=True),
                 "derived_from": derived,
-            })
-        return rows
+            }
+        return list(rows.values())
 
     def load_harness_rounds(self) -> list[dict]:
         """Every stored search round, newest last; one row per round.
@@ -891,9 +909,7 @@ class OneiroBridge:
         """
         corpus_node = self.resolve_entity(MEMORY_CORPUS_PREFIX + corpus)
         constr = ScConstruction()
-        constr.generate_connector(
-            sc_type.CONST_PERM_POS_ARC, self.keynode(CONCEPT_MEMORY_CORPUS), corpus_node, "corpus_class_arc"
-        )
+        self._add_class_once(constr, CONCEPT_MEMORY_CORPUS, corpus_node)
         generate_elements(constr)
 
         written = 0
@@ -977,9 +993,7 @@ class OneiroBridge:
         """Store one benchmark verdict (question, arm, run) as a graph record."""
         node = self.resolve_entity(_safe_graph_identifier(name))
         constr = ScConstruction()
-        constr.generate_connector(
-            sc_type.CONST_PERM_POS_ARC, self.keynode(CONCEPT_MEMORY_BENCH_RESULT), node, "class_arc"
-        )
+        self._add_class_once(constr, CONCEPT_MEMORY_BENCH_RESULT, node)
         self._add_json_relation(constr, node, NREL_MEMORY_BENCH_RESULT, payload)
         generate_elements(constr)
         return name
@@ -1022,11 +1036,20 @@ class OneiroBridge:
         return self._json_relation(source_addr, relation_idtf)
 
     def _add_json_relation(self, constr: ScConstruction, node: ScAddr, relation_idtf: str, payload) -> None:
-        """JSON relation: the payload is stored as a string link on an arc."""
+        """JSON relation: the payload is stored as a string link on an arc.
+
+        A write of the value the relation already holds appends nothing. Every
+        caller keys on a stable node - a record id, a policy name - so re-writing
+        the same record is a retry, not a second event, and the graph should not
+        gain a second payload for it.
+        """
+        serialized = json.dumps(payload, sort_keys=True)
+        if self._relation_value_text(node, relation_idtf) == serialized:
+            return
         link_alias = f"json_link_{relation_idtf}"
         constr.generate_link(
             sc_type.CONST_NODE_LINK,
-            ScLinkContent(json.dumps(payload, sort_keys=True), ScLinkContentType.STRING),
+            ScLinkContent(serialized, ScLinkContentType.STRING),
             link_alias,
         )
         arc_alias = f"json_arc_{relation_idtf}"
@@ -1034,7 +1057,14 @@ class OneiroBridge:
         constr.generate_connector(sc_type.CONST_PERM_POS_ARC, self.keynode(relation_idtf), arc_alias)
 
     def _add_numeric_relation(self, constr: ScConstruction, node: ScAddr, relation_idtf: str, value) -> None:
-        """Numeric relation (link inside the same construction)."""
+        """Numeric relation (link inside the same construction).
+
+        As with the JSON writer, writing the number the relation already holds is
+        a no-op: that is what keeps a republished policy or a repeated
+        mark_strategy_online_score from leaving a second copy on the node.
+        """
+        if self._relation_value_number(node, relation_idtf) == float(value):
+            return
         link_alias = f"num_link_{relation_idtf}_{int(value * 1000) if isinstance(value, float) else value}"
         content_type = ScLinkContentType.INT if isinstance(value, int) else ScLinkContentType.FLOAT
         constr.generate_link(sc_type.CONST_NODE_LINK, ScLinkContent(value, content_type), link_alias)
@@ -1079,6 +1109,25 @@ class OneiroBridge:
 
         if len(constr.commands):
             generate_elements(constr)
+
+    def _is_member(self, class_idtf: str, node: ScAddr) -> bool:
+        """Whether the class already holds this node."""
+        template = ScTemplate()
+        template.triple(self.keynode(class_idtf), sc_type.VAR_PERM_POS_ARC, node)
+        return bool(search_by_template(template))
+
+    def _add_class_once(self, constr: ScConstruction, class_idtf: str, node: ScAddr,
+                        alias: str = "class_arc") -> None:
+        """Link `class -> node` unless the class already holds the node.
+
+        A class is a set, so a second membership arc tells a reader nothing - the
+        loaders collapse them either way - but it is what made a record written
+        twice look like two events in sc-web. The arc is added once.
+        """
+        if not self._is_member(class_idtf, node):
+            constr.generate_connector(
+                sc_type.CONST_PERM_POS_ARC, self.keynode(class_idtf), node, alias
+            )
 
     def _classify_episode_once(self, episode_node: ScAddr) -> None:
         """Give an episode node its class arc exactly once per bridge session."""
@@ -1366,14 +1415,40 @@ class OneiroBridge:
             note=text(NREL_NOTE),
         )
 
-    def _relation_value_idtf(self, source_addr: ScAddr, relation_idtf: str) -> Optional[str]:
+    def _relation_value_idtf(self, source_addr: ScAddr, relation_idtf: str, *,
+                             first: bool = False) -> Optional[str]:
         """Follow one nrel-relation from source_addr and return the target identifier."""
-        value_addr = self._relation_value_addr(source_addr, relation_idtf)
+        value_addr = self._relation_value_addr(source_addr, relation_idtf, first=first)
         if value_addr is None:
             return None
         return self.idtf_of(value_addr)
 
-    def _relation_value_addr(self, source_addr: ScAddr, relation_idtf: str) -> Optional[ScAddr]:
+    @staticmethod
+    def _value_addr(found, *, first: bool = False) -> Optional[ScAddr]:
+        """The value of one write among several: the last one, or the first.
+
+        One relation can hold several values on one node: a record written again
+        appends, because memory never overwrites an element and never reuses an
+        address. So addresses grow in write order - the smallest is the first
+        write, the greatest the last - where a payload's own `recorded_at` is the
+        caller's clock (the stage-2 gap probe measured 79 stamp inversions
+        against address order in the live graph).
+
+        Which one a reader wants depends on what the relation means. A
+        measurement updates, so it reads the last write; provenance is recorded
+        once and never rewritten, so it reads the first - `first=True`.
+        """
+        best: Optional[ScAddr] = None
+        for item in found:
+            addr = item.get(2)
+            if addr is None:
+                continue
+            if best is None or (addr.value < best.value if first else addr.value > best.value):
+                best = addr
+        return best
+
+    def _relation_value_addr(self, source_addr: ScAddr, relation_idtf: str, *,
+                             first: bool = False) -> Optional[ScAddr]:
         template = ScTemplate()
         template.quintuple(
             source_addr,
@@ -1382,14 +1457,12 @@ class OneiroBridge:
             sc_type.VAR_PERM_POS_ARC,
             self.keynode(relation_idtf),
         )
-        found = search_by_template(template)
-        if not found:
-            return None
-        return found[0].get(2)
+        return self._value_addr(search_by_template(template), first=first)
 
-    def _relation_value_text(self, source_addr: ScAddr, relation_idtf: str) -> Optional[str]:
+    def _relation_value_text(self, source_addr: ScAddr, relation_idtf: str, *,
+                             first: bool = False) -> Optional[str]:
         """Follow one nrel-relation to a string link and return its content."""
-        value_addr = self._relation_value_link_addr(source_addr, relation_idtf)
+        value_addr = self._relation_value_link_addr(source_addr, relation_idtf, first=first)
         if value_addr is None:
             return None
         contents = get_link_content(value_addr)
@@ -1397,7 +1470,8 @@ class OneiroBridge:
             return str(contents[0].data)
         return None
 
-    def _relation_value_link_addr(self, source_addr: ScAddr, relation_idtf: str) -> Optional[ScAddr]:
+    def _relation_value_link_addr(self, source_addr: ScAddr, relation_idtf: str, *,
+                                  first: bool = False) -> Optional[ScAddr]:
         template = ScTemplate()
         template.quintuple(
             source_addr,
@@ -1406,15 +1480,13 @@ class OneiroBridge:
             sc_type.VAR_PERM_POS_ARC,
             self.keynode(relation_idtf),
         )
-        found = search_by_template(template)
-        if not found:
-            return None
-        return found[0].get(2)
+        return self._value_addr(search_by_template(template), first=first)
 
-    def _relation_value_number(self, source_addr: ScAddr, relation_idtf: str) -> Optional[float]:
+    def _relation_value_number(self, source_addr: ScAddr, relation_idtf: str, *,
+                               first: bool = False) -> Optional[float]:
         # The value is a sc-link, not a node — search for the link directly
         # (VAR_NODE in _relation_value_addr does not match links).
-        value_addr = self._relation_value_link_addr(source_addr, relation_idtf)
+        value_addr = self._relation_value_link_addr(source_addr, relation_idtf, first=first)
         if value_addr is None:
             return None
         contents = get_link_content(value_addr)
