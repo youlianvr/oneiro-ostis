@@ -16,6 +16,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
 from oneiro.query import (                                          # noqa: E402
@@ -358,3 +360,100 @@ def test_entity_reports_a_transport_failure_instead_of_absence():
         assert exc.code == "server_unreachable"
     else:
         raise AssertionError("the server is gone must not look like no such record")
+
+
+# ---------- uncovered boundaries found in the full rewrite review ----------
+
+@pytest.mark.parametrize("scan_limit", [0, -1, True, 1.5, "5"])
+def test_invalid_scan_bounds_are_refused_before_any_backend_work(scan_limit):
+    with pytest.raises(GraphQueryError) as error:
+        GraphQuery(FakeBackend(records(3)), scan_limit=scan_limit)
+    assert error.value.code == "bad_scan_limit"
+
+
+@pytest.mark.parametrize("limit", [True, 1.5, "1.5"])
+def test_a_page_limit_cannot_silently_change_type_or_round_down(limit):
+    with pytest.raises(GraphQueryError) as error:
+        GraphQuery(FakeBackend(records(3))).page(CONCEPT, limit=limit)
+    assert error.value.code == "bad_limit"
+
+
+def test_truncated_page_counts_every_consumed_record_including_skipped():
+    backend = FakeBackend(records(8), unreadable={160})
+    page = GraphQuery(backend, scan_limit=3).page(CONCEPT, limit=8)
+    assert page.scanned == 3 == len(backend.reads)
+    assert len(page.items) + len(page.skipped) == page.scanned
+    assert decode_cursor(page.cursor, CONCEPT) == 150
+
+
+def test_latest_cannot_turn_a_scan_bound_into_false_absence():
+    backend = FakeBackend(records(20))
+    with pytest.raises(GraphQueryError) as error:
+        GraphQuery(backend, scan_limit=3).latest(CONCEPT, matches=lambda row: False)
+    assert error.value.code == "scan_truncated"
+    assert len(backend.reads) == 3
+
+
+def test_latest_limit_bounds_candidates_not_the_number_of_matches():
+    backend = FakeBackend(records(20))
+    with pytest.raises(GraphQueryError) as error:
+        GraphQuery(backend).latest(CONCEPT, matches=lambda row: False, limit=2)
+    assert error.value.code == "scan_truncated"
+    assert len(backend.reads) == 2
+
+
+def test_latest_cannot_hide_an_unreadable_newer_record():
+    backend = FakeBackend(records(5), unreadable={140})
+    with pytest.raises(GraphQueryError) as error:
+        GraphQuery(backend).latest(CONCEPT)
+    assert error.value.code == "record_unreadable"
+    assert "140" in error.value.reason
+    assert backend.reads == [140]
+
+
+def test_range_reports_when_matching_rows_exceed_the_return_limit():
+    page = GraphQuery(FakeBackend(records(10))).range(CONCEPT, limit=3)
+    assert page.scanned == 10
+    assert len(page.items) == 3
+    assert page.truncated is True
+
+
+@pytest.mark.parametrize("stamp", [float("nan"), float("inf"), float("-inf")])
+def test_nonfinite_timestamps_are_not_ordering_evidence(stamp):
+    assert row_timestamp({"recorded_at": stamp}) is None
+    backend = FakeBackend({100: {"record_id": "bad-time", "recorded_at": stamp}})
+    page = GraphQuery(backend).range(CONCEPT)
+    assert page.items == ()
+    assert len(page.skipped) == 1
+
+
+@pytest.mark.parametrize("address", [True, False, 0, -1, 1.5, "10"])
+def test_legacy_cursor_rejects_nonpositive_or_coerced_addresses(address):
+    import base64
+    import json
+    raw = json.dumps({"v": 1, "c": CONCEPT, "a": address}).encode()
+    cursor = base64.urlsafe_b64encode(raw).decode()
+    with pytest.raises(GraphQueryError, match="bad_cursor"):
+        decode_cursor(cursor, CONCEPT)
+    with pytest.raises(GraphQueryError, match="bad_cursor"):
+        encode_cursor(CONCEPT, address)
+
+
+def test_legacy_cursor_rejects_oversized_input_and_boolean_version():
+    import base64
+    import json
+    with pytest.raises(GraphQueryError, match="bad_cursor"):
+        decode_cursor("a" * 2049, CONCEPT)
+    raw = json.dumps({"v": True, "c": CONCEPT, "a": 10}).encode()
+    with pytest.raises(GraphQueryError, match="bad_cursor"):
+        decode_cursor(base64.urlsafe_b64encode(raw).decode(), CONCEPT)
+
+
+def test_backend_duplicate_members_are_one_logical_candidate():
+    class DuplicateBackend(FakeBackend):
+        def member_addresses(self, concept):
+            return [100, 100, 110, 110]
+
+    page = GraphQuery(DuplicateBackend(records(2))).page(CONCEPT, limit=4)
+    assert page.candidates == page.scanned == 2
+    assert [row["record_id"] for row in page.items] == ["r1", "r0"]

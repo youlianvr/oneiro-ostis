@@ -14,6 +14,8 @@ public:
   static inline ScKeynode const action_record_attempt{"action_record_attempt", ScType::ConstNodeClass};
   static inline ScKeynode const action_retrieve_attempts{"action_retrieve_attempts", ScType::ConstNodeClass};
 
+  static inline ScKeynode const action_oneiro_save_memory{"action_oneiro_save_memory", ScType::ConstNodeClass};
+
   // Classes of the experience ontology
   static inline ScKeynode const concept_experience_event{"concept_experience_event", ScType::ConstNodeClass};
   static inline ScKeynode const concept_attempt{"concept_attempt", ScType::ConstNodeClass};
@@ -29,10 +31,10 @@ public:
   static inline ScKeynode const nrel_prev_attempt{"nrel_prev_attempt", ScType::ConstNodeNonRole};
 
   // Result codes
-  static inline ScKeynode const concept_success{"concept_success", ScType::ConstNodeClass};
-  static inline ScKeynode const concept_failure{"concept_failure", ScType::ConstNodeClass};
+  static inline ScKeynode const concept_success{"concept_success", ScType::ConstNode};
+  static inline ScKeynode const concept_failure{"concept_failure", ScType::ConstNode};
 
   // Ablation flag: when passed as rrel_5 argument of action_record_attempt,
   // the agent skips the nrel_prev_attempt chronological chaining.
-  static inline ScKeynode const concept_no_temporal{"concept_no_temporal", ScType::ConstNodeClass};
+  static inline ScKeynode const concept_no_temporal{"concept_no_temporal", ScType::ConstNode};
 };

@@ -1,4 +1,8 @@
-"""Bounded queries over the graph, so nothing has to read the whole log.
+"""Legacy payload-bounded queries; class-address enumeration is still O(N).
+
+New typed request paths use `oneiro.store.RecordStore` publication-chain reads.
+This adapter is retained for explicit legacy science/export consumers, not as
+proof of bounded storage work.
 
 `load_organization_events()`, `load_life_sessions()` and `load_strategies()`
 read every member of a class and then slice in Python. The consumers want the
@@ -43,12 +47,14 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, Protocol
 
 #: Bumped when the cursor encoding changes, so an old cursor is refused with a
 #: reason instead of paging from the wrong place.
 CURSOR_VERSION = 1
+MAX_CURSOR_LENGTH = 2048
 
 #: How many members of a class one query may look at before it stops and says so.
 #: A page needs a handful; an old range window may need many. Either way the
@@ -110,8 +116,10 @@ class Skipped:
 class QueryPage:
     """One bounded result.
 
-    `items` is newest-last, which is the order the host tools display. The
-    cursor walks the other way, because a cursor is a position you resume *from*.
+    `page`/`range` return newest-first; `recent` returns its selected insertion
+    window oldest-first for display. A cursor is a position to resume *from*.
+    `scanned` counts consumed records including unreadable ones; `truncated`
+    reports a scan bound or omitted matching range results, not ordinary paging.
     """
 
     items: tuple[dict[str, Any], ...] = ()
@@ -148,7 +156,9 @@ class GraphBackend(Protocol):
 
 def encode_cursor(concept: str, last_address: int) -> str:
     """An opaque, self-describing position in the descending address order."""
-    raw = json.dumps({"v": CURSOR_VERSION, "c": concept, "a": int(last_address)},
+    if type(last_address) is not int or last_address < 1:
+        raise GraphQueryError("bad_cursor", "cursor address must be a positive integer")
+    raw = json.dumps({"v": CURSOR_VERSION, "c": concept, "a": last_address},
                      sort_keys=True, separators=(",", ":"))
     return base64.urlsafe_b64encode(raw.encode("utf-8")).decode("ascii")
 
@@ -160,12 +170,15 @@ def decode_cursor(cursor: str, concept: str) -> int:
     one class's cursor through another's members returns plausible rows from the
     wrong place, which is worse than an error.
     """
+    if not isinstance(cursor, str) or len(cursor) > MAX_CURSOR_LENGTH:
+        raise GraphQueryError("bad_cursor", "cursor must be a bounded string")
     try:
-        raw = base64.urlsafe_b64decode(cursor.encode("ascii")).decode("utf-8")
+        raw = base64.b64decode(cursor.encode("ascii"), altchars=b"-_", validate=True).decode("utf-8")
         payload = json.loads(raw)
     except Exception as exc:                  # noqa: BLE001 - every decode failure is one refusal
         raise GraphQueryError("bad_cursor", f"cursor is not readable ({exc})") from None
-    if not isinstance(payload, dict) or payload.get("v") != CURSOR_VERSION:
+    if (not isinstance(payload, dict) or type(payload.get("v")) is not int
+            or payload.get("v") != CURSOR_VERSION):
         seen = payload.get("v") if isinstance(payload, dict) else "?"
         raise GraphQueryError(
             "bad_cursor",
@@ -175,14 +188,16 @@ def decode_cursor(cursor: str, concept: str) -> int:
             "bad_cursor",
             f"cursor was issued for {payload.get('c')!r}, not {concept!r}")
     address = payload.get("a")
-    if not isinstance(address, int):
-        raise GraphQueryError("bad_cursor", "cursor carries no address")
+    if type(address) is not int or address < 1:
+        raise GraphQueryError("bad_cursor", "cursor carries no positive integer address")
     return address
 
 
-def _check_limit(limit: Optional[int]) -> int:
+def _check_limit(limit: int | str | None) -> int:
     if limit is None:
         return DEFAULT_LIMIT
+    if isinstance(limit, bool) or not isinstance(limit, (int, str)):
+        raise GraphQueryError("bad_limit", "limit must be an integer")
     try:
         value = int(limit)
     except (TypeError, ValueError):
@@ -204,8 +219,9 @@ def row_timestamp(row: dict[str, Any]) -> Optional[float]:
     for key in TIMESTAMP_KEYS:
         if key in row:
             try:
-                return float(row[key])
-            except (TypeError, ValueError):
+                value = float(row[key])
+                return value if math.isfinite(value) else None
+            except (TypeError, ValueError, OverflowError):
                 return None
     return None
 
@@ -218,6 +234,8 @@ class GraphQuery:
 
     def __init__(self, backend: GraphBackend,
                  *, scan_limit: int = DEFAULT_SCAN_LIMIT) -> None:
+        if type(scan_limit) is not int or scan_limit < 1:
+            raise GraphQueryError("bad_scan_limit", "scan_limit must be a positive integer")
         self._backend = backend
         self._scan_limit = scan_limit
 
@@ -249,7 +267,7 @@ class GraphQuery:
         """
         want = _check_limit(limit)
         before = decode_cursor(cursor, concept) if cursor else None
-        addresses = self._backend.member_addresses(concept)
+        addresses = sorted(set(self._backend.member_addresses(concept)))
         window = [a for a in reversed(addresses) if before is None or a < before]
 
         items: list[dict[str, Any]] = []
@@ -262,7 +280,7 @@ class GraphQuery:
                 consumed = max(position - 1, 0)
                 return QueryPage(tuple(items),
                                  encode_cursor(concept, window[consumed]),
-                                 len(addresses), consumed, tuple(skipped),
+                                 len(addresses), position, tuple(skipped),
                                  truncated=True)
             try:
                 items.append(self._backend.read(address))
@@ -294,7 +312,7 @@ class GraphQuery:
         `truncated` say how far the walk got.
         """
         want = _check_limit(limit)
-        addresses = self._backend.member_addresses(concept)
+        addresses = sorted(set(self._backend.member_addresses(concept)))
 
         stamped: list[tuple[float, dict[str, Any]]] = []
         skipped: list[Skipped] = []
@@ -306,7 +324,7 @@ class GraphQuery:
                 break
             scanned += 1
             stamp = self._backend.timestamp(address)
-            if stamp is None:
+            if stamp is None or not math.isfinite(stamp):
                 # No timestamp means it cannot be placed in a range. Report it
                 # rather than quietly including or excluding it.
                 skipped.append(Skipped(address, "no ordering timestamp"))
@@ -325,14 +343,14 @@ class GraphQuery:
 
         return QueryPage(tuple(row for _, row in stamped[:want]), None,
                          len(addresses), scanned, tuple(skipped),
-                         truncated=truncated)
+                         truncated=truncated or len(stamped) > want)
 
     def recent(self, concept: str, *, limit: Optional[int] = None) -> QueryPage:
-        """The newest N records, returned oldest-first for display.
+        """The newest insertion window, sorted oldest-first for display.
 
-        This is the shape the host tools already produce - `records[-limit:]` of
-        a chronologically sorted list - as one page read plus a sort of that
-        page. The records outside the page are never read.
+        Timestamp order is only guaranteed inside that selected window, not
+        globally when timestamps invert. Payloads outside it are never read;
+        the current backend still enumerates all member addresses.
         """
         want = _check_limit(limit)
         page = self.page(concept, limit=want)
@@ -346,18 +364,23 @@ class GraphQuery:
     def latest(self, concept: str, *,
                matches: Optional[Callable[[dict[str, Any]], bool]] = None,
                limit: Optional[int] = None) -> Optional[dict[str, Any]]:
-        """The newest record satisfying `matches`, or None.
+        """The latest inserted matching record, or proven absence.
 
-        Replaces the `for record in reversed(load_...()): if ...: break` shape
-        used to find the current session, and stops at the first match instead of
-        materialising the whole class.
+        A bound with no match is unknown, not absence, so it raises
+        `scan_truncated`. An unreadable newer row also prevents a trustworthy
+        answer and is reported. `limit`, when supplied, bounds candidate reads
+        within scan_limit; it does not mean timestamp-newest.
+        Member-address enumeration remains unbounded in the current backend.
         """
-        want = _check_limit(limit)
-        for address in reversed(self._backend.member_addresses(concept)):
+        bound = min(self._scan_limit, _check_limit(limit)) if limit is not None else self._scan_limit
+        addresses = sorted(set(self._backend.member_addresses(concept)))
+        for scanned, address in enumerate(reversed(addresses)):
+            if scanned >= bound:
+                raise GraphQueryError("scan_truncated", f"latest scanned {bound} of {len(addresses)} candidates")
             try:
                 row = self._backend.read(address)
-            except ValueError:
-                continue
+            except ValueError as exc:
+                raise GraphQueryError("record_unreadable", f"record at {address}: {exc}") from None
             if matches is None or matches(row):
                 return row
         return None
@@ -451,7 +474,7 @@ class BridgeBackend:
             if address is None or address.value == 0:
                 continue
             found.append(int(address.value))
-        return sorted(found)
+        return sorted(set(found))
 
     def read(self, address: int) -> dict[str, Any]:
         try:

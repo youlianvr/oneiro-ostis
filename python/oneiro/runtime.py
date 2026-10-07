@@ -13,16 +13,19 @@ from typing import Any
 from oneiro import __version__
 from oneiro import config
 from oneiro.ownership import FileLease
+from oneiro.graph_worker import GraphWorker
+from oneiro.query import GraphQueryError
 
 
 class Runtime:
-    def __init__(self) -> None:
+    def __init__(self, graph: GraphWorker | None = None) -> None:
         self.instance_id = uuid.uuid4().hex
         self.started_at: float | None = None
         self._lease: FileLease | None = None
         self._probe_lock = asyncio.Lock()
         self._cached: dict[str, Any] | None = None
         self._cached_at = 0.0
+        self._graph = graph
 
     async def start(self) -> None:
         if self._lease is not None:
@@ -30,13 +33,35 @@ class Runtime:
         lease = FileLease(config.data_root() / "runtime.lock")
         lease.acquire()
         self._lease = lease
+        try:
+            if self._graph is None:
+                host, port = str(config.value("graph.host")), int(config.value("graph.port"))
+                self._graph = GraphWorker(f"ws://{host}:{port}/ws_json", "product",
+                                          config.data_root() / "graph-writer.lock")
+        except BaseException:
+            lease.release()
+            self._lease = None
+            raise
         self.started_at = time.time()
 
     async def close(self) -> None:
+        if self._graph is not None:
+            await self._graph.close()
+            self._graph = None
         if self._lease is not None:
             self._lease.release()
             self._lease = None
         self.started_at = None
+
+    async def memory_page(self, *, cursor: str | None = None, limit: int | None = None) -> dict[str, Any]:
+        if self._graph is None:
+            raise GraphQueryError("store_closed", "runtime is not started")
+        return await self._graph.call("page", cursor=cursor, limit=limit)
+
+    async def memory_entity(self, record_id: str) -> dict[str, Any] | None:
+        if self._graph is None:
+            raise GraphQueryError("store_closed", "runtime is not started")
+        return await self._graph.call("entity", record_id=record_id)
 
     async def status(self, *, refresh: bool = False) -> dict[str, Any]:
         async with self._probe_lock:

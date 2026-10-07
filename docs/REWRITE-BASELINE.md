@@ -2251,6 +2251,175 @@ Next: unit B, true bounded queries plus clean reproducible ontology/stack. Do no
 restart or use the archived volume in those trials. Product acceptance other than
 the archive row remains unchecked.
 
+## 2026-10-07 — Typed publication, build and checkpoint continuation
+
+Unit B remains open. Own implementation is **uncommitted**; no push/PR/deploy.
+The old stopped volume and its archive were not attached to any trial.
+
+### Implemented and exercised
+
+- `oneiro.store.RecordStore`: graph-owned head/pending operation, immutable
+  revision links, per-record current pointers, stable operation IDs/digest,
+  expected-revision conflicts and immutable provenance. Writer lease is local;
+  all product writers must share it. It is not a distributed lock/ACID claim.
+  At every tested before/after write boundary, reopening recovers the pending
+  publication or retry accepts the never-started operation exactly once.
+- New bounded read seam follows the publication chain, not address allocation
+  order or class enumeration. Cursor freezes the insertion window; time range
+  is explicitly filtered insertion order, not global timestamp order. Skipped
+  payloads, corrupt chains, bounds and unknown absence are visible.
+- `ScLinkGraph` uses py-sc-client 0.4.0, pinned in the optional wheel graph extra.
+  New named links contain content before identifier publication. Class checks
+  anchor the low-degree record endpoint; named-address cache is rebuildable,
+  bounded to 1024 and never caches absence/payloads. New connection = new adapter.
+- `GraphWorker` owns sc-client in a separate process, bounds admission/request
+  bytes/deadlines, and reaps only that process on stall/cancellation. HTTP
+  `/api/memory/records` and ID reads use it; request paths forbid legacy full-log
+  loaders. Live loopback 9899 returned the synthetic graph note, bad limit/cursor
+  400 and proven missing ID 404. Assistant readiness still correctly false.
+- Ontology migration now checks actual sc-types and creates non-role relations
+  with the correct type. Wrong existing types are reported, not overwritten.
+  C++ success/failure/ablation constants were corrected from class to node to
+  match their ontology declarations.
+- Entrypoint forbids existing-storage rebuild even with the old confirmation,
+  fails closed on missing/unreadable storage, and retains exec signal handling.
+  The initial failing unreadable-storage test was a Git Bash PATH conversion
+  defect (C:/ colon); cygpath repairs test injection without weakening assertions.
+- Dockerfile no longer requires a locally tagged oneiro-base. Ubuntu digest,
+  sc-machine 0.10.5 archive hashes and healthcheck websocket dependency are pinned;
+  downloads are retained, no destructive cleanup. Build uses two compile jobs.
+  Apt repository packages are **not** bit-for-bit locked; do not overclaim that.
+- Both new images built successfully: `oneiro-rewrite-machine:20261007`, digest
+  `faa3785f4f352645d13b7b96984d12e26934164cedf43b8521a1cc49d38c6b76`,
+  and native Save-agent image `oneiro-rewrite-machine:checkpoint`, digest
+  `6b2bcf68a1260f876aa13402d1971ceaa9ef798bdd4a1fcf324dde95b782d96d`.
+  Build logs are under ignored `.runtime/build-{rewrite,checkpoint}-*.log`.
+- Independent new build volume `oneiro-rewrite-build_kb-v1` on 8097 booted from
+  empty storage, loaded agents and preserved 8 stable records/9 revisions across
+  SIGINT restart. Original rewrite scratch volume on 8096 also passed that probe.
+- The ignored IMS directory is an unversioned copied tree (Git HEAD absent), not
+  a pinned checkout. Own-ontology-only clean initialization on 8094 passes typed
+  round-trip and Save, so repo.path no longer requires the IMS/sc-web menu.
+  Its owner files are retained. Full compatibility suite on that graph:
+  **525 passed**, 705 warnings, 122.51 s (`.runtime/full-suite-minimal-kb.log`).
+
+### Explicit Save, hard kill and independent restore
+
+Native `SaveMemoryAgent` calls the supported sc-memory context Save API; Python
+waits for observed action completion, not just RAM read-back. It requires the
+coordinator to quiesce graph writes. Save is **not** whole-storage crash atomic.
+
+On new `oneiro-checkpoint_kb-v1` (8098), prepared 20 synthetic notes and one
+uncertain action intention. Save took 0.039479 s; independent file snapshot took
+0.336536 s, 12,929,024 bytes. KILL occurred 16.085290 s after checkpoint start.
+All 21 records, stable IDs/content/provenance/state, sc-types, memberships,
+publication and previous edges survived KILL/restart. The uncertain action still
+requires inspection and refuses blind retry. Safe extracted snapshot hashes
+matched, then restored to independent new `oneiro-checkpoint-restore_kb-v1` on
+8095; the same semantic/edge checks pass without repair writes.
+
+Evidence: `.runtime/checkpoint-{proof,snapshot-proof}.json`,
+`.runtime/graph-snapshots/checkpoint-new-graph.tar` and extracted copy;
+reproducible verifier `scripts/probe_checkpoint.py`. No old-graph restore.
+This proves the named one-shot scenario, **not** scheduled <=300 s RPO, kill
+mid-save recovery, durable settings/Telegram/update state or a full effect gate.
+
+### Checks, measurement and active checkpoint
+
+- Full suite on rebuilt checkpoint-capable graph: **525 passed**, 705 existing
+  dependency warnings, 119.01 s (`.runtime/full-suite-checkpoint.log`). Earlier
+  intermediate run 515 passed, 756 warnings, 167.48 s is retained as historical.
+- After final address-cache changes: focused store/worker/adapter/query/migration/
+  entrypoint set **118 passed**, 1 warning, 8.07 s; mypy **16 modules** clean;
+  live 21-record checkpoint verification rerun and passed. Later source edits
+  still require affected verification; no stale pass covers a later repair.
+- Real 1k page, five repeats: 50 results, exactly 51 link reads, 153 RPCs and no
+  template/class sweep; median 0.599577 s, max 0.607110 s. First tracemalloc peak
+  215747 bytes, RSS before/after 88301568/88924160. Correct resume/entity/latest/
+  retry checked. Raw `.runtime/scale-record-store/1000.json`.
+- 10k completed after cache repair: five warm-cache page samples, median
+  **0.371774 s**, max **0.372880 s**, exactly 51 link reads/102 RPCs, no template
+  sweep; first tracemalloc peak 182711 bytes, RSS 236351488 -> 236908544.
+  Resume/entity/latest/retry correct. Raw `.runtime/scale-record-store/10000.json`.
+  1k predates the cache and is not a like-for-like speedup comparison. 100k and
+  cold-cache upstream work acceptance remain unfinished; no speedup claimed. Seeding slowed with server graph size;
+  before optimizing, measured per-RPC profile found identifier resolution cost.
+  Membership search was made incoming-anchored and a bounded address cache added.
+  Two owned benchmark processes were stopped for adapter reload; their nonzero
+  exits are intentional interruption, not successful measurement completion.
+- Resumable benchmark manifest/stream remains `.runtime/scale-record-store/`;
+  newest log `.runtime/scale-record-store-durable-*.log`, Python PID 3140 at last
+  inspection (verify PID/command before any stop), wrapper PID 24764. Before this
+  resume, stopped own writer, SIGINT-saved new graph, retained 73,955,840-byte
+  `.runtime/graph-snapshots/scale-before-checkpoint-image.tar` + checksum, and
+  switched only this new-volume container to the rebuilt checkpoint image.
+  Typed prior probe survived reload. Scale writer now requests native Save every
+  200 records; this protects the long benchmark but is not independent scheduled
+  snapshot/RPO acceptance. It reads
+  the authoritative graph count on resume, not a local memory substitute.
+- HTTP test server/child stopped and 9899 listener confirmed gone. Build/restore
+  scratch containers stopped; volumes retained. Minimal-ontology 8094 service
+  stopped with exit 0 after full tests. 8098 checkpoint graph stopped with exit 0
+  after periodic fault trials. Only 8096 scale graph currently running (verify live state).
+  Stop only their named compose services; never down -v or the old volume.
+- Resource observation before builds: RAM 31.53 GiB total/14.22 GiB free, disk
+  87 GiB free. Log/progress/readiness monitored; no autostart/system mutation.
+
+Final checkpoint seam addition (still unit B): `oneiro.checkpoints` validates the
+explicit container/volume binding, runs Save + container sync, streams a bounded
+independent file archive, validates complete tar file hashes/path/types, fsyncs
+archive/manifest and retains every generation. The graph lane stays quiesced;
+host owns/reaps the copy subprocess on cancellation, rather than orphaning it
+inside a terminated graph worker. A same-process conservative age gate counts
+from cycle start, not completion; it covers checkpointed sequence only, **not**
+new post-checkpoint intentions. Scheduler/exact intent-sequence barrier is pending.
+Actual final-seam snapshot on 8098: five files, 0.769919 s copy/verify seam,
+1.442011 s graph-worker cycle age observed. Both retained protocol generations
+are under `.runtime/graph-snapshots/verified-protocol/`; report
+`.runtime/verified-checkpoint-result.json`. Final focused checks after the seam:
+**125 passed**, 1 warning, 8.30 s; mypy **17 modules**, real snapshot rerun passes.  After final sequence/binding/chain checks: **128 passed**, 1 warning, 8.28 s;
+mypy **17 modules**, live archive rerun 0.721697 s seam/1.528741 s cycle. Full
+intermediate final-memory suite **534 passed**, 756 warnings, 126.27 s; last
+binding/chain edits followed by affected 128-test set, not a fictitious full rerun.
+Final graph-worker/chain revision: affected **128 passed**, 1 warning, 8.28 s and
+mypy 17 modules; final live checkpoint/volume binding/archive rerun passed.
+Benchmark checkpoint-every addition compiled and resumed against actual graph;
+native Save every 200 records observed in actual scale log (e.g. sequence 12400,
+0.155898 s); no independent-snapshot claim for those benchmark saves.
+Wheel rebuilt/installed in `.runtime/wheel-memory-env`; isolated interpreter ran
+`tests/installed_smoke.py` outside source imports: real 9899 routes/settings,
+honest missing integration, port ownership, graceful exit, released lease and
+closed listener verified (1 unittest, 5.877 s). This is a package-foundation smoke,
+not final native installer acceptance. Actual intent barrier refused an action newer than the old
+checkpoint, then Save/sync/archive (0.772269 s cycle) covered its sequence before
+authorization. No external effect executed; uncertain retry still refused. Evidence
+`.runtime/intent-barrier-proof.json`. Periodic supervisor has finite deadlines,
+visible failure and conservative age; runtime wiring/long-run RPO fault acceptance
+remain pending, so this does not check the 300-second acceptance row. Binding
+also checks the graph URL against this container's actual loopback published port
+before Save, preventing a snapshot of a different server from opening the gate.
+
+Final timed periodic probe `scripts/probe_periodic_rpo.py` was rerun after its
+continuity assertion repair: 140-second trial, checkpoint sequences 1/2/25,
+cycles 0.770282/0.879942/0.768908 s. After KILL/restart, 24 of 28 timed notes
+survived; four newer-than-checkpoint notes lost, oldest missing age **20.501997 s**.
+All checkpointed records and uncertain intention survived; no blind retry.
+`RPO_EXIT=0`, `.runtime/periodic-rpo-final-proof/{report.json,snapshots/}`. The
+preceding first probe (20.482550 s) remains separate historical evidence. This
+is measured small-graph periodic container-kill recovery, not kill-mid-save,
+power loss, larger-graph RPO or installed-product/runtime acceptance.
+
+Retention/disk safety repair after timed probe: snapshot generations have an
+explicit total quota/free-disk reserve. Reaching it closes the checkpoint/effect
+gate; nothing is silently deleted under trash-only. Final affected suite **129
+passed**, 1 warning, 7.82 s; mypy 17 modules; live quota-capable archive rerun
+0.685217 s seam/1.260867 s cycle, seven actual graph files (channel growth is
+inventoried, not hardcoded to five). The 534 full-suite result predates this
+repair and is not claimed as its full rerun.
+
+Next: retain verified checkpoint; complete 100k/cold-cache and honest upstream work measurements, scheduled snapshot/RPO
+and intent/effect barrier, remaining fault cases, then unit C. B is not closed.
+
 ## Historical carried-open inventory (2026-10-06)
 
 The earlier four-block progress referred to the tested slices then, not to the

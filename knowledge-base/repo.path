@@ -1,5 +1,6 @@
 # sc-builder starting point (KB_PATH=/knowledge-base/repo.path).
 # Paths resolve relative to this file's directory (/knowledge-base in the container).
+# The native product uses its own declared ontology plus sc-machine's pinned
+# built-in keynodes. The ignored, unversioned IMS/sc-web menu is not a required
+# initialization dependency. No owner graph or vendor working copy is removed.
 ontology/
-ims.ostis.kb/
-!ims.ostis.kb/ui/menu/ui_main_menu.scs

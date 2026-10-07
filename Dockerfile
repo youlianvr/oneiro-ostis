@@ -1,5 +1,10 @@
-FROM oneiro-base:latest AS base
+FROM ubuntu:noble@sha256:b3cc40b72b93588182b5410f723c7aaf142363311c2aa993d8a453ddcbb3ae15 AS base
 
+# No undeclared locally tagged base image. Ubuntu digest and vendor binary
+# hashes are pinned; apt packages still follow this distribution's repository.
+RUN apt-get update -o Acquire::Retries=5 && \
+    apt-get install -y --no-install-recommends -o Acquire::Retries=5 \
+      tini curl ca-certificates ccache python3 python3-pip python3-venv cmake build-essential ninja-build
 ENV CCACHE_DIR=/ccache
 USER root
 
@@ -26,7 +31,7 @@ COPY . .
 # COPY . . restores CRLF endings from the Windows host — normalize again,
 # the final image takes its scripts from here.
 RUN sed -i 's/\r$//' scripts/*.sh && chmod +x scripts/*.sh
-RUN --mount=type=cache,target=/ccache/ cmake --preset release && cmake --build --preset release
+RUN --mount=type=cache,target=/ccache/ cmake --preset release && cmake --build --preset release --parallel 2
 
 # Gathering all artifacts together
 FROM base AS final

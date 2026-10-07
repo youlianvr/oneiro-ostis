@@ -567,6 +567,14 @@ file recovery, not a claimed old-server restart or semantic migration.
 
 ### B — Memory and reproducible clean foundation (Stages 2/1)
 
+2026-10-07 checkpoint: typed graph-owned revision/publication protocol, isolated
+deadline-bounded graph worker, HTTP page/entity consumer, non-destructive startup,
+standalone pinned-image build, clean boot and explicit Save/KILL/independent
+restore scenario are implemented and exercised. One-shot recovery is not the
+scheduled RPO guarantee. Real 1k measurement is saved; 10k/100k, periodic verified
+snapshot/effect barrier and remaining fault/consumer acceptance remain open.
+See REWRITE-BASELINE continuation; no full Stage 2 completion box is checked.
+
 Fix only Stage 1 prerequisites needed now: undeclared `oneiro-base:latest`, pinned
 versions/checksums and proper ontology initialization on a separate new volume.
 No startup-clear. Repeated migration is not proof of correct sc-types.

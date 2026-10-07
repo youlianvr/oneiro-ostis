@@ -24,7 +24,6 @@ from oneiro.migrate import (                                      # noqa: E402
     DECLARED_CLASSES,
     DECLARED_RELATIONS,
     declared,
-    ensure_ontology,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,8 +36,16 @@ class FakeBridge:
     def __init__(self, *, refuse=()) -> None:
         self.created: list[str] = []
         self.refuse = set(refuse)
+        self.types = {name: ("concept" if name in {"concept_success", "concept_failure",
+                     "concept_no_temporal", "source_direct", "source_hearsay"} else "sc_node_class")
+                      for name in DECLARED_CLASSES}
+        self.types.update({name: "concept_outcome" for name in ("concept_success", "concept_failure")})
+        self.types.update({name: "sc_node_non_role_relation" for name in DECLARED_RELATIONS})
 
-    def resolve_entity(self, name: str):
+    def type_matches(self, name, parent):
+        return self.types.get(name) == parent
+
+    def create_relation(self, name: str):
         class Address:
             def __init__(self, value: int) -> None:
                 self.value = value
@@ -50,6 +57,11 @@ class FakeBridge:
             raise RuntimeError(f"server refused {name}")
         self.created.append(name)
         return Address(len(self.created) + 1000)
+
+
+def ensure_ontology(bridge, **kwargs):
+    return migrate.ensure_ontology(bridge, type_matches=bridge.type_matches,
+                                   create_relation=bridge.create_relation, **kwargs)
 
 
 def everything_present(name: str) -> bool:
@@ -194,6 +206,26 @@ def test_the_report_says_plainly_whether_it_changed_anything():
         "source", "classes_checked", "relations_checked", "classes_present",
         "relations_present", "relations_created", "missing_classes", "failed",
         "needs_kb_build", "changed"}, "a report is a stable shape for a caller to read"
+
+
+def test_existing_wrong_types_are_reported_not_accepted_or_overwritten():
+    bridge = FakeBridge()
+    bridge.types["concept_harness"] = "concept"
+    bridge.types["nrel_timestamp"] = "concept"
+    report = ensure_ontology(bridge, ontology=ONTOLOGY, present=everything_present)
+    assert dict(report.failed) == {"concept_harness": "ontology_type_mismatch",
+                                   "nrel_timestamp": "ontology_type_mismatch"}
+    assert "concept_harness" not in report.classes_present
+    assert "nrel_timestamp" not in report.relations_present
+    assert bridge.created == []
+
+
+def test_creation_with_wrong_type_is_not_reported_as_a_success():
+    bridge = FakeBridge()
+    bridge.types["nrel_timestamp"] = "concept"
+    report = ensure_ontology(bridge, ontology=ONTOLOGY, present=only_classes_present)
+    assert dict(report.failed)["nrel_timestamp"] == "ontology_type_mismatch after creation"
+    assert "nrel_timestamp" not in report.relations_created
 
 
 def test_the_ontology_path_default_points_at_the_repository_file():

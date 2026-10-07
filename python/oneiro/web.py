@@ -14,6 +14,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from oneiro import config, memory, pages
 from oneiro.runtime import Runtime
+from oneiro.query import GraphQueryError, _check_limit
 
 STATIC = Path(__file__).parent / "static"
 
@@ -128,6 +129,25 @@ def create_app(runtime: Runtime | None = None) -> FastAPI:
     @app.post("/api/message")
     async def not_integrated() -> JSONResponse:
         return JSONResponse({"error": "The agent runtime is not integrated yet", "ready": False}, status_code=503)
+
+    @app.get("/api/memory/records")
+    async def memory_records(cursor: str | None = None, limit: str | None = None) -> JSONResponse:
+        try:
+            page = await owner.memory_page(cursor=cursor, limit=_check_limit(limit))
+        except GraphQueryError as exc:
+            invalid = exc.code in ("bad_cursor", "bad_limit", "bad_scan_limit")
+            return JSONResponse({"error": exc.code, "reason": exc.reason, "fallback": None},
+                                status_code=400 if invalid else 503)
+        return JSONResponse({"required": "OSTIS", "fallback": None,
+                             "order": "publication_newest_first", **page})
+
+    @app.get("/api/memory/records/{record_id}")
+    async def memory_entity(record_id: str) -> JSONResponse:
+        try:
+            record = await owner.memory_entity(record_id)
+        except GraphQueryError as exc:
+            return JSONResponse({"error": exc.code, "reason": exc.reason, "fallback": None}, status_code=503)
+        return JSONResponse({"record": record}, status_code=200 if record is not None else 404)
 
     @app.get("/api/graph")
     async def graph() -> JSONResponse:

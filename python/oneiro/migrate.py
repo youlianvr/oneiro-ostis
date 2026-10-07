@@ -8,10 +8,9 @@ destroying anything, and it is safe to run twice - the second run creates
 nothing.
 
 **Relations may be created; classes may not.** A missing relation keynode is
-additive and harmless: the writers already do exactly this through
-`bridge.resolve_entity` for the memory vocabulary, and the live graph proves the
-result works (`concept_memory_bench_result` is absent there and is created on
-first write). A missing *class* is a different thing. `experience.scs` declares
+created as CONST_NODE_NON_ROLE, never a generic ConstNode. Existing vocabulary
+is checked for the declared sc-type, not just existence. A missing *class* is a
+different thing. `experience.scs` declares
 `concept_harness <- sc_node_class;;`; creating a bare `ConstNode` with that
 identifier would satisfy a template anchored on it and read back fine, while not
 being a node class at all. That is a quietly wrong ontology, which is worse than
@@ -42,6 +41,7 @@ from typing import Any, Callable, Optional
 DECLARED_CLASSES: tuple[str, ...] = (
     "action_record_attempt",
     "action_retrieve_attempts",
+    "action_oneiro_save_memory",
     "concept_action_kind",
     "concept_attempt",
     "concept_dream_cycle",
@@ -50,6 +50,16 @@ DECLARED_CLASSES: tuple[str, ...] = (
     "concept_harness",
     "concept_harness_round",
     "concept_no_temporal",
+    "concept_oneiro_record",
+    "concept_oneiro_conversation_message",
+    "concept_oneiro_task",
+    "concept_oneiro_run",
+    "concept_oneiro_action",
+    "concept_oneiro_decision",
+    "concept_oneiro_note",
+    "concept_oneiro_experience",
+    "concept_oneiro_experiment",
+    "concept_oneiro_release",
     "concept_organization_record",
     "concept_outcome",
     "concept_session",
@@ -76,6 +86,9 @@ DECLARED_RELATIONS: tuple[str, ...] = (
     "nrel_legal",
     "nrel_note",
     "nrel_object",
+    "nrel_oneiro_previous",
+    "nrel_oneiro_previous_revision",
+    "nrel_oneiro_publication",
     "nrel_organization_record",
     "nrel_origin",
     "nrel_outcome",
@@ -175,17 +188,34 @@ def _present(identifier: str) -> bool:
     raises rather than being resolved, which is what makes a migration check safe
     to run against a graph it must not disturb.
     """
-    from sc_client.constants.exceptions import InvalidValueError   # type: ignore[import-not-found]
-    from sc_kpm.sc_keynodes import ScKeynodes                     # type: ignore[import-not-found]
+    import importlib
+    client = importlib.import_module("sc_client.client")
+    addresses = client.resolve_keynodes({"idtf": identifier, "type": None})
+    return bool(addresses and addresses[0].is_valid())
 
-    try:
-        return ScKeynodes[identifier].is_valid()
-    except (InvalidValueError, KeyError):
-        return False
+
+def _type_matches(identifier: str, parent: str) -> bool:
+    import importlib
+    client = importlib.import_module("sc_client.client")
+    types = importlib.import_module("sc_client.constants.sc_type")
+    expected = {"sc_node_class": types.CONST_NODE_CLASS,
+                "sc_node_non_role_relation": types.CONST_NODE_NON_ROLE}.get(parent, types.CONST_NODE)
+    addresses = client.resolve_keynodes({"idtf": identifier, "type": None})
+    return bool(addresses and addresses[0].is_valid()
+                and client.get_elements_types(addresses[0]) == [expected])
+
+
+def _create_relation(identifier: str) -> Any:
+    import importlib
+    client = importlib.import_module("sc_client.client")
+    types = importlib.import_module("sc_client.constants.sc_type")
+    return client.resolve_keynodes({"idtf": identifier, "type": types.CONST_NODE_NON_ROLE})[0]
 
 
 def ensure_ontology(bridge: Any, *, ontology: Optional[Path] = None,
-                    present: Optional[Callable[[str], bool]] = None) -> MigrationReport:
+                    present: Optional[Callable[[str], bool]] = None,
+                    type_matches: Optional[Callable[[str, str], bool]] = None,
+                    create_relation: Optional[Callable[[str], Any]] = None) -> MigrationReport:
     """Bring a graph up to the declared vocabulary, additively.
 
     Missing relation keynodes are created; missing classes are reported, never
@@ -196,29 +226,55 @@ def ensure_ontology(bridge: Any, *, ontology: Optional[Path] = None,
     """
     classes, relations, source = declared(ontology)
     check = present or _present
+    validate = type_matches or _type_matches
+    create = create_relation or _create_relation
+    # Outcome/flag/source constants are members, not node classes. Preserve the
+    # historical report grouping while checking each declaration's actual type.
+    parents = {name: "sc_node_class" for name in classes}
+    for name in ("concept_success", "concept_failure", "concept_no_temporal",
+                 "source_direct", "source_hearsay"):
+        parents[name] = "concept"
+    try:
+        text = (ontology or ONTOLOGY).read_text(encoding="utf-8")
+    except OSError:
+        pass
+    else:
+        for line in text.splitlines():
+            match = _DECLARATION.match(line.strip())
+            if match is not None:
+                parents[match.group(1)] = match.group(2)
+    failed: list[tuple[str, str]] = []
 
     classes_present: list[str] = []
     missing_classes: list[str] = []
     for name in classes:
         if check(name):
-            classes_present.append(name)
+            if validate(name, parents[name]):
+                classes_present.append(name)
+            else:
+                failed.append((name, "ontology_type_mismatch"))
         else:
             missing_classes.append(name)
 
     relations_present: list[str] = []
     relations_created: list[str] = []
-    failed: list[tuple[str, str]] = []
     for name in relations:
         if check(name):
-            relations_present.append(name)
+            if validate(name, "sc_node_non_role_relation"):
+                relations_present.append(name)
+            else:
+                failed.append((name, "ontology_type_mismatch"))
             continue
         try:
-            address = bridge.resolve_entity(name)
+            address = create(name)
         except Exception as exc:               # noqa: BLE001 - one bad name must not abort the rest
             failed.append((name, f"{type(exc).__name__}: {exc}"))
             continue
         if address is None or not getattr(address, "is_valid", lambda: False)():
             failed.append((name, "resolve returned no address"))
+            continue
+        if not validate(name, "sc_node_non_role_relation"):
+            failed.append((name, "ontology_type_mismatch after creation"))
             continue
         relations_created.append(name)
 

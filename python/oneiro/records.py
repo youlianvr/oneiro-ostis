@@ -36,7 +36,7 @@ SCHEMA_VERSION = 1
 
 
 def new_id() -> str:
-    """A record identifier. Time-ordered, so a listing is stable without a sort."""
+    """A random stable identifier; publication sequence defines insertion order."""
     return uuid.uuid4().hex
 
 

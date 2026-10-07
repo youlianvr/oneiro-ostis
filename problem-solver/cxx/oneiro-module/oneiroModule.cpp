@@ -7,7 +7,9 @@
 
 #include "agents/RecordAttemptAgent.hpp"
 #include "agents/RetrieveAttemptsAgent.hpp"
+#include "agents/SaveMemoryAgent.hpp"
 
 SC_MODULE_REGISTER(OneiroModule)
     ->Agent<RecordAttemptAgent>()
-    ->Agent<RetrieveAttemptsAgent>();
+    ->Agent<RetrieveAttemptsAgent>()
+    ->Agent<SaveMemoryAgent>();

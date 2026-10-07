@@ -2,8 +2,8 @@
 
 These tests run the real `scripts/docker_entrypoint.sh` with stub binaries, so
 they exercise the branch that decided to wipe a live graph on 2026-10-02. A
-rebuild must take two explicit signals, and a routine start must leave the
-storage alone.
+rebuild must use separate empty storage; no confirmation can authorize clearing
+the existing graph. A routine start must leave storage alone.
 
 Paths are handed to bash in POSIX form and the parent environment is passed
 through in full: Git Bash fails to start from a stripped environment, which
@@ -72,8 +72,14 @@ def _run(tmp_path: Path, binaries: Path, storage: Path, **env: str) -> subproces
         "CONFIRM_KB_CLEAR": "",
     })
     environment.update(env)
-    return subprocess.run([_bash(), str(ENTRYPOINT), "run"], capture_output=True,
-                          text=True, env=environment, timeout=30)
+    # C:/... is a valid argument path in MSYS, but the colon cannot occur
+    # inside a POSIX PATH entry. Convert before prepending the stub directory.
+    launcher = ('stub_path="$1"; if command -v cygpath >/dev/null; then '
+                'stub_path=$(cygpath -u "$stub_path"); fi; '
+                'export PATH="$stub_path:$PATH"; exec bash "$2" run')
+    return subprocess.run([_bash(), "-c", launcher,
+                           "entrypoint-test", binaries.as_posix(), ENTRYPOINT.as_posix()],
+                          capture_output=True, text=True, env=environment, timeout=30)
 
 
 def _existing_graph(tmp_path: Path) -> Path:
@@ -91,19 +97,20 @@ def test_rebuild_without_confirmation_refuses_and_starts_nothing(tmp_path):
 
     assert result.returncode == 3, result.stderr
     assert "REFUSING TO CLEAR THE KNOWLEDGE BASE" in result.stderr
-    assert CONFIRMATION in result.stderr, "the refusal must say how to really do it"
+    assert "separate new volume" in result.stderr, "the refusal must give the safe alternative"
     assert not log.exists(), "neither sc-builder nor sc-machine may run"
 
 
-def test_rebuild_with_confirmation_is_allowed(tmp_path):
+def test_even_historical_confirmation_cannot_clear_existing_data(tmp_path):
     binaries, log = _stubs(tmp_path)
 
     result = _run(tmp_path, binaries, _existing_graph(tmp_path),
                   REBUILD_KB="1", CONFIRM_KB_CLEAR=CONFIRMATION)
 
-    assert result.returncode == 0, result.stderr
-    calls = log.read_text(encoding="utf-8")
-    assert "sc-builder" in calls and "--clear" in calls, "a confirmed rebuild still clears"
+    assert result.returncode == 3, result.stderr
+    assert "separate new volume" in result.stderr
+    assert not log.exists(), "confirmation cannot authorize destruction"
+    assert (tmp_path / "kb.bin" / "segments.scdb").read_bytes() == b"existing graph"
 
 
 def test_wrong_confirmation_phrase_is_refused(tmp_path):
@@ -142,6 +149,35 @@ def test_first_run_builds_without_clearing(tmp_path):
     calls = log.read_text(encoding="utf-8")
     assert "sc-builder" in calls
     assert "--clear" not in calls, "a first-run build has nothing to clear"
+
+
+def test_missing_storage_is_not_treated_as_empty(tmp_path):
+    binaries, log = _stubs(tmp_path)
+    result = _run(tmp_path, binaries, tmp_path / "missing")
+    assert result.returncode == 4, result.stderr
+    assert not log.exists()
+
+
+def test_storage_inspection_failure_is_not_treated_as_empty(tmp_path):
+    binaries, log = _stubs(tmp_path)
+    (binaries / "ls").write_text("#!/usr/bin/env bash\nexit 2\n", encoding="utf-8")
+    (binaries / "ls").chmod(0o755)
+    storage = _existing_graph(tmp_path)
+    result = _run(tmp_path, binaries, storage)
+    assert result.returncode == 4, result.stderr
+    assert "Cannot inspect" in result.stderr
+    assert not log.exists()
+
+
+def test_explicit_build_cannot_modify_existing_graph(tmp_path):
+    binaries, log = _stubs(tmp_path)
+    storage = _existing_graph(tmp_path)
+    environment = dict(os.environ, BINARY_PATH=binaries.as_posix(),
+                       CONFIG_PATH="oneiro.ini", KB_STORAGE=storage.as_posix())
+    result = subprocess.run([_bash(), str(ENTRYPOINT), "build", str(tmp_path)],
+                            capture_output=True, text=True, env=environment, timeout=30)
+    assert result.returncode == 3, result.stderr
+    assert not log.exists()
 
 
 def test_graph_survives_two_routine_starts(tmp_path):

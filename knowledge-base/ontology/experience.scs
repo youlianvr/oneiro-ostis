@@ -306,6 +306,24 @@ source_hearsay
     [hearsay experience*]
     (* <- lang_en;; *);;
 
+/* ---------- typed product revisions and publication chain ---------- */
+
+action_oneiro_save_memory <- sc_node_class;;
+action_oneiro_save_memory <= nrel_inclusion: information_action;;
+concept_oneiro_record <- sc_node_class;;
+concept_oneiro_conversation_message <- sc_node_class;;
+concept_oneiro_task <- sc_node_class;;
+concept_oneiro_run <- sc_node_class;;
+concept_oneiro_action <- sc_node_class;;
+concept_oneiro_decision <- sc_node_class;;
+concept_oneiro_note <- sc_node_class;;
+concept_oneiro_experience <- sc_node_class;;
+concept_oneiro_experiment <- sc_node_class;;
+concept_oneiro_release <- sc_node_class;;
+nrel_oneiro_previous <- sc_node_non_role_relation;;
+nrel_oneiro_previous_revision <- sc_node_non_role_relation;;
+nrel_oneiro_publication <- sc_node_non_role_relation;;
+
 /* ---------- agent actions classified under information_action ---------- */
 
 action_record_attempt <- sc_node_class;;

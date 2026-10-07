@@ -1,2 +1,2 @@
-argparse
-websocket-client
+# argparse is part of Python; only the container healthcheck needs this package.
+websocket-client==1.9.2
