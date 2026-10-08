@@ -64,11 +64,20 @@ class Runtime:
         return await self._graph.call("entity", record_id=record_id)
 
     async def chat_append(self, record: dict[str, Any], operation_id: str) -> dict[str, Any]:
-        """Publish one record once per operation ID; the store answers duplicates."""
+        """Publish a new conversation record once per operation ID."""
+        return await self.publish(record, operation_id)
+
+    async def publish(self, record: dict[str, Any], operation_id: str, *,
+                      expected_revision: int = 0) -> dict[str, Any]:
+        """Publish one revision once per operation ID; updates must name the prior revision.
+
+        The store answers a repeated operation with its original publication and
+        refuses a stale expected revision, so callers may retry safely.
+        """
         if self._graph is None:
             raise GraphQueryError("store_closed", "runtime is not started")
         return await self._graph.call("append", record=record, operation_id=operation_id,
-                                      expected_revision=0)
+                                      expected_revision=expected_revision)
 
     async def status(self, *, refresh: bool = False) -> dict[str, Any]:
         async with self._probe_lock:

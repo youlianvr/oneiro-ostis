@@ -14,9 +14,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from oneiro import config, memory, pages
+from oneiro import config, memory, pages, recall
 from oneiro.chat import ChatError, chat_reply
-from oneiro.records import ConversationMessage, Provenance
+from oneiro.records import ConversationMessage, Provenance, State
 from oneiro.runtime import Runtime
 from oneiro.query import GraphQueryError, _check_limit
 
@@ -25,6 +25,8 @@ CHAT_CONVERSATION = "main"
 CHAT_MAX_CHARS = 4000
 CHAT_BODY_LIMIT = 16000
 _CLIENT_ID = re.compile(r"[A-Za-z0-9-]{8,64}")
+_FACT_ID = re.compile(r"fact-[A-Za-z0-9-]{8,64}")
+FACT_BODY_LIMIT = 8000
 
 
 class _ChatRefused(Exception):
@@ -34,6 +36,22 @@ class _ChatRefused(Exception):
         super().__init__(message)
         self.status = status
         self.message = message
+
+
+async def _json_object(request: Request, limit: int) -> tuple[dict[str, Any] | None, JSONResponse | None]:
+    """A bounded JSON object from the body, or the refusal to return instead."""
+    raw = bytearray()
+    async for chunk in request.stream():
+        raw.extend(chunk)
+        if len(raw) > limit:
+            return None, JSONResponse({"error": f"Body exceeds {limit} bytes"}, status_code=413)
+    try:
+        body = json.loads(raw)
+    except ValueError:
+        body = None
+    if not isinstance(body, dict):
+        return None, JSONResponse({"error": "Body must be a JSON object"}, status_code=400)
+    return body, None
 
 
 async def _chat_turn(owner: Runtime, text: str, client_id: str) -> dict[str, Any]:
@@ -74,6 +92,9 @@ async def _chat_turn(owner: Runtime, text: str, client_id: str) -> dict[str, Any
 def create_app(runtime: Runtime | None = None) -> FastAPI:
     owner = runtime or Runtime()
     csrf = secrets.token_urlsafe(32)
+    # One owner, one process: fact writes check a budget before publishing, so
+    # two writes must not interleave between that check and the publication.
+    facts_lock = asyncio.Lock()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -202,6 +223,116 @@ def create_app(runtime: Runtime | None = None) -> FastAPI:
             return JSONResponse({"error": exc.message}, status_code=exc.status)
         except GraphQueryError as exc:
             return JSONResponse({"error": exc.code, "reason": exc.reason}, status_code=503)
+
+    def unavailable(exc: GraphQueryError) -> JSONResponse:
+        return JSONResponse({"error": exc.code, "reason": exc.reason, "fallback": None},
+                            status_code=503)
+
+    def refused(status: int, error: str, **extra: Any) -> JSONResponse:
+        return JSONResponse({"error": error, **extra}, status_code=status)
+
+    @app.get("/api/memory/facts")
+    async def facts() -> JSONResponse:
+        try:
+            return JSONResponse((await recall.current_facts(owner)).to_dict())
+        except GraphQueryError as exc:
+            return unavailable(exc)
+
+    @app.post("/api/memory/facts")
+    async def add_fact(request: Request) -> JSONResponse:
+        body, refusal = await _json_object(request, FACT_BODY_LIMIT)
+        if refusal is not None:
+            return refusal
+        text, client_id = body.get("text"), body.get("client_id")
+        if (error := recall.fact_text_error(text)) is not None:
+            return refused(400, error)
+        if not isinstance(client_id, str) or not _CLIENT_ID.fullmatch(client_id):
+            return refused(400, "client_id must be 8..64 letters, digits or hyphens")
+        fact_id = "fact-" + client_id
+        async with facts_lock:
+            try:
+                found = await recall.current_facts(owner)
+                for existing in found.facts:
+                    if existing["id"] == fact_id:      # a retry of a stored fact
+                        return JSONResponse({"fact": existing, "duplicate": True})
+                if not found.complete or found.skipped:
+                    return refused(503, "Curated memory could not be fully read, so its limit cannot be checked. Nothing was saved.")
+                if (error := recall.budget_error(found.used_chars, 0, text)) is not None:
+                    return refused(422, error, used_chars=found.used_chars, limit_chars=recall.CURATED_CHARS)
+                result = await owner.publish(recall.new_fact(fact_id, text).to_dict(), fact_id)
+            except GraphQueryError as exc:
+                return unavailable(exc)
+        return JSONResponse({"fact": result["record"], "duplicate": result["duplicate"]})
+
+    @app.post("/api/memory/facts/{fact_id}/edit")
+    async def edit_fact(fact_id: str, request: Request) -> JSONResponse:
+        if not _FACT_ID.fullmatch(fact_id):
+            return refused(404, "no such fact")
+        body, refusal = await _json_object(request, FACT_BODY_LIMIT)
+        if refusal is not None:
+            return refusal
+        text, client_id, revision = body.get("text"), body.get("client_id"), body.get("revision")
+        if (error := recall.fact_text_error(text)) is not None:
+            return refused(400, error)
+        if not isinstance(client_id, str) or not _CLIENT_ID.fullmatch(client_id):
+            return refused(400, "client_id must be 8..64 letters, digits or hyphens")
+        if type(revision) is not int or revision < 1:
+            return refused(400, "revision must be the revision you read")
+        async with facts_lock:
+            try:
+                current = await recall.latest_fact(owner, fact_id)
+                if current is None:
+                    return refused(404, "no such fact")
+                if current["state"] != State.COMPLETED.value:
+                    return refused(409, "this fact was removed")
+                found = await recall.current_facts(owner)
+                if not found.complete or found.skipped:
+                    return refused(503, "Curated memory could not be fully read, so its limit cannot be checked. Nothing was saved.")
+                # `current` is already in `used_chars`, so it is what this edit replaces.
+                if (error := recall.budget_error(found.used_chars, len(current["text"]), text)) is not None:
+                    return refused(422, error, used_chars=found.used_chars, limit_chars=recall.CURATED_CHARS)
+                updated = recall.new_fact(fact_id, text, created_at=current["created_at"])
+                result = await owner.publish(updated.to_dict(), "factedit-" + client_id,
+                                             expected_revision=revision)
+            except GraphQueryError as exc:
+                if exc.code == "revision_conflict":
+                    return refused(409, "this fact changed since you read it; reload the list")
+                return unavailable(exc)
+            except ValueError as exc:
+                return refused(503, f"Stored memory is not readable: {exc}")
+        return JSONResponse({"fact": result["record"], "duplicate": result["duplicate"]})
+
+    @app.post("/api/memory/facts/{fact_id}/remove")
+    async def remove_fact(fact_id: str, request: Request) -> JSONResponse:
+        if not _FACT_ID.fullmatch(fact_id):
+            return refused(404, "no such fact")
+        body, refusal = await _json_object(request, FACT_BODY_LIMIT)
+        if refusal is not None:
+            return refusal
+        client_id, revision = body.get("client_id"), body.get("revision")
+        if not isinstance(client_id, str) or not _CLIENT_ID.fullmatch(client_id):
+            return refused(400, "client_id must be 8..64 letters, digits or hyphens")
+        if type(revision) is not int or revision < 1:
+            return refused(400, "revision must be the revision you read")
+        async with facts_lock:
+            try:
+                current = await recall.latest_fact(owner, fact_id)
+                if current is None:
+                    return refused(404, "no such fact")
+                if current["state"] != State.COMPLETED.value:
+                    # Already removed: a retry after a lost response lands here.
+                    return JSONResponse({"id": fact_id, "removed": True, "duplicate": True})
+                removed = recall.new_fact(fact_id, current["text"], created_at=current["created_at"],
+                                          state=State.CANCELLED)
+                result = await owner.publish(removed.to_dict(), "factdel-" + client_id,
+                                             expected_revision=revision)
+            except GraphQueryError as exc:
+                if exc.code == "revision_conflict":
+                    return refused(409, "this fact changed since you read it; reload the list")
+                return unavailable(exc)
+            except ValueError as exc:
+                return refused(503, f"Stored memory is not readable: {exc}")
+        return JSONResponse({"id": fact_id, "removed": True, "duplicate": result["duplicate"]})
 
     @app.get("/api/memory/records")
     async def memory_records(cursor: str | None = None, limit: str | None = None) -> JSONResponse:

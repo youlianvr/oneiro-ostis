@@ -57,6 +57,92 @@ fetch("/api/session").then(r => r.json()).then(session => { csrf = session.csrf;
   .then(prerequisites)
   .catch(() => { document.querySelector("#status").textContent = "Server unavailable. No readiness confirmed."; });
 
+// Curated memory on the settings page. Every write is checked by the server
+// against the budget and the revision the owner read; a stale view is refused,
+// never silently overwritten. Text is set with textContent only.
+const factsBox = document.querySelector("#facts");
+if (factsBox) {
+  const list = document.querySelector("#facts-list");
+  const meter = document.querySelector("#facts-meter");
+  const errorBox = document.querySelector("#facts-error");
+  const addForm = document.querySelector("#fact-add");
+  const addField = document.querySelector("#fact-text");
+  let pendingAdd = null;
+  const say = message => { errorBox.textContent = message || ""; errorBox.hidden = !message; };
+  const token = async () => {
+    if (!csrf) csrf = (await (await fetch("/api/session")).json()).csrf;
+    return csrf;
+  };
+  const send = async (method, path, body) => {
+    const response = await fetch(path, {method,
+      headers: {"Content-Type": "application/json", "X-Oneiro-CSRF": await token()},
+      body: body === undefined ? undefined : JSON.stringify(body)});
+    return {ok: response.ok, result: await response.json()};
+  };
+  const show = listing => {
+    meter.textContent = `${listing.used_chars} of ${listing.limit_chars} characters used`;
+    if (!listing.complete || listing.skipped) {
+      meter.textContent += ". Stored memory could not be fully read, so changes are refused until it can be.";
+    }
+    list.replaceChildren();
+    for (const fact of listing.facts) {
+      const item = document.createElement("li");
+      const area = document.createElement("textarea");
+      area.rows = 2;
+      area.maxLength = 2000;
+      area.value = fact.text;
+      const save = document.createElement("button");
+      save.type = "button";
+      save.textContent = "Save";
+      save.addEventListener("click", async () => {
+        const {ok, result} = await send("POST", `/api/memory/facts/${encodeURIComponent(fact.id)}/edit`,
+          {text: area.value, client_id: crypto.randomUUID(), revision: fact.revision});
+        if (ok) say(""); else say(result.error);
+        await load();
+      });
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "Remove";
+      remove.addEventListener("click", async () => {
+        const {ok, result} = await send("POST", `/api/memory/facts/${encodeURIComponent(fact.id)}/remove`,
+          {client_id: crypto.randomUUID(), revision: fact.revision});
+        if (ok) say(""); else say(result.error);
+        await load();
+      });
+      item.append(area, document.createElement("br"), save, document.createTextNode(" "), remove);
+      list.append(item);
+    }
+  };
+  const load = async () => {
+    try {
+      const response = await fetch("/api/memory/facts");
+      const listing = await response.json();
+      if (!response.ok) { say(listing.reason || listing.error); return; }
+      show(listing);
+    } catch (_) {
+      say("Server unavailable. The fact list could not be read.");
+    }
+  };
+  addForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    const text = addField.value.trim();
+    if (!text) return;
+    // A retry of the same text reuses its client_id, so it cannot be stored twice.
+    if (!pendingAdd || pendingAdd.text !== text) pendingAdd = {text, clientId: crypto.randomUUID()};
+    try {
+      const {ok, result} = await send("POST", "/api/memory/facts", {text, client_id: pendingAdd.clientId});
+      if (!ok) { say(result.error); return; }
+      pendingAdd = null;
+      addField.value = "";
+      say("");
+      await load();
+    } catch (_) {
+      say("Server unavailable. The fact is not confirmed; saving it again keeps it to one copy.");
+    }
+  });
+  load();
+}
+
 // Chat: one owner message per submit. Retrying the same text reuses its client_id,
 // so the server publishes the message and its reply at most once even if the
 // first response was lost. Text is written with textContent only, never HTML.

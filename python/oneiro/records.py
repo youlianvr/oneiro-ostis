@@ -372,10 +372,29 @@ class Release(Record):
         return bool(self.checks) and all(self.checks.values())
 
 
+@dataclass(frozen=True)
+class CuratedFact(Record):
+    """A short fact the owner chose to keep, in force until it is removed.
+
+    Only the owner writes these. A fact is therefore an owner instruction about
+    the world, not an observation: it is stored with that provenance and is never
+    presented as verified evidence. Active facts are COMPLETED; removal publishes
+    a CANCELLED revision, so the history of the fact stays on record.
+    """
+
+    KIND: ClassVar[str] = "curated_fact"
+
+    text: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.text.strip():
+            raise RecordError("fact text is required")
+
+
 _KINDS: dict[str, type[Record]] = {
     cls.KIND: cls for cls in (
         Record, ConversationMessage, Task, Run, Action, Decision, Note,
-        Experience, Experiment, Release,
+        Experience, Experiment, Release, CuratedFact,
     )
 }
 

@@ -136,6 +136,19 @@ _CHAT_BODY = (
 )
 
 
+_FACTS_BODY = (
+    '<section id="facts"><h2>Curated memory</h2>'
+    '<p class="muted">Short facts Oneiro keeps in mind for every reply, written by you. '
+    'They are your statements, not verified observations. Changing one keeps its history.</p>'
+    '<p class="muted" id="facts-meter" role="status"></p>'
+    '<ul id="facts-list"></ul>'
+    '<form id="fact-add"><label for="fact-text">New fact</label>'
+    '<textarea id="fact-text" name="fact" rows="2" maxlength="2000"></textarea>'
+    '<button type="submit">Add fact</button></form>'
+    '<p class="bad" id="facts-error" hidden></p></section>'
+)
+
+
 def render(page: str, description: dict, error: str = "", facts: Any = None) -> str:
     """The complete HTML document for one route."""
     title, heading, notice = PAGES[page]
@@ -143,7 +156,9 @@ def render(page: str, description: dict, error: str = "", facts: Any = None) -> 
         f'<a href="{href}"{" aria-current=page" if active == page else ""}>{html.escape(label)}</a>'
         for href, label, active in NAV
     )
-    if page in FORM_PAGES:
+    if page == "settings":
+        body = _form(description) + _FACTS_BODY
+    elif page in FORM_PAGES:
         body = _form(description)
     elif page == "graph":
         body = _graph_section(facts)
