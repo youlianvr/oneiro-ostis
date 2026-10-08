@@ -56,3 +56,46 @@ if (form) {
 fetch("/api/session").then(r => r.json()).then(session => { csrf = session.csrf; })
   .then(prerequisites)
   .catch(() => { document.querySelector("#status").textContent = "Server unavailable. No readiness confirmed."; });
+
+// Chat: one owner message per submit. Retrying the same text reuses its client_id,
+// so the server publishes the message and its reply at most once even if the
+// first response was lost. Text is written with textContent only, never HTML.
+const chat = document.querySelector("#chat");
+if (chat) {
+  const field = document.querySelector("#message");
+  const transcript = document.querySelector("#transcript");
+  const errorBox = document.querySelector("#chat-error");
+  let pending = null;
+  const show = (who, text) => {
+    const item = document.createElement("li");
+    const label = document.createElement("strong");
+    label.textContent = who + ": ";
+    item.append(label, document.createTextNode(text));
+    transcript.append(item);
+  };
+  const fail = message => { errorBox.textContent = message; errorBox.hidden = false; };
+  chat.addEventListener("submit", async event => {
+    event.preventDefault();
+    errorBox.hidden = true;
+    const text = field.value.trim();
+    if (!text) return;
+    if (!pending || pending.text !== text) pending = {text, clientId: crypto.randomUUID()};
+    try {
+      if (!csrf) csrf = (await (await fetch("/api/session")).json()).csrf;
+      const response = await fetch("/api/message", {method: "POST",
+        headers: {"Content-Type": "application/json", "X-Oneiro-CSRF": csrf},
+        body: JSON.stringify({text: pending.text, client_id: pending.clientId})});
+      const result = await response.json();
+      if (!response.ok) {
+        fail(result.error || "The message was not answered.");
+        return;
+      }
+      show("You", result.user.text);
+      show("Oneiro", result.reply.text);
+      pending = null;
+      field.value = "";
+    } catch (_) {
+      fail("Server unavailable. Your message is not confirmed; sending it again keeps it to one copy.");
+    }
+  });
+}

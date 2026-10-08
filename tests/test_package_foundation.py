@@ -162,7 +162,9 @@ def test_lifespan_same_origin_and_honest_health():
         token = client.get("/api/session").json()["csrf"]
         assert client.post("/api/settings", headers={"X-Oneiro-CSRF": token, "Origin": "https://evil.invalid"}, json={"graph.port": 8001}).status_code == 403
         assert client.get("/api/settings", headers={"Host": "evil.invalid"}).status_code == 400
-        assert client.post("/api/message", headers={"X-Oneiro-CSRF": token}).status_code == 503
+        # An empty body fails validation before any graph or model call. The
+        # model-outage 503 path is covered in test_chat_slice.py with a stub.
+        assert client.post("/api/message", headers={"X-Oneiro-CSRF": token}).status_code == 400
     assert runtime.started_at is None
 
 
@@ -283,7 +285,7 @@ def test_each_route_renders_its_own_page():
             assert f"<h2>{marker}</h2>" in response.text, route
         assert len(set(bodies.values())) == 4, "routes must not share one document"
         assert "Graph panel" not in bodies["/"]
-        assert "textarea" not in bodies["/"], "the page must not imply a conversation that does not exist"
+        assert 'id="message"' in bodies["/"], "the chat box is the only conversation control"
 
 
 def test_settings_form_is_generated_from_the_registry(monkeypatch):

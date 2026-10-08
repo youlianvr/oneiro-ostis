@@ -9,7 +9,13 @@ import json
 
 import pytest
 
+import sys
+
 from config import describe, path, reset, resolve, save, settings, value
+
+# The module that defines these functions, whichever spelling imported them.
+# Patching the project .env path must hit the module that reads it.
+_config = sys.modules[resolve.__module__]
 
 
 @pytest.fixture(autouse=True)
@@ -17,6 +23,9 @@ def isolated_settings(tmp_path, monkeypatch):
     """Every test gets its own settings file and no inherited overrides."""
     target = tmp_path / "settings.json"
     monkeypatch.setenv("ONEIRO_SETTINGS_FILE", str(target))
+    # The owner's real keys file and project .env must never leak into a test.
+    monkeypatch.setenv("ONEIRO_KEYS_FILE", str(tmp_path / "no-keys.env"))
+    monkeypatch.setattr(_config, "PROJECT_ENV", tmp_path / "no-project.env")
     for name in ("ONEIRO_LLM_BASE_URL", "ONEIRO_BASE_URL", "ONEIRO_LLM_API_KEY",
                  "ONEIRO_API_KEY", "OMNIROUTE_API_KEY", "ONEIRO_LLM_MODEL",
                  "ONEIRO_HOST", "ONEIRO_PORT", "ONEIRO_DASH_PORT", "ONEIRO_SEED",
@@ -115,7 +124,7 @@ def test_a_blank_key_falls_back_to_the_environment(monkeypatch, isolated_setting
 def test_reset_forgets_one_key_and_then_all(isolated_settings):
     save({"graph.host": "a.local", "world.seed": "seed-a"})
     reset(["graph.host"])
-    assert value("graph.host") == "localhost"
+    assert value("graph.host") == "127.0.0.1"
     assert value("world.seed") == "seed-a"
     reset()
     assert value("world.seed") == "oneiro-0"
@@ -132,4 +141,57 @@ def test_the_description_carries_the_layer_that_answered(monkeypatch):
     row = next(r for r in describe()["settings"] if r["key"] == "graph.host")
     assert row["source"] == "env"
     assert row["changed"] is True
-    assert row["default"] == "localhost"
+    assert row["default"] == "127.0.0.1"
+
+
+def test_the_graph_host_defaults_to_loopback_ipv4():
+    """`localhost` resolves to ::1 first on Windows and stalls the graph client."""
+    assert resolve("graph.host") == ("127.0.0.1", "default")
+
+
+def test_the_keys_file_answers_over_the_environment(monkeypatch, tmp_path):
+    keys = tmp_path / "keys.env"
+    keys.write_text("ONEIRO_LLM_API_KEY=sk-from-keys-file\n", encoding="utf-8")
+    monkeypatch.setenv("ONEIRO_KEYS_FILE", str(keys))
+    monkeypatch.setenv("ONEIRO_LLM_API_KEY", "sk-from-env")
+    assert resolve("llm.api_key") == ("sk-from-keys-file", "keys.env")
+
+
+def test_the_saved_setting_still_answers_over_the_keys_file(monkeypatch, tmp_path):
+    keys = tmp_path / "keys.env"
+    keys.write_text("ONEIRO_LLM_API_KEY=sk-from-keys-file\n", encoding="utf-8")
+    monkeypatch.setenv("ONEIRO_KEYS_FILE", str(keys))
+    save({"llm.api_key": "sk-saved"})
+    assert resolve("llm.api_key") == ("sk-saved", "file")
+
+
+def test_keys_file_parsing_skips_comments_and_accepts_export_and_quotes(monkeypatch, tmp_path):
+    keys = tmp_path / "keys.env"
+    keys.write_text(
+        "# a comment\n\nexport OMNIROUTE_API_KEY=\"sk-quoted\"\n"
+        "ONEIRO_LLM_BASE_URL='http://127.0.0.1:20128/v1'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ONEIRO_KEYS_FILE", str(keys))
+    assert resolve("llm.api_key") == ("sk-quoted", "keys.env")
+    assert resolve("llm.base_url") == ("http://127.0.0.1:20128/v1", "keys.env")
+
+
+def test_the_project_env_is_the_last_layer_before_default(monkeypatch, tmp_path):
+    project_env = tmp_path / "project.env"
+    project_env.write_text("ONEIRO_PORT=9123\n", encoding="utf-8")
+    monkeypatch.setattr(_config, "PROJECT_ENV", project_env)
+    assert resolve("graph.port") == (9123, "project .env")
+    monkeypatch.setenv("ONEIRO_PORT", "9999")
+    assert resolve("graph.port") == (9999, "env")
+
+
+def test_a_key_value_never_appears_in_the_description(monkeypatch, tmp_path):
+    keys = tmp_path / "keys.env"
+    keys.write_text("ONEIRO_LLM_API_KEY=sk-very-secret-value\n", encoding="utf-8")
+    monkeypatch.setenv("ONEIRO_KEYS_FILE", str(keys))
+    dumped = json.dumps(describe(), ensure_ascii=False)
+    assert "sk-very-secret-value" not in dumped
+    row = next(r for r in describe()["settings"] if r["key"] == "llm.api_key")
+    assert row["source"] == "keys.env"
+    assert row["set"] is True

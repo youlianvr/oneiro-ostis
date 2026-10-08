@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -13,10 +15,60 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from oneiro import config, memory, pages
+from oneiro.chat import ChatError, chat_reply
+from oneiro.records import ConversationMessage, Provenance
 from oneiro.runtime import Runtime
 from oneiro.query import GraphQueryError, _check_limit
 
 STATIC = Path(__file__).parent / "static"
+CHAT_CONVERSATION = "main"
+CHAT_MAX_CHARS = 4000
+CHAT_BODY_LIMIT = 16000
+_CLIENT_ID = re.compile(r"[A-Za-z0-9-]{8,64}")
+
+
+class _ChatRefused(Exception):
+    """A chat request the slice declines, carrying the status it should return."""
+
+    def __init__(self, status: int, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+        self.message = message
+
+
+async def _chat_turn(owner: Runtime, text: str, client_id: str) -> dict[str, Any]:
+    """One owner message and one model reply, each published at most once.
+
+    Record IDs derive from the client's ID, so a retry after a lost response or
+    a restart finds what was already published and does not publish it again.
+    The model is called only when no reply for this ID is stored yet.
+    """
+    user_id, reply_id = "msg-" + client_id, "reply-" + client_id
+    user = await owner.memory_entity(user_id)
+    if user is None:
+        record = ConversationMessage(id=user_id, conversation_id=CHAT_CONVERSATION, role="owner",
+                                     text=text, provenance=Provenance.OWNER_INSTRUCTION)
+        await owner.chat_append(record.to_dict(), user_id)
+        user = record.to_dict()
+    elif user.get("text") != text:
+        raise _ChatRefused(409, "this client_id already carries a different message")
+    reply = await owner.memory_entity(reply_id)
+    if reply is None:
+        try:
+            answer = await asyncio.to_thread(
+                chat_reply, [{"role": "user", "content": text}],
+                base_url=str(config.value("llm.base_url")),
+                api_key=str(config.value("llm.api_key")),
+                model=str(config.value("llm.model")),
+            )
+        except ChatError as exc:
+            # The owner's message stays stored; no reply is invented in its place.
+            raise _ChatRefused(503, str(exc)) from None
+        record = ConversationMessage(id=reply_id, conversation_id=CHAT_CONVERSATION, role="manager",
+                                     text=answer, provenance=Provenance.MODEL_CLAIM)
+        await owner.chat_append(record.to_dict(), reply_id)
+        reply = record.to_dict()
+    return {"user": user, "reply": reply}
 
 
 def create_app(runtime: Runtime | None = None) -> FastAPI:
@@ -127,8 +179,29 @@ def create_app(runtime: Runtime | None = None) -> FastAPI:
             return JSONResponse({"error": "Invalid settings or settings file unavailable; existing data preserved"}, status_code=400)
 
     @app.post("/api/message")
-    async def not_integrated() -> JSONResponse:
-        return JSONResponse({"error": "The agent runtime is not integrated yet", "ready": False}, status_code=503)
+    async def message(request: Request) -> JSONResponse:
+        raw = bytearray()
+        async for chunk in request.stream():
+            raw.extend(chunk)
+            if len(raw) > CHAT_BODY_LIMIT:
+                return JSONResponse({"error": f"Message body exceeds {CHAT_BODY_LIMIT} bytes"}, status_code=413)
+        try:
+            body = json.loads(raw)
+        except ValueError:
+            body = None
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "Body must be a JSON object"}, status_code=400)
+        text, client_id = body.get("text"), body.get("client_id")
+        if not isinstance(text, str) or not text.strip() or len(text) > CHAT_MAX_CHARS:
+            return JSONResponse({"error": f"text must be 1..{CHAT_MAX_CHARS} characters"}, status_code=400)
+        if not isinstance(client_id, str) or not _CLIENT_ID.fullmatch(client_id):
+            return JSONResponse({"error": "client_id must be 8..64 letters, digits or hyphens"}, status_code=400)
+        try:
+            return JSONResponse(await _chat_turn(owner, text, client_id))
+        except _ChatRefused as exc:
+            return JSONResponse({"error": exc.message}, status_code=exc.status)
+        except GraphQueryError as exc:
+            return JSONResponse({"error": exc.code, "reason": exc.reason}, status_code=503)
 
     @app.get("/api/memory/records")
     async def memory_records(cursor: str | None = None, limit: str | None = None) -> JSONResponse:

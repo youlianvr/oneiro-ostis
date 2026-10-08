@@ -106,6 +106,20 @@ def test_evidence_is_json_ready():
     assert evidence[0]["ok"] is True
 
 
-def test_load_api_key_prefers_environment(monkeypatch):
+def test_load_api_key_prefers_environment(monkeypatch, tmp_path):
+    # Isolate from the owner's real settings and ~/.config/keys.env, which would
+    # otherwise answer first and make this test depend on the machine.
+    monkeypatch.setenv("ONEIRO_SETTINGS_FILE", str(tmp_path / "settings.json"))
+    monkeypatch.setenv("ONEIRO_KEYS_FILE", str(tmp_path / "no-keys.env"))
     monkeypatch.setenv("ONEIRO_API_KEY", "from-env")
     assert load_api_key() == "from-env"
+
+
+def test_keys_file_outranks_environment(monkeypatch, tmp_path):
+    # Approved order: settings file -> keys.env -> environment -> project .env.
+    keys = tmp_path / "keys.env"
+    keys.write_text("ONEIRO_API_KEY=from-keys-file\n", encoding="utf-8")
+    monkeypatch.setenv("ONEIRO_SETTINGS_FILE", str(tmp_path / "settings.json"))
+    monkeypatch.setenv("ONEIRO_KEYS_FILE", str(keys))
+    monkeypatch.setenv("ONEIRO_API_KEY", "from-env")
+    assert load_api_key() == "from-keys-file"

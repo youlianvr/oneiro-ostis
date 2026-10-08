@@ -12,8 +12,10 @@ names still honoured, the type, the default, and the sentence that explains it.
 A value is looked up in this order:
 
   1. the settings file  (``~/.oneiro/settings.json``; what the UI writes)
-  2. the environment    (what scripts and the workspace ``.env`` set)
-  3. the declared default
+  2. the owner's keys file (``~/.config/keys.env``; one place for every key)
+  3. the environment    (what scripts set)
+  4. the project ``.env`` next to the repository (optional)
+  5. the declared default
 
 Everything Oneiro keeps for itself — settings, ownership files, the runtime
 lock — lives under one root, :func:`data_root`. Settings written by the
@@ -112,7 +114,7 @@ SETTINGS: tuple[Setting, ...] = (
     Setting(
         "llm.api_key", "ONEIRO_LLM_API_KEY", "",
         "Provider key",
-        "Empty — looked up in environment variables and in a .env next to the project.",
+        "Empty — looked up in ~/.config/keys.env, the environment, and the project .env.",
         "Model", kind="secret", aliases=("ONEIRO_API_KEY", "OMNIROUTE_API_KEY"),
     ),
     Setting(
@@ -122,7 +124,10 @@ SETTINGS: tuple[Setting, ...] = (
         "Model",
     ),
     Setting(
-        "graph.host", "ONEIRO_HOST", "localhost",
+        # 127.0.0.1, not localhost: on Windows localhost resolves to ::1 first, and a
+        # Docker port published on IPv4 only stalls every connect ~2 s, which
+        # sc-client then reports as an unresponsive server.
+        "graph.host", "ONEIRO_HOST", "127.0.0.1",
         "Graph address",
         "The address of the OSTIS sc-machine.",
         "Graph",
@@ -184,6 +189,8 @@ SETTINGS: tuple[Setting, ...] = (
 )
 
 _BY_KEY: dict[str, Setting] = {s.key: s for s in SETTINGS}
+# The repository's own .env, optional: two levels above python/oneiro/.
+PROJECT_ENV = Path(__file__).resolve().parents[2] / ".env"
 # Attribute spelling for the `settings` object: graph_port -> graph.port.
 _ATTR: dict[str, str] = {s.key.replace(".", "_"): s.key for s in SETTINGS}
 
@@ -288,6 +295,46 @@ def _env_value(setting: Setting) -> str | None:
     return None
 
 
+def keys_file() -> Path:
+    """The owner's shared keys file. `ONEIRO_KEYS_FILE` moves it, for tests."""
+    override = os.environ.get("ONEIRO_KEYS_FILE")
+    return Path(override).expanduser() if override else Path.home() / ".config" / "keys.env"
+
+
+def _read_key_file(file_path: Path) -> dict[str, str]:
+    """NAME=value lines. Comments, blanks and an optional `export` are skipped.
+
+    A missing or unreadable file is simply no values. Nothing is logged: the
+    contents are credentials.
+    """
+    try:
+        text = file_path.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, _, raw = line.partition("=")
+        name = name.strip().removeprefix("export ").strip()
+        raw = raw.strip()
+        if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "\"'":
+            raw = raw[1:-1]
+        if name:
+            values[name] = raw
+    return values
+
+
+def _file_value(file_path: Path, setting: Setting) -> str | None:
+    values = _read_key_file(file_path)
+    for name in (setting.env, *setting.aliases):
+        raw = values.get(name)
+        if raw:
+            return raw
+    return None
+
+
 def _coerce(setting: Setting, value: Any) -> Any:
     """Turn a stored string into the declared type, or refuse with a reason."""
     if setting.kind == "int":
@@ -328,9 +375,15 @@ def _raw_layers(setting: Setting) -> tuple[Any, str]:
     if setting.key in data and data[setting.key] is not None:
         if not (setting.empty_means_unset and str(data[setting.key]).strip() == ""):
             return data[setting.key], "file"
+    keys = _file_value(keys_file(), setting)
+    if keys is not None:
+        return keys, "keys.env"
     env = _env_value(setting)
     if env is not None:
         return env, "env"
+    project = _file_value(PROJECT_ENV, setting)
+    if project is not None:
+        return project, "project .env"
     return setting.default, "default"
 
 

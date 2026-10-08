@@ -20,8 +20,8 @@ TEMPLATE = Path(__file__).parent / "static" / "page.html"
 # route page id -> (document title, heading, what this page is for)
 PAGES: dict[str, tuple[str, str, str]] = {
     "chat": ("Oneiro — chat", "Conversation",
-             "Conversation is not integrated in this foundation. The prerequisites below "
-             "and the settings page are live; /api/message answers 503 by design."),
+             "One message, one model reply. Both are stored before they are shown. If the "
+             "model is unreachable, your message is kept and the error says why."),
     "settings": ("Oneiro — settings", "Oneiro settings",
                  "Every setting Oneiro declares, in one place. Values come from this file, "
                  "then the environment, then the declared default — the page shows which one "
@@ -126,6 +126,16 @@ def _graph_section(facts: Any) -> str:
             f'<ul>{rows}</ul></section>')
 
 
+_CHAT_BODY = (
+    '<section><h2>Chat</h2>'
+    '<ol id="transcript" aria-live="polite"></ol>'
+    '<form id="chat"><label for="message">Message</label>'
+    '<textarea id="message" name="message" rows="3" maxlength="4000" required></textarea>'
+    '<button type="submit">Send</button></form>'
+    '<p class="bad" id="chat-error" hidden></p></section>'
+)
+
+
 def render(page: str, description: dict, error: str = "", facts: Any = None) -> str:
     """The complete HTML document for one route."""
     title, heading, notice = PAGES[page]
@@ -137,6 +147,8 @@ def render(page: str, description: dict, error: str = "", facts: Any = None) -> 
         body = _form(description)
     elif page == "graph":
         body = _graph_section(facts)
+    elif page == "chat":
+        body = _CHAT_BODY
     else:
         body = ""
     return Template(TEMPLATE.read_text(encoding="utf-8")).safe_substitute(

@@ -63,6 +63,13 @@ class Runtime:
             raise GraphQueryError("store_closed", "runtime is not started")
         return await self._graph.call("entity", record_id=record_id)
 
+    async def chat_append(self, record: dict[str, Any], operation_id: str) -> dict[str, Any]:
+        """Publish one record once per operation ID; the store answers duplicates."""
+        if self._graph is None:
+            raise GraphQueryError("store_closed", "runtime is not started")
+        return await self._graph.call("append", record=record, operation_id=operation_id,
+                                      expected_revision=0)
+
     async def status(self, *, refresh: bool = False) -> dict[str, Any]:
         async with self._probe_lock:
             if self._cached is None or refresh or time.monotonic() - self._cached_at > 5:
