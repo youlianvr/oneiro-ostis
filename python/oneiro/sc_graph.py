@@ -14,7 +14,7 @@ from oneiro.query import GraphQueryError
 from oneiro.store import MAX_LINK_BYTES
 
 KINDS = ("record", "conversation_message", "task", "run", "action", "decision",
-         "note", "experience", "experiment", "release")
+         "note", "experience", "experiment", "release", "curated_fact")
 RELATIONS = ("nrel_oneiro_previous", "nrel_oneiro_previous_revision", "nrel_oneiro_publication")
 
 

@@ -52,6 +52,7 @@ DECLARED_CLASSES: tuple[str, ...] = (
     "concept_no_temporal",
     "concept_oneiro_record",
     "concept_oneiro_conversation_message",
+    "concept_oneiro_curated_fact",
     "concept_oneiro_task",
     "concept_oneiro_run",
     "concept_oneiro_action",
