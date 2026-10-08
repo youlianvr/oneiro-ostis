@@ -71,10 +71,18 @@ async def _chat_turn(owner: Runtime, text: str, client_id: str) -> dict[str, Any
     elif user.get("text") != text:
         raise _ChatRefused(409, "this client_id already carries a different message")
     reply = await owner.memory_entity(reply_id)
+    context: dict[str, Any] | None = None
     if reply is None:
+        # Read memory before the model is called. A failed read does not stop the
+        # reply; the report says what the reply could not use.
+        messages, context = await recall.reply_context(
+            owner, CHAT_CONVERSATION, exclude_id=user_id,
+            history_limit=int(config.value("chat.history_messages")),
+            char_budget=int(config.value("chat.context_chars")))
+        messages.append({"role": "user", "content": text})
         try:
             answer = await asyncio.to_thread(
-                chat_reply, [{"role": "user", "content": text}],
+                chat_reply, messages,
                 base_url=str(config.value("llm.base_url")),
                 api_key=str(config.value("llm.api_key")),
                 model=str(config.value("llm.model")),
@@ -86,7 +94,7 @@ async def _chat_turn(owner: Runtime, text: str, client_id: str) -> dict[str, Any
                                      text=answer, provenance=Provenance.MODEL_CLAIM)
         await owner.chat_append(record.to_dict(), reply_id)
         reply = record.to_dict()
-    return {"user": user, "reply": reply}
+    return {"user": user, "reply": reply, "context": context}
 
 
 def create_app(runtime: Runtime | None = None) -> FastAPI:

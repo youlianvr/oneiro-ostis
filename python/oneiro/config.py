@@ -124,6 +124,18 @@ SETTINGS: tuple[Setting, ...] = (
         "Model",
     ),
     Setting(
+        "chat.history_messages", "ONEIRO_CHAT_HISTORY", 10,
+        "Earlier messages sent",
+        "How many earlier messages of the open conversation go to the model with each reply. At least 1.",
+        "Model", kind="int",
+    ),
+    Setting(
+        "chat.context_chars", "ONEIRO_CHAT_CONTEXT_CHARS", 6000,
+        "Earlier-message size limit",
+        "The most characters of earlier messages sent with each reply. Older ones are left out, and the reply says so.",
+        "Model", kind="int",
+    ),
+    Setting(
         # 127.0.0.1, not localhost: on Windows localhost resolves to ::1 first, and a
         # Docker port published on IPv4 only stalls every connect ~2 s, which
         # sc-client then reports as an unresponsive server.

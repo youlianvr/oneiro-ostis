@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Protocol
 
+from oneiro.query import GraphQueryError
 from oneiro.records import CuratedFact, Provenance, State, now, new_id
 
 PAGE = 500
@@ -53,10 +54,15 @@ async def scan(source: PageSource, keep: Callable[[dict[str, Any]], bool], *,
         skipped += len(page.get("skipped") or [])
         rows.extend(row for row in items if keep(row))
         cursor = page.get("cursor")
+        # Rows are newest first, so the first `want` are the ones to keep. More
+        # matches than `want` means the answer is not complete, even when the
+        # stream has ended inside this page.
+        if want is not None and len(rows) > want:
+            return Scan(rows[:want], scanned, skipped, complete=False)
         if cursor is None:
             return Scan(rows, scanned, skipped, complete=True)
-        if want is not None and len(rows) >= want:
-            return Scan(rows[:want], scanned, skipped, complete=False)
+        if want is not None and len(rows) == want:
+            return Scan(rows, scanned, skipped, complete=False)
         if scanned >= bound:
             return Scan(rows, scanned, skipped, complete=False)
 
@@ -170,6 +176,67 @@ async def conversation_list(source: PageSource) -> dict[str, Any]:
             summary["title"] = row["text"][:80]
     return {"conversations": list(summaries.values()), "scanned": found.scanned,
             "skipped": found.skipped, "complete": found.complete}
+
+
+# ---------- model context ----------
+
+
+async def reply_context(source: PageSource, conversation_id: str, *, exclude_id: str,
+                        history_limit: int, char_budget: int) -> tuple[list[dict[str, str]], dict[str, Any]]:
+    """Messages to put before the owner's new message, and an honest report.
+
+    The facts come first, as a system message the owner wrote. Earlier messages
+    follow oldest first: the newest `history_limit` of this conversation, then
+    trimmed from the oldest end until they fit `char_budget`. Every omission is
+    named in `notes`. If the stored records cannot be read, the reply is still
+    produced without them, and the report says memory was unavailable.
+    """
+    notes: list[str] = []
+    status = "complete"
+    fact_texts: list[str] = []
+    try:
+        facts = await current_facts(source)
+    except GraphQueryError as exc:
+        status = "memory_unavailable"
+        notes.append(f"Curated facts were not read ({exc.reason}); this reply does not use them.")
+    else:
+        fact_texts = [fact["text"] for fact in facts.facts]
+        if not facts.complete or facts.skipped:
+            status = "limited"
+            notes.append("Curated facts could not be read completely; some may be missing.")
+
+    rows: list[dict[str, Any]] = []
+    try:
+        found = await history(source, conversation_id, limit=history_limit, exclude_id=exclude_id)
+    except GraphQueryError as exc:
+        status = "memory_unavailable"
+        notes.append(f"Earlier messages were not read ({exc.reason}); this reply does not use them.")
+    else:
+        if not found.complete:
+            status = "limited"
+            notes.append(f"Only the newest {history_limit} earlier messages are sent.")
+        used = 0
+        kept: list[dict[str, Any]] = []
+        for row in reversed(found.rows):          # newest first, so the budget keeps the recent
+            if used + len(row["text"]) > char_budget:
+                status = "limited"
+                notes.append(f"Older messages were left out: the limit is {char_budget} characters.")
+                break
+            used += len(row["text"])
+            kept.append(row)
+        rows = list(reversed(kept))
+
+    messages: list[dict[str, str]] = []
+    if fact_texts:
+        messages.append({"role": "system", "content":
+                         "Facts the owner stated and asked you to keep in mind. They are the "
+                         "owner's own statements, not verified observations:\n"
+                         + "\n".join(f"- {text}" for text in fact_texts)})
+    for row in rows:
+        messages.append({"role": "user" if row["role"] == "owner" else "assistant",
+                         "content": row["text"]})
+    report = {"status": status, "facts": len(fact_texts), "history": len(rows), "notes": notes}
+    return messages, report
 
 
 # ---------- search ----------

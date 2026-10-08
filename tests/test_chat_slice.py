@@ -46,7 +46,10 @@ def test_resending_the_same_client_id_returns_the_stored_reply_without_a_model_c
         token = csrf_of(client)
         first = post(client, "/api/message", {"text": "once", "client_id": "client-0002-bbbb"}, token).json()
         second = post(client, "/api/message", {"text": "once", "client_id": "client-0002-bbbb"}, token).json()
-    assert second == first
+    assert second["user"] == first["user"]
+    assert second["reply"] == first["reply"]
+    # The retry returns the stored reply: no model call, so no context was built.
+    assert second["context"] is None
     assert model.calls == ["once"]
 
 

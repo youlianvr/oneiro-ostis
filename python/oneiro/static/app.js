@@ -178,6 +178,13 @@ if (chat) {
       }
       show("You", result.user.text);
       show("Oneiro", result.reply.text);
+      // Said plainly when the reply was made with less than the owner's memory.
+      if (result.context && result.context.status !== "complete") {
+        const note = document.createElement("li");
+        note.className = "muted";
+        note.textContent = "Context: " + result.context.notes.join(" ");
+        transcript.append(note);
+      }
       pending = null;
       field.value = "";
     } catch (_) {
