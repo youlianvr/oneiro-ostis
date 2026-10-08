@@ -160,6 +160,76 @@ if (chat) {
     transcript.append(item);
   };
   const fail = message => { errorBox.textContent = message; errorBox.hidden = false; };
+  // Conversations: the server keeps every one; the page only chooses which to show.
+  let conversation = "main";
+  const select = document.querySelector("#conversation-select");
+  const searchNote = document.querySelector("#search-note");
+  const results = document.querySelector("#search-results");
+  const csrfToken = async () => {
+    if (!csrf) csrf = (await (await fetch("/api/session")).json()).csrf;
+    return csrf;
+  };
+  const refreshConversations = async () => {
+    const response = await fetch("/api/conversations");
+    const listing = await response.json();
+    if (!response.ok) { fail(listing.reason || listing.error); return; }
+    const options = listing.conversations.map(item => [item.conversation_id, item.title || "Untitled conversation"]);
+    if (!options.some(([id]) => id === conversation)) options.unshift([conversation, "New conversation"]);
+    select.replaceChildren();
+    for (const [id, label] of options) {
+      const option = document.createElement("option");
+      option.value = id;
+      option.textContent = label;
+      select.append(option);
+    }
+    select.value = conversation;
+  };
+  const openConversation = async id => {
+    conversation = id;
+    pending = null;
+    transcript.replaceChildren();
+    errorBox.hidden = true;
+    const response = await fetch(`/api/conversations/${encodeURIComponent(id)}/messages`);
+    const listing = await response.json();
+    if (!response.ok) { fail(listing.reason || listing.error); return; }
+    for (const message of listing.messages) show(message.role === "owner" ? "You" : "Oneiro", message.text);
+    if (!listing.complete) {
+      const note = document.createElement("li");
+      note.className = "muted";
+      note.textContent = `Only the newest ${listing.messages.length} messages are shown.`;
+      transcript.prepend(note);
+    }
+    await refreshConversations();
+  };
+  select.addEventListener("change", () => openConversation(select.value));
+  document.querySelector("#new-conversation").addEventListener("click", async () => {
+    const response = await fetch("/api/conversations", {method: "POST", headers: {"X-Oneiro-CSRF": await csrfToken()}});
+    const created = await response.json();
+    if (response.ok) openConversation(created.conversation_id);
+  });
+  document.querySelector("#search").addEventListener("submit", async event => {
+    event.preventDefault();
+    const query = document.querySelector("#search-text").value.trim();
+    if (!query) return;
+    const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+    const found = await response.json();
+    results.replaceChildren();
+    if (!response.ok) { searchNote.textContent = found.error; return; }
+    // The note states what was searched. It only says "no match" for a complete read.
+    searchNote.textContent = found.note;
+    for (const hit of found.results) {
+      const item = document.createElement("li");
+      const text = document.createElement("span");
+      text.textContent = (hit.role === "owner" ? "You: " : "Oneiro: ") + hit.snippet;
+      const open = document.createElement("button");
+      open.type = "button";
+      open.textContent = "Open";
+      open.addEventListener("click", () => openConversation(hit.conversation_id));
+      item.append(text, document.createTextNode(" "), open);
+      results.append(item);
+    }
+  });
+  openConversation(conversation);
   chat.addEventListener("submit", async event => {
     event.preventDefault();
     errorBox.hidden = true;
@@ -170,7 +240,7 @@ if (chat) {
       if (!csrf) csrf = (await (await fetch("/api/session")).json()).csrf;
       const response = await fetch("/api/message", {method: "POST",
         headers: {"Content-Type": "application/json", "X-Oneiro-CSRF": csrf},
-        body: JSON.stringify({text: pending.text, client_id: pending.clientId})});
+        body: JSON.stringify({text: pending.text, client_id: pending.clientId, conversation_id: conversation})});
       const result = await response.json();
       if (!response.ok) {
         fail(result.error || "The message was not answered.");

@@ -5,6 +5,7 @@ import asyncio
 import json
 import re
 import secrets
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator
@@ -27,6 +28,10 @@ CHAT_BODY_LIMIT = 16000
 _CLIENT_ID = re.compile(r"[A-Za-z0-9-]{8,64}")
 _FACT_ID = re.compile(r"fact-[A-Za-z0-9-]{8,64}")
 FACT_BODY_LIMIT = 8000
+_CONVERSATION = re.compile(r"[A-Za-z0-9-]{1,64}")
+SEARCH_LIMIT = 50
+SEARCH_CHARS = 200
+SEARCH_WORDS = 6
 
 
 class _ChatRefused(Exception):
@@ -36,6 +41,12 @@ class _ChatRefused(Exception):
         super().__init__(message)
         self.status = status
         self.message = message
+
+
+def _message_out(row: dict[str, Any]) -> dict[str, Any]:
+    """The public shape of one stored conversation message."""
+    return {"id": row["id"], "conversation_id": row["conversation_id"], "role": row["role"],
+            "text": row["text"], "created_at": row["created_at"]}
 
 
 async def _json_object(request: Request, limit: int) -> tuple[dict[str, Any] | None, JSONResponse | None]:
@@ -54,7 +65,8 @@ async def _json_object(request: Request, limit: int) -> tuple[dict[str, Any] | N
     return body, None
 
 
-async def _chat_turn(owner: Runtime, text: str, client_id: str) -> dict[str, Any]:
+async def _chat_turn(owner: Runtime, text: str, client_id: str,
+                     conversation_id: str = CHAT_CONVERSATION) -> dict[str, Any]:
     """One owner message and one model reply, each published at most once.
 
     Record IDs derive from the client's ID, so a retry after a lost response or
@@ -64,19 +76,19 @@ async def _chat_turn(owner: Runtime, text: str, client_id: str) -> dict[str, Any
     user_id, reply_id = "msg-" + client_id, "reply-" + client_id
     user = await owner.memory_entity(user_id)
     if user is None:
-        record = ConversationMessage(id=user_id, conversation_id=CHAT_CONVERSATION, role="owner",
+        record = ConversationMessage(id=user_id, conversation_id=conversation_id, role="owner",
                                      text=text, provenance=Provenance.OWNER_INSTRUCTION)
         await owner.chat_append(record.to_dict(), user_id)
         user = record.to_dict()
-    elif user.get("text") != text:
-        raise _ChatRefused(409, "this client_id already carries a different message")
+    elif user.get("text") != text or user.get("conversation_id") != conversation_id:
+        raise _ChatRefused(409, "this client_id already carries a different message or conversation")
     reply = await owner.memory_entity(reply_id)
     context: dict[str, Any] | None = None
     if reply is None:
         # Read memory before the model is called. A failed read does not stop the
         # reply; the report says what the reply could not use.
         messages, context = await recall.reply_context(
-            owner, CHAT_CONVERSATION, exclude_id=user_id,
+            owner, conversation_id, exclude_id=user_id,
             history_limit=int(config.value("chat.history_messages")),
             char_budget=int(config.value("chat.context_chars")))
         messages.append({"role": "user", "content": text})
@@ -90,7 +102,7 @@ async def _chat_turn(owner: Runtime, text: str, client_id: str) -> dict[str, Any
         except ChatError as exc:
             # The owner's message stays stored; no reply is invented in its place.
             raise _ChatRefused(503, str(exc)) from None
-        record = ConversationMessage(id=reply_id, conversation_id=CHAT_CONVERSATION, role="manager",
+        record = ConversationMessage(id=reply_id, conversation_id=conversation_id, role="manager",
                                      text=answer, provenance=Provenance.MODEL_CLAIM)
         await owner.chat_append(record.to_dict(), reply_id)
         reply = record.to_dict()
@@ -225,8 +237,11 @@ def create_app(runtime: Runtime | None = None) -> FastAPI:
             return JSONResponse({"error": f"text must be 1..{CHAT_MAX_CHARS} characters"}, status_code=400)
         if not isinstance(client_id, str) or not _CLIENT_ID.fullmatch(client_id):
             return JSONResponse({"error": "client_id must be 8..64 letters, digits or hyphens"}, status_code=400)
+        conversation = body.get("conversation_id", CHAT_CONVERSATION)
+        if not isinstance(conversation, str) or not _CONVERSATION.fullmatch(conversation):
+            return JSONResponse({"error": "conversation_id must be 1..64 letters, digits or hyphens"}, status_code=400)
         try:
-            return JSONResponse(await _chat_turn(owner, text, client_id))
+            return JSONResponse(await _chat_turn(owner, text, client_id, conversation))
         except _ChatRefused as exc:
             return JSONResponse({"error": exc.message}, status_code=exc.status)
         except GraphQueryError as exc:
@@ -341,6 +356,61 @@ def create_app(runtime: Runtime | None = None) -> FastAPI:
             except ValueError as exc:
                 return refused(503, f"Stored memory is not readable: {exc}")
         return JSONResponse({"id": fact_id, "removed": True, "duplicate": result["duplicate"]})
+
+    @app.get("/api/conversations")
+    async def conversations() -> JSONResponse:
+        try:
+            return JSONResponse(await recall.conversation_list(owner))
+        except GraphQueryError as exc:
+            return unavailable(exc)
+
+    @app.post("/api/conversations")
+    async def new_conversation() -> JSONResponse:
+        # Nothing is stored yet: a conversation exists once its first message does.
+        return JSONResponse({"conversation_id": uuid.uuid4().hex})
+
+    @app.get("/api/conversations/{conversation_id}/messages")
+    async def conversation_messages(conversation_id: str, limit: str | None = None) -> JSONResponse:
+        if not _CONVERSATION.fullmatch(conversation_id):
+            return refused(400, "conversation_id must be 1..64 letters, digits or hyphens")
+        try:
+            found = await recall.history(owner, conversation_id, limit=_check_limit(limit))
+        except GraphQueryError as exc:
+            if exc.code == "bad_limit":
+                return refused(400, exc.reason)
+            return unavailable(exc)
+        return JSONResponse({"conversation_id": conversation_id,
+                             "messages": [_message_out(row) for row in found.rows],
+                             "complete": found.complete, "scanned": found.scanned,
+                             "skipped": found.skipped})
+
+    @app.get("/api/search")
+    async def search(q: str | None = None) -> JSONResponse:
+        words = (q or "").split()
+        if (not words or len(q or "") > SEARCH_CHARS or len(words) > SEARCH_WORDS
+                or any(len(word) > 64 for word in words)):
+            return refused(400, f"query must be 1..{SEARCH_CHARS} characters, at most {SEARCH_WORDS} words")
+        try:
+            found = await recall.search_messages(owner, words, limit=SEARCH_LIMIT)
+        except GraphQueryError as exc:
+            return unavailable(exc)
+        results = [{**_message_out(row), "snippet": recall.snippet(row["text"], words[0])}
+                   for row in found.rows]
+        # The note says what was covered. "No match" is claimed only for a complete read.
+        if results and found.complete:
+            note = f"{len(results)} matching messages in all {found.scanned} stored records."
+        elif results:
+            note = f"Showing {len(results)} newest matches; there may be more."
+        elif found.complete:
+            note = f"No match in all {found.scanned} stored records."
+        else:
+            note = (f"No match in the first {found.scanned} stored records; the search did not "
+                    "cover the whole history.")
+        if found.skipped:
+            note += f" {found.skipped} stored records could not be read."
+        return JSONResponse({"query": " ".join(words), "results": results, "note": note,
+                             "scanned": found.scanned, "complete": found.complete,
+                             "skipped": found.skipped})
 
     @app.get("/api/memory/records")
     async def memory_records(cursor: str | None = None, limit: str | None = None) -> JSONResponse:

@@ -127,6 +127,15 @@ def _graph_section(facts: Any) -> str:
 
 
 _CHAT_BODY = (
+    '<section><h2>Conversations</h2>'
+    '<label for="conversation-select">Conversation</label>'
+    '<select id="conversation-select"></select>'
+    '<button type="button" id="new-conversation">New conversation</button>'
+    '<form id="search"><label for="search-text">Search your messages</label>'
+    '<input id="search-text" type="search" maxlength="200" required>'
+    '<button type="submit">Search</button></form>'
+    '<p class="muted" id="search-note" role="status"></p>'
+    '<ol id="search-results"></ol></section>'
     '<section><h2>Chat</h2>'
     '<ol id="transcript" aria-live="polite"></ol>'
     '<form id="chat"><label for="message">Message</label>'
