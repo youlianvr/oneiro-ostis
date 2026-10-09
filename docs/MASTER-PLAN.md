@@ -50,15 +50,19 @@ migrated into the `oneiro` package as one control plane, not rebuilt.
 | --- | --- | --- | --- |
 | `python/mcp_client.py` (393) | stdio JSON-RPC MCP client; bounded time and size; named failures; verbatim results | migrate into `oneiro/mcp.py` | `tests/test_mcp_client.py` (155) |
 | `python/skills_index.py` (275) | deterministic skill-catalog ranking over `SKILL.md`, no network, no embeddings | migrate into `oneiro/skills.py` | `tests/test_skills_index.py` (205) |
-| `python/native/tools.py` (237) + `native/policy.py` (84) | trusted tool surface with scope: no unrestricted host shell, secret/config names refused | migrate into `oneiro/tools.py` | `tests/test_worker.py` (245) |
+| `python/native/tools.py` (237) + `native/policy.py` (84) | trusted tool surface with scope: no unrestricted host shell, secret/config names refused | migrate into `oneiro/tools.py` | `native/policy.py`: `tests/test_native_service.py` (240), which exercises the allow/deny/ask decisions. `native/tools.py`: **no direct test** — no test imports it, and it is reached only through `native/service.py`. Its tests must be written during the migration. |
 | `python/question_tool.py` (182) | asking the owner a free-text question and persisting the answer | migrate into `oneiro/questions.py` | `tests/test_question_tool.py` (210) |
 | `python/approval.py` (568) | approvals for risky effects; stale approvals rejected | migrate into `oneiro/approvals.py` | `tests/test_approval.py` (370) |
 | `python/roles.py` (301) | role models (manager, researcher, executor) | migrate into `oneiro/models.py` | `tests/test_roles.py` (144) |
-| `python/task_runner.py` (460), `worker.py` (460), `swarm.py` (236), `worktree_runner.py` (133), `life_loop.py` (528), `heartbeat.py` (198) | tasks, workers, initiative, scheduling | one runtime replaces them; retire after their tests pass against it | `test_task_runner`, `test_core_loop`, `test_life_loop`, `test_heartbeat`, `test_swarm_protocol`, `test_worktree_runner` |
-| `python/bridge.py` (1498) | old graph bridge | typed graph operations already live in `oneiro/query.py`, `store.py`, `records.py`; bridge is reference, then retired | `test_bridge_*`, `test_sc_graph_contract` |
-| `python/llm.py` (281) + `adapter_llm/` | model access | consolidate into `oneiro/models.py` | `test_llm.py` (111) |
-| `console/overlay/channel/web/` | CowAgent console: `chat.html`, `console.css` (4039), `console.js` (17951), `setup.html`, `console.js` panels | design and behaviour source for the port; keep as provenance, do not serve from here | `tests/test_console_overlay.py` |
-| `console/vendor/cowagent-2.1.9.zip` | the MIT original the overlay patches | keep, untouched | — |
+| `python/task_runner.py` (460), `worker.py` (460), `swarm.py` (236), `worktree_runner.py` (133), `life_loop.py` (528), `heartbeat.py` (198) | tasks, workers, initiative, scheduling | one runtime replaces them; retire after their tests pass against it | `tests/test_task_runner.py` (373), `test_worker.py` (245), `test_swarm_protocol.py` (169), `test_worktree_runner.py` (39), `test_life_loop.py` (239), `test_heartbeat.py` (170) |
+| `python/bridge.py` (1498) | old graph bridge | typed graph operations already live in `oneiro/query.py`, `store.py`, `records.py`; bridge is reference, then retired | `tests/test_bridge_vocabulary.py` (52), `test_bridge_writer_contracts.py` (566), `test_core_loop.py` (104), `test_life_loop.py` (239), `test_heartbeat.py` (170), `test_replay_exactness.py`, `test_replay_offline.py`, `test_dream_improves.py` (84), `test_two_rounds.py`, `test_workshop_dream.py`. `test_sc_graph_contract.py` does **not** import bridge — it covers `oneiro/sc_graph.py`. |
+| `python/llm.py` (281) + `adapter_llm/` | model access | consolidate into `oneiro/models.py` | `tests/test_llm.py` (111); `llm` is imported by `test_life_loop.py`, `test_roles.py` and `test_worker.py` too. `adapter_llm/` alone: `test_dream_improves.py` (84). |
+| `console/overlay/channel/web/` | CowAgent console: `chat.html`, `console.css` (4039), `console.js` (17951), `setup.html`, `console.js` panels | design and behaviour source for the port; keep as provenance, do not serve from here | `tests/test_console_overlay.py` (152) |
+| `console/vendor/cowagent-2.1.9.zip` | the MIT original the overlay patches | keep, untouched | checked by `tests/test_console_overlay.py` (152): it fails if the overlay and the archive drift apart |
+
+Every test reference in this table was verified on 2026-10-09 by grepping `tests/`
+for imports of the named module, not inferred from file names. Where no test
+exists, the row says so and the migration must add one before retiring the module.
 
 ## 4. Target architecture
 
@@ -205,13 +209,19 @@ step in `docs/PROGRESS.md`.
 
 ## 8. Documents
 
-Active: this file, `docs/PROGRESS.md`, `docs/PROJECT-CONTEXT.md`,
-`docs/HOST.md`. Evidence and analyses, not plans: `docs/REWRITE-BASELINE.md`,
-`docs/COWAGENT-COMPARISON.md`, `docs/AGENT-COMPANY-COMPARISON.md`,
-`docs/SKILLS-COMPILATION.md`, `docs/ONTOLOGY-DRAFT.md`. Historical plans with a
-banner: `docs/MASTER-PLAN-2026-10-07.md`, `PLAN.md`, `PLAN-AGENT.md`,
-`PLAN-V2.md`, `PLAN-MEMORY.md`, `PLAN-ONE-PROCESS.md`, `GOAL-NATIVE-ONEIRO.md`,
-`GOAL-LIVE-SWARM.md`, `ARCHITECTURE-HYBRID.md`.
+Active: this file and `docs/PROGRESS.md`. Evidence and analyses, not plans:
+`docs/REWRITE-BASELINE.md`, `docs/COWAGENT-COMPARISON.md`,
+`docs/AGENT-COMPANY-COMPARISON.md`, `docs/SKILLS-COMPILATION.md`,
+`docs/ONTOLOGY-DRAFT.md`. Historical plans with a banner:
+`docs/MASTER-PLAN-2026-10-07.md`, `PLAN.md`, `PLAN-AGENT.md`, `PLAN-V2.md`,
+`PLAN-MEMORY.md`, `PLAN-ONE-PROCESS.md`, `GOAL-NATIVE-ONEIRO.md`,
+`GOAL-LIVE-SWARM.md`, `ARCHITECTURE-HYBRID.md`. **Not current — describes the
+removed architecture** (CowAgent as the host process, the panel on port 8130,
+`scripts/oneiro-app.cmd`, the host console); read them as history of how the
+product used to run: `docs/PROJECT-CONTEXT.md`, `docs/HOST.md`. Session record
+kept as provenance, whose authority pointer is stale: `docs/CLOUD-SESSION-PLAN.md`
+(it names `GOAL-NATIVE-ONEIRO.md` as where the binding decisions live; section 1
+of this file is that place now).
 
 ## 9. Blockers and open items
 
