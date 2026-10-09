@@ -15,6 +15,7 @@ ConanPresets.json
 # Standalone package build/test environment
 .venv/
 dist/
+installer/payload/
 *.egg-info/
 .mypy_cache/
 
