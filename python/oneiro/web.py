@@ -49,20 +49,20 @@ def _message_out(row: dict[str, Any]) -> dict[str, Any]:
             "text": row["text"], "created_at": row["created_at"]}
 
 
-async def _json_object(request: Request, limit: int) -> tuple[dict[str, Any] | None, JSONResponse | None]:
+async def _json_object(request: Request, limit: int) -> dict[str, Any] | JSONResponse:
     """A bounded JSON object from the body, or the refusal to return instead."""
     raw = bytearray()
     async for chunk in request.stream():
         raw.extend(chunk)
         if len(raw) > limit:
-            return None, JSONResponse({"error": f"Body exceeds {limit} bytes"}, status_code=413)
+            return JSONResponse({"error": f"Body exceeds {limit} bytes"}, status_code=413)
     try:
         body = json.loads(raw)
     except ValueError:
         body = None
     if not isinstance(body, dict):
-        return None, JSONResponse({"error": "Body must be a JSON object"}, status_code=400)
-    return body, None
+        return JSONResponse({"error": "Body must be a JSON object"}, status_code=400)
+    return body
 
 
 async def _chat_turn(owner: Runtime, text: str, client_id: str,
@@ -263,10 +263,12 @@ def create_app(runtime: Runtime | None = None) -> FastAPI:
 
     @app.post("/api/memory/facts")
     async def add_fact(request: Request) -> JSONResponse:
-        body, refusal = await _json_object(request, FACT_BODY_LIMIT)
-        if refusal is not None:
-            return refusal
+        body = await _json_object(request, FACT_BODY_LIMIT)
+        if isinstance(body, JSONResponse):
+            return body
         text, client_id = body.get("text"), body.get("client_id")
+        if not isinstance(text, str):
+            return refused(400, "text must be a non-empty string")
         if (error := recall.fact_text_error(text)) is not None:
             return refused(400, error)
         if not isinstance(client_id, str) or not _CLIENT_ID.fullmatch(client_id):
@@ -291,10 +293,12 @@ def create_app(runtime: Runtime | None = None) -> FastAPI:
     async def edit_fact(fact_id: str, request: Request) -> JSONResponse:
         if not _FACT_ID.fullmatch(fact_id):
             return refused(404, "no such fact")
-        body, refusal = await _json_object(request, FACT_BODY_LIMIT)
-        if refusal is not None:
-            return refusal
+        body = await _json_object(request, FACT_BODY_LIMIT)
+        if isinstance(body, JSONResponse):
+            return body
         text, client_id, revision = body.get("text"), body.get("client_id"), body.get("revision")
+        if not isinstance(text, str):
+            return refused(400, "text must be a non-empty string")
         if (error := recall.fact_text_error(text)) is not None:
             return refused(400, error)
         if not isinstance(client_id, str) or not _CLIENT_ID.fullmatch(client_id):
@@ -329,9 +333,9 @@ def create_app(runtime: Runtime | None = None) -> FastAPI:
     async def remove_fact(fact_id: str, request: Request) -> JSONResponse:
         if not _FACT_ID.fullmatch(fact_id):
             return refused(404, "no such fact")
-        body, refusal = await _json_object(request, FACT_BODY_LIMIT)
-        if refusal is not None:
-            return refusal
+        body = await _json_object(request, FACT_BODY_LIMIT)
+        if isinstance(body, JSONResponse):
+            return body
         client_id, revision = body.get("client_id"), body.get("revision")
         if not isinstance(client_id, str) or not _CLIENT_ID.fullmatch(client_id):
             return refused(400, "client_id must be 8..64 letters, digits or hyphens")
