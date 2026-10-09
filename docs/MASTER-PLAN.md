@@ -52,17 +52,19 @@ migrated into the `oneiro` package as one control plane, not rebuilt.
 | `python/skills_index.py` (275) | deterministic skill-catalog ranking over `SKILL.md`, no network, no embeddings | migrate into `oneiro/skills.py` | `tests/test_skills_index.py` (205) |
 | `python/native/tools.py` (237) + `native/policy.py` (84) | trusted tool surface with scope: no unrestricted host shell, secret/config names refused | migrate into `oneiro/tools.py` | `native/policy.py`: `tests/test_native_service.py` (240), which exercises the allow/deny/ask decisions. `native/tools.py`: **no direct test** — no test imports it, and it is reached only through `native/service.py`. Its tests must be written during the migration. |
 | `python/question_tool.py` (182) | asking the owner a free-text question and persisting the answer | migrate into `oneiro/questions.py` | `tests/test_question_tool.py` (210) |
-| `python/approval.py` (568) | approvals for risky effects; stale approvals rejected | migrate into `oneiro/approvals.py` | `tests/test_approval.py` (370) |
+| `python/approval.py` (568) | approvals for risky effects; stale approvals rejected | migrate into `oneiro/approvals.py` | `tests/test_approval.py` (370); also imported by `test_question_tool.py` (210), `test_task_runner.py` (373) and `test_telegram_entry.py` (472) |
 | `python/roles.py` (301) | role models (manager, researcher, executor) | migrate into `oneiro/models.py` | `tests/test_roles.py` (144) |
 | `python/task_runner.py` (460), `worker.py` (460), `swarm.py` (236), `worktree_runner.py` (133), `life_loop.py` (528), `heartbeat.py` (198) | tasks, workers, initiative, scheduling | one runtime replaces them; retire after their tests pass against it | `tests/test_task_runner.py` (373), `test_worker.py` (245), `test_swarm_protocol.py` (169), `test_worktree_runner.py` (39), `test_life_loop.py` (239), `test_heartbeat.py` (170) |
 | `python/bridge.py` (1498) | old graph bridge | typed graph operations already live in `oneiro/query.py`, `store.py`, `records.py`; bridge is reference, then retired | `tests/test_bridge_vocabulary.py` (52), `test_bridge_writer_contracts.py` (566), `test_core_loop.py` (104), `test_life_loop.py` (239), `test_heartbeat.py` (170), `test_replay_exactness.py`, `test_replay_offline.py`, `test_dream_improves.py` (84), `test_two_rounds.py`, `test_workshop_dream.py`. `test_sc_graph_contract.py` does **not** import bridge — it covers `oneiro/sc_graph.py`. |
-| `python/llm.py` (281) + `adapter_llm/` | model access | consolidate into `oneiro/models.py` | `tests/test_llm.py` (111); `llm` is imported by `test_life_loop.py`, `test_roles.py` and `test_worker.py` too. `adapter_llm/` alone: `test_dream_improves.py` (84). |
+| `python/llm.py` (281) + `adapter_llm/` | model access | consolidate into `oneiro/models.py` | `tests/test_llm.py` (125); `llm` is imported by `test_life_loop.py`, `test_roles.py` and `test_worker.py` too. `adapter_llm/` alone: `test_dream_improves.py` (84). |
 | `console/overlay/channel/web/` | CowAgent console: `chat.html`, `console.css` (4039), `console.js` (17951), `setup.html`, `console.js` panels | design and behaviour source for the port; keep as provenance, do not serve from here | `tests/test_console_overlay.py` (152) |
 | `console/vendor/cowagent-2.1.9.zip` | the MIT original the overlay patches | keep, untouched | checked by `tests/test_console_overlay.py` (152): it fails if the overlay and the archive drift apart |
 
 Every test reference in this table was verified on 2026-10-09 by grepping `tests/`
-for imports of the named module, not inferred from file names. Where no test
-exists, the row says so and the migration must add one before retiring the module.
+for imports of the named module, not inferred from file names. Every count in this
+table was re-measured the same day with `wc -l`, and so were the port, page and
+matrix numbers quoted elsewhere in this file. Where no test exists, the row says
+so and the migration must add one before retiring the module.
 
 ## 4. Target architecture
 
@@ -222,6 +224,15 @@ product used to run: `docs/PROJECT-CONTEXT.md`, `docs/HOST.md`. Session record
 kept as provenance, whose authority pointer is stale: `docs/CLOUD-SESSION-PLAN.md`
 (it names `GOAL-NATIVE-ONEIRO.md` as where the binding decisions live; section 1
 of this file is that place now).
+
+Research and demonstration artifacts of the previous project, kept as evidence and
+not as current product documentation: `docs/rounds.md`, `docs/rounds-workshop.md`,
+`docs/results.md`, `docs/series.md`, `docs/demo-log.md`, `docs/harness.md`,
+`docs/dream-tree.html`, and the screenshots under `docs/shots/`. Presentation
+material built on that work rather than on this plan: `docs/PAPER.md`,
+`docs/SLIDES.md`, `docs/TALK.md` and `docs/pz/`. Neither evidence nor part of this
+plan, and left untouched as another session's work in progress: the untracked
+`docs/forumit-2026/`.
 
 ## 9. Blockers and open items
 
