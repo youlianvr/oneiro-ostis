@@ -1,5 +1,7 @@
 # Goal: a live swarm (night run, 2026-09-21)
 
+> **Historical.** Superseded on 2026-10-09 by [MASTER-PLAN.md](MASTER-PLAN.md), the plan of record. Kept as evidence for the night run.
+
 > Owner verdict, recorded in chat before an overnight autonomous run.
 > This file is the contract for the night: what must exist by morning,
 > what was decided, what is explicitly out of scope.

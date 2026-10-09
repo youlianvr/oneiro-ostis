@@ -1,5 +1,7 @@
 # v2 — a manager you can talk to, in one language, without the wood
 
+> **Historical.** Superseded on 2026-10-09 by [MASTER-PLAN.md](MASTER-PLAN.md), the plan of record. Its "one language" decision is replaced: the product is bilingual RU/EN with a switch. Kept as evidence.
+
 This branch is the second line of the product. Three things change, and they are
 one change: the organization stops speaking through rigid forms, the interface
 stops speaking Russian, and the manager becomes a counterpart the owner can

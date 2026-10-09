@@ -2,8 +2,8 @@
 
 ## Full rewrite — current state (2026-10-02)
 
-The English `v2` product is being rebuilt under [MASTER-PLAN](docs/MASTER-PLAN.md).
-Binding decisions are in [GOAL-NATIVE-ONEIRO](docs/GOAL-NATIVE-ONEIRO.md); the actual
+The English `v2` product is being rebuilt under [MASTER-PLAN](docs/MASTER-PLAN.md),
+the plan of record; section 1 of it carries the binding owner decisions. The actual
 module census, preserved data, tests and blockers are in
 [REWRITE-BASELINE](docs/REWRITE-BASELINE.md). Russian `main` stays separate.
 The missing cloud PR is not a prerequisite.
@@ -136,12 +136,13 @@ documented in `docs/GOAL-LIVE-SWARM.md`.
 
 ## Layout
 
-- `docs/PLAN.md` — implementation plan and current stage status.
+- `docs/PLAN.md` — historical implementation plan (superseded by
+  `docs/MASTER-PLAN.md`).
 - `docs/PROGRESS.md` — per-stage execution log.
 - `docs/GOAL-LIVE-SWARM.md` — the live-swarm goal, its run log and evidence.
 - `docs/ARCHITECTURE-HYBRID.md` — where Oneiro, Hermes and OpenClaw meet.
-- `docs/PLAN-V2.md` — the `v2` branch: a manager the owner can talk to, one
-  language for the product, and the concrete plan for removing the rigid feel.
+- `docs/PLAN-V2.md` — historical: the `v2` branch's original intent. The product
+  is bilingual RU/EN with a switch, per `docs/MASTER-PLAN.md` section 1.
 - `docs/pz/` — the research work for the school competition (markdown source,
   Word and PDF builds, dashboard figures). Rebuild with
   `python scripts/pz-build.py` then `python scripts/pz-word.py`; the numbers in

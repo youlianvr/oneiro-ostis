@@ -1,5 +1,7 @@
 # Oneiro-OSTIS Implementation Plan
 
+> **Historical.** Superseded on 2026-10-09 by [MASTER-PLAN.md](MASTER-PLAN.md), the plan of record. Kept as evidence; not the current plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task (per-task review included). Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Persistent agent whose autobiographical experience lives natively in the OSTIS knowledge graph and which self-improves by dreaming: alternative strategies are proposed by an LLM and judged by exact replay over the recorded experience tree; the winner is deployed online and the discovery tree grows.

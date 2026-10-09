@@ -252,3 +252,24 @@ no-temporal order 0.58, no-provenance 0.00, context-only recall 0.12.
   and writes the owner's graph; not run.
 - The graph image is the owner's `oneiro-rewrite-machine:checkpoint` build, tagged
   for the installer; it was not rebuilt from the current sources.
+
+## 2026-10-09 — plan of record replaced: Master Plan v2
+
+- `docs/MASTER-PLAN.md` is now the plan of record (Master Plan v2). The previous
+  plan is preserved, history intact, as `docs/MASTER-PLAN-2026-10-07.md`.
+- Superseded plans carry a one-line historical banner and stay on disk: `PLAN.md`,
+  `PLAN-AGENT.md`, `PLAN-V2.md`, `PLAN-MEMORY.md`, `PLAN-ONE-PROCESS.md`,
+  `GOAL-NATIVE-ONEIRO.md`, `GOAL-LIVE-SWARM.md`, `ARCHITECTURE-HYBRID.md`. The
+  project `README.md` no longer names a superseded document as the current plan.
+- Owner decisions recorded in section 1 of the new plan: the agent comes first;
+  everything except voice; the console is the CowAgent UI wired to Oneiro's own
+  backend, not a CowAgent host process; RU/EN with a switch stored in Oneiro's
+  settings; the MCP server list in `.oneiro/mcp.json` with a one-time import from
+  popular clients; the skills catalog ships with the product; local-only.
+- Next step is **S1 — agent runtime** (`agent.py`, `tools.py`, `tasks.py`,
+  `questions.py`, `approvals.py`, new record kinds, `agent.*` and `tools.*`
+  settings), built by migrating the already tested `mcp_client.py`,
+  `skills_index.py`, `native/tools.py`, `native/policy.py`, `question_tool.py`,
+  `approval.py` and `roles.py` rather than rewriting them. **S2** (MCP client and
+  skills catalog) follows it, before any interface work.
+- Not changed in this step: no code, installer, configuration or graph change.

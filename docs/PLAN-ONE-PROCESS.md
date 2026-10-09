@@ -1,5 +1,7 @@
 # Одна программа, один адрес: как панель и консоль срослись
 
+> **Historical.** Superseded on 2026-10-09 by [MASTER-PLAN.md](MASTER-PLAN.md), the plan of record. Kept as evidence for why the panel kept its own process.
+
 Состояние на 2026-09-26, 01:35. Всё ниже проверено выводом команд.
 
 ## Задача

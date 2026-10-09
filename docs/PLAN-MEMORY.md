@@ -1,5 +1,7 @@
 # PLAN-MEMORY — the persistent-memory line (draft, being interrogated)
 
+> **Historical.** Superseded on 2026-10-09 by [MASTER-PLAN.md](MASTER-PLAN.md), the plan of record. Kept as evidence; not the current plan.
+
 > Status: **draft**. This file is a protocol of decisions, not a task list. It is
 > filled in while the owner is interrogated branch by branch; anything not yet
 > decided is listed at the end as an open branch, and nothing in the open list is

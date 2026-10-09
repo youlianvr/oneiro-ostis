@@ -1,5 +1,7 @@
 # Oneiro Hybrid Architecture
 
+> **Historical.** Superseded on 2026-10-09 by [MASTER-PLAN.md](MASTER-PLAN.md), the plan of record. Kept as evidence; not the current plan.
+
 Status: approved direction, first swarm vertical slice in planning.
 
 ## Product direction

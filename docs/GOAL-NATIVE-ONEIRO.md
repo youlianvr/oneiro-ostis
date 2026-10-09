@@ -1,5 +1,7 @@
 # Oneiro — binding owner decisions
 
+> **Historical.** Superseded on 2026-10-09 by [MASTER-PLAN.md](MASTER-PLAN.md), section 1 of which now carries the binding owner decisions. Kept as evidence.
+
 Status: full-project rewrite approved; implementation is incremental, not done.
 Authority: current owner conversation and full local-delivery Mission approved
 2026-10-07; this supersedes conflicting 2026-10-02/06 delivery decisions.

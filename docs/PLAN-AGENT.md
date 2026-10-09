@@ -1,5 +1,7 @@
 # План: Oneiro как автономный агент (решения владельца 2026-09-22)
 
+> **Historical.** Superseded on 2026-10-09 by [MASTER-PLAN.md](MASTER-PLAN.md), the plan of record. Kept as evidence; not the current plan.
+
 > Три пожелания владельца: (1) большая часть функций OpenClaw, то есть интеграции,
 > и совместимость с ним; (2) самообучение как у Hermes; (3) харнесс сам ищет
 > готовые скиллы в каталоге.
