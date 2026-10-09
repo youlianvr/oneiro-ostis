@@ -1,9 +1,11 @@
 ; Oneiro for Windows. Build with: ISCC installer\oneiro.iss   (after installer\build-payload.ps1)
 ;
 ; Per-user install, no administrator rights, no autostart. The owner's data lives in
-; %USERPROFILE%\.oneiro and is not an uninstall target: removing the program leaves
-; the memory in place. Docker Desktop is a prerequisite: the memory substrate (OSTIS)
-; runs in it, so setup refuses to continue until `docker info` answers.
+; %USERPROFILE%\.oneiro and the Docker volume oneiro-graph-kb-v1; neither is an uninstall
+; target: removing the program leaves the memory in place. Docker Desktop is a prerequisite:
+; the memory substrate (OSTIS) runs in it, so setup refuses to continue until `docker info`
+; answers. Setup loads the bundled graph image; uninstall stops and removes only the
+; oneiro-graph container it may have started.
 
 #define AppVersion "0.2.0"
 
@@ -29,6 +31,10 @@ Source: "payload\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ig
 [Icons]
 Name: "{userprograms}\Oneiro"; Filename: "{app}\start-oneiro.cmd"; WorkingDir: "{app}"; Comment: "Start Oneiro on this computer"
 
+[UninstallRun]
+; Stops our container gracefully (SIGINT saves the graph); the volume and the image stay.
+Filename: "{cmd}"; Parameters: "/C docker stop --time 90 oneiro-graph >nul 2>&1 & docker rm oneiro-graph >nul 2>&1"; Flags: runhidden waituntilterminated; RunOnceId: "StopOneiroGraph"
+
 [Code]
 function DockerRunning(): Boolean;
 var
@@ -36,6 +42,21 @@ var
 begin
   Result := Exec(ExpandConstant('{cmd}'), '/C docker info > nul 2>&1', '', SW_HIDE,
     ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+begin
+  if CurStep = ssPostInstall then
+  begin
+    // The launcher also loads the image if this fails, so a failure here is not fatal.
+    if not Exec(ExpandConstant('{cmd}'),
+      '/C docker load -i "' + ExpandConstant('{app}\graph\oneiro-graph-0.2.0.tar') + '"',
+      '', SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
+      MsgBox('The memory image could not be loaded during setup. Oneiro will try again when it starts.',
+        mbInformation, MB_OK);
+  end;
 end;
 
 function InitializeSetup(): Boolean;

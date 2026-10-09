@@ -192,16 +192,22 @@ no-temporal order 0.58, no-provenance 0.00, context-only recall 0.12.
 - **Docker Desktop is required.** The memory graph (OSTIS) runs in Docker. The
   installer checks `docker info` before it changes anything. If Docker is not
   running, start Docker Desktop, wait until it reports running, and click Retry.
-  The installer does not start the OSTIS container; start the stack with its
-  compose file (`docker-compose.yml` in the program folder) before using chat.
-- **Start.** Open the `Oneiro` shortcut, or run `python\python.exe -m oneiro serve`
-  from the program folder. The page is at `http://127.0.0.1:9899`, loopback only.
+  Setup loads the bundled graph image (`oneiro-graph:0.2.0`, about 244 MB) into
+  Docker; it works offline.
+- **Start.** Open the `Oneiro` shortcut. It starts the graph container
+  `oneiro-graph` (loopback port 8090), waits until it is healthy, starts the web
+  app and opens the page. The first start on an empty volume builds the graph from
+  the ontology; on the test machine this took 56 seconds. Closing the window stops
+  the app and the graph; the graph saves on stop (SIGINT). The page is at
+  `http://127.0.0.1:9899` unless `ONEIRO_WEB_PORT` is set, loopback only.
+  The graph port can be changed with `ONEIRO_PORT`; a port clash is reported at start.
 - **Model key.** Put the provider key in `%USERPROFILE%\.config\keys.env` and
   choose the model in Settings. The key is never shown in the UI or in logs.
   `/api/status` reports `model.configured` and `model.verified`.
-- **Data.** Everything the owner writes lives in `%USERPROFILE%\.oneiro`
-  (settings, runtime locks). Uninstalling removes only the program folder and
-  the shortcut; that folder is kept on uninstall.
+- **Data.** The graph lives in the Docker volume `oneiro-graph-kb-v1`; settings
+  and runtime locks live in `%USERPROFILE%\.oneiro`. Uninstalling removes the
+  program folder, the shortcut, the uninstall entry and the `oneiro-graph`
+  container. It keeps the volume, the image and `%USERPROFILE%\.oneiro`.
 - **Errors.** `503 server_unreachable` means the graph did not answer: check
   that Docker Desktop and the OSTIS container are running, then reload. Curated
   memory refuses a write past 2000 characters and says so; nothing is saved then.
@@ -215,13 +221,22 @@ no-temporal order 0.58, no-provenance 0.00, context-only recall 0.12.
 - Stage 0: a live turn with the provider on a dead address returned 503, the
   owner's message was stored, and no reply record followed it (read through
   `/api/conversations/main/messages`). The provider address was restored.
-- Installer: built with Inno Setup 6.7.3 from `installer/build-payload.ps1` and
-  `installer/oneiro.iss`. Silent install into a temporary folder, `serve` started
-  with a sandboxed `USERPROFILE`, read-only HTTP checks passed (pages, static
-  assets with correct content types, `/api/status`, `/api/conversations`,
-  `/api/search`, `/api/memory/facts` against the live graph), silent uninstall
-  removed the program and the shortcut, and a marker written into `.oneiro`
-  survived the uninstall.
+- Installer (`OneiroSetup-0.2.0.exe`, 259 MB, Inno Setup 6.7.3, built from
+  `installer/build-payload.ps1` and `installer/oneiro.iss`). Sandbox run, silent
+  install into a temporary folder with a sandboxed `USERPROFILE`:
+  - install loaded the image in about 20 seconds;
+  - the launcher started `oneiro-graph` from an empty volume; the graph was healthy
+    after 56 seconds (`sc-builder` built the KB, sc-server answered on 8090);
+  - pages `/`, `/settings`, `/setup` and the API `/api/status`,
+    `/api/conversations`, `/api/search`, `/api/memory/facts` returned 200;
+  - a chat message without a model key returned 503 `the model is not configured`,
+    and the owner's message was stored and read back;
+  - stopping the app saved the graph (`Successfully shutdown`, exit 0);
+  - uninstall removed the container, the shortcut, the uninstall entry and the
+    program folder; the volume, the image and `.oneiro` survived.
+  Found and fixed in this run: `EXTENSIONS_PATH` must include the sc-machine
+  `lib/extensions` path (without it sc-server did not start, healthcheck refused).
+  Test volume and image tag were removed afterwards; the owner's stack was not touched.
 
 ### Not verified (open)
 
@@ -233,3 +248,7 @@ no-temporal order 0.58, no-provenance 0.00, context-only recall 0.12.
   graph through the code path tested in the suite, but this is not proven on
   the rebuilt graph.
 - The installer does not pin an embed hash for the Python archive yet.
+- Chat with a real model answer from the installed copy: needs the owner's key
+  and writes the owner's graph; not run.
+- The graph image is the owner's `oneiro-rewrite-machine:checkpoint` build, tagged
+  for the installer; it was not rebuilt from the current sources.

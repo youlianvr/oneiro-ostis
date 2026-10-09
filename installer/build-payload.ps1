@@ -1,14 +1,19 @@
 # Builds installer/payload: an embeddable Python with the pinned dependencies,
-# the Oneiro sources, the ontology, the compose file and the launcher.
+# the Oneiro sources, the ontology, the graph image and the launcher.
 # The output folder must not exist; remove an old payload yourself, with the
 # workspace trash tool, before rebuilding. Network access is needed for the
-# Python archive and pip.
+# Python archive and pip. The graph image must already exist locally (docker).
 $ErrorActionPreference = 'Stop'
 
 $Python = '3.14.3'
+$GraphImage = 'oneiro-rewrite-machine:checkpoint'
+$GraphTag = 'oneiro-graph:0.2.0'
 $Root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $Out = Join-Path $PSScriptRoot 'payload'
 if (Test-Path $Out) { throw "payload already exists at $Out; move it to trash first" }
+
+docker image inspect $GraphImage *> $null
+if ($LASTEXITCODE -ne 0) { throw "graph image $GraphImage is not present; build or load it first" }
 
 New-Item -ItemType Directory -Path $Out | Out-Null
 $Runtime = Join-Path $Out 'python'
@@ -44,10 +49,24 @@ Copy-Item -Path (Join-Path $Root 'python\oneiro') -Destination (Join-Path $App '
     -Exclude '__pycache__'
 Get-ChildItem -Path (Join-Path $App 'python\oneiro') -Recurse -Directory -Filter '__pycache__' |
     ForEach-Object { Remove-Item -Recurse -Force $_.FullName }
-New-Item -ItemType Directory -Path (Join-Path $App 'knowledge-base') | Out-Null
-Copy-Item -Path (Join-Path $Root 'knowledge-base\ontology') -Destination (Join-Path $App 'knowledge-base\ontology') -Recurse
-Copy-Item -Path (Join-Path $Root 'docker-compose.yml') -Destination $App
+
+# Only the files the graph container reads. kb.bin, logs and the vendor menu
+# are the owner's runtime state and never ship.
+$KbApp = Join-Path $App 'knowledge-base'
+New-Item -ItemType Directory -Path $KbApp | Out-Null
+Copy-Item -Path (Join-Path $Root 'knowledge-base\ontology') -Destination (Join-Path $KbApp 'ontology') -Recurse
+Copy-Item -Path (Join-Path $Root 'knowledge-base\repo.path') -Destination $KbApp
+Copy-Item -Path (Join-Path $Root 'knowledge-base\oneiro-ostis.ini') -Destination $KbApp
+
+# The image is saved under the name the launcher runs. The tag is only an alias.
+$GraphDir = Join-Path $Out 'graph'
+New-Item -ItemType Directory -Path $GraphDir | Out-Null
+docker tag $GraphImage $GraphTag
+if ($LASTEXITCODE -ne 0) { throw "docker tag failed with exit $LASTEXITCODE" }
+docker save -o (Join-Path $GraphDir 'oneiro-graph-0.2.0.tar') $GraphTag
+if ($LASTEXITCODE -ne 0) { throw "docker save failed with exit $LASTEXITCODE" }
 
 Copy-Item -Path (Join-Path $PSScriptRoot 'start-oneiro.cmd') -Destination $Out
+Copy-Item -Path (Join-Path $PSScriptRoot 'start-oneiro.ps1') -Destination $Out
 
 Write-Output "payload ready: $Out"
