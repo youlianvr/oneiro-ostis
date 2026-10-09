@@ -181,3 +181,55 @@ no-temporal order 0.58, no-provenance 0.00, context-only recall 0.12.
   neighbours: Dreamer-style "learning by dreaming" (which executes a learned
   model) and graph-memory agents (logs without replay optimization). No prior
   OSTIS + exact-replay self-improvement found; stated as bounded search.
+
+## 2026-10-09 — product slice: owner chat, memory, search, Windows installer
+
+### User guide (Windows)
+
+- **Install.** Run `installer\dist\OneiroSetup-0.2.0.exe`. It installs per user,
+  without administrator rights, to `%LOCALAPPDATA%\Programs\Oneiro`, and adds
+  a Start Menu shortcut `Oneiro`. Nothing starts with Windows.
+- **Docker Desktop is required.** The memory graph (OSTIS) runs in Docker. The
+  installer checks `docker info` before it changes anything. If Docker is not
+  running, start Docker Desktop, wait until it reports running, and click Retry.
+  The installer does not start the OSTIS container; start the stack with its
+  compose file (`docker-compose.yml` in the program folder) before using chat.
+- **Start.** Open the `Oneiro` shortcut, or run `python\python.exe -m oneiro serve`
+  from the program folder. The page is at `http://127.0.0.1:9899`, loopback only.
+- **Model key.** Put the provider key in `%USERPROFILE%\.config\keys.env` and
+  choose the model in Settings. The key is never shown in the UI or in logs.
+  `/api/status` reports `model.configured` and `model.verified`.
+- **Data.** Everything the owner writes lives in `%USERPROFILE%\.oneiro`
+  (settings, runtime locks). Uninstalling removes only the program folder and
+  the shortcut; that folder is kept on uninstall.
+- **Errors.** `503 server_unreachable` means the graph did not answer: check
+  that Docker Desktop and the OSTIS container are running, then reload. Curated
+  memory refuses a write past 2000 characters and says so; nothing is saved then.
+  Search always reports how many stored records it read and whether that was the
+  whole history.
+
+### What was verified
+
+- Tests: `pytest` 596 passed (includes curated memory, bounded model context,
+  conversations, search); `mypy` clean on `python/oneiro`.
+- Stage 0: a live turn with the provider on a dead address returned 503, the
+  owner's message was stored, and no reply record followed it (read through
+  `/api/conversations/main/messages`). The provider address was restored.
+- Installer: built with Inno Setup 6.7.3 from `installer/build-payload.ps1` and
+  `installer/oneiro.iss`. Silent install into a temporary folder, `serve` started
+  with a sandboxed `USERPROFILE`, read-only HTTP checks passed (pages, static
+  assets with correct content types, `/api/status`, `/api/conversations`,
+  `/api/search`, `/api/memory/facts` against the live graph), silent uninstall
+  removed the program and the shortcut, and a marker written into `.oneiro`
+  survived the uninstall.
+
+### Not verified (open)
+
+- A full chat round trip with a real model answer was not run from the
+  installed copy: it needs the owner's key and writes to the owner's graph.
+- The `curated_fact` class was added to the ontology; a live graph picks it up
+  only after a KB rebuild (`REBUILD_KB=1` or `scripts/reset_stack.sh --yes`),
+  which the owner has not authorized. Curated facts still work on the current
+  graph through the code path tested in the suite, but this is not proven on
+  the rebuilt graph.
+- The installer does not pin an embed hash for the Python archive yet.
