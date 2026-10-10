@@ -1556,6 +1556,72 @@ Package of record: `docs/MASTER-PLAN.md` § 5 W9 with full § 6 matrix (rows 1-2
 - **Acceptance matrix § 6:** 100% of rows (1 through 20) fully verified with evidence recorded in `MASTER-PLAN.md`.
 - **Zero leaks:** verified that owner live settings, keys, and graph stores were never mutated or deleted.
 
+**Addendum 2026-10-11 — the acceptance report, and the two repairs it found**
+
+Writing the W9 package's own run notes out as `docs/ACCEPTANCE-REPORT.md` (artifact hashes,
+live-check exit statuses, and a named list of what was *not* verified) turned out to be the check
+that the wording above never was. Measured again on 2026-10-11:
+
+- `python -m mypy python/oneiro` -> Success, 33 source files, 0 errors (exit 0).
+- `python -m pytest -q` -> **563 passed, 0 failed**, 2 warnings (three runs on this revision:
+  93.6s, 88.4s, 84.1s; exit 0). The line above
+  reads "35/35 test suites": 35 is the number of `tests/test_*.py` files, while the measured test
+  count is 563. The report uses the measured numbers.
+- Live checks `live_w1..w8` re-run as plain commands: every one exit 0. `tests/live_w9_shots.py`
+  (new in this pass) writes 22 acceptance frames and exits 0.
+
+Two defects were found in this pass and repaired; neither was visible from the notes above.
+
+1. **`tests/live_w3_check.py` could not run at all.** Its parity block still did
+   `import skills_index`, a module W9 retired, so it died with `ModuleNotFoundError` and § 6 row
+   7's named evidence produced no evidence. It now compares the catalogs that still exist — the
+   compact asset that ships against the reviewed catalog the builder wrote it from (319 records
+   each, 6 queries, 0 ranking mismatches) — and fails on a mismatch instead of passing quietly.
+2. **`tests/test_skills.py` had a test whose name no longer matched its body.**
+   `test_the_migrated_module_ranks_the_real_catalog_identically` had been reduced to "results are
+   non-empty and scored above zero" while keeping its parity name. It is now
+   `test_the_shipped_asset_ranks_the_reviewed_catalog_identically` and compares (name, score)
+   top-5 across 23 queries.
+
+The retired-module parity W3 recorded ("`oneiro.skills` and `skills_index.py` rank the same 319
+addressable contracts identically") cannot be re-run now that the reference module is gone; the
+report counts it as history, not as fresh evidence. Unverified items are named in the report's
+§ 6 rather than implied away.
+
+## 2026-10-11 — Remaining plan after v1
+
+v1 is closed (`docs/ACCEPTANCE-REPORT.md`). The boundaries the owner set for it stand; what falls
+outside them is named here so the next package starts from the record instead of from memory.
+The order is a proposal, not a decision: each line waits for the owner's confirmation before it
+becomes a package of record in `docs/MASTER-PLAN.md`.
+
+1. **A real graph.** The highest-value gap: everything graph-backed is proven against the fake
+   and in-memory link graphs (`docs/ACCEPTANCE-REPORT.md` § 6). Standing up `sc-server`, running
+   the graph worker against it and re-running the graph-shaped live checks closes the largest
+   honest hole in v1's evidence.
+2. **A real model, with the owner's key.** The live checks drive a stub provider on loopback. One
+   package running the same turns against a real endpoint — streaming, tool-schema adherence,
+   refusal and fallback paths — would prove what the shipped defaults do and measure provider
+   latency instead of asserting it.
+3. **The full PowerShell payload.** `installer/build-payload.ps1` (embeddable Python 3.14.3, the
+   `docker save`d graph image, pip inside the payload) has never been executed end to end here:
+   it needs network and the built `oneiro-rewrite-machine:checkpoint` image. Running it, and then
+   installing through `installer/oneiro.iss` on a clean Windows account, is what turns "the
+   payload builder" into "the installer".
+4. **Telegram.** Declared out of v1, and the retired `telegram_entry.py` stays retired. A package
+   would first need the owner's decision on a bot token and account, plus the read-only rule that
+   already applies to the existing user session.
+5. **The scientific core.** `world/`, `strategy.py`, `dream.py`, `replay/`, `metrics/` went with
+   the prototype and are not coming back as they were (`docs/DECISIONS-v1.md`). Reintroducing any
+   of it is a product decision, not a repair.
+6. **LAN, OS autostart, voice/audio/video.** All out of v1 and untouched. The settings registry
+   already carries the flags such work needs, so a later package does not have to invent key
+   names.
+7. **Workspace hygiene.** `harness/` is a development-only tree that still names retired modules
+   behind a guarded import, and `python/config.py` is a compatibility shim kept for
+   `bench/memory/run.py`. Deciding their fate — adapt to `oneiro.skills` / `oneiro.mcp`, or retire
+   them with the benchmark — is a small follow-up package, not a v1 blocker.
+
 
 
 

@@ -17,7 +17,9 @@ actually exposes:
 * the **turn**: a stub model asks for `find_skills`, reads the candidate it was given
   with `read_skill`, and answers with a line it can only have from the contract — with
   the calls, their effect and their outcome recorded in the memory;
-* **parity** with the module the ranking came from, over the reviewed workspace catalog;
+* **parity** between the compact catalog that ships inside the package and the reviewed
+  workspace catalog the builder wrote it from: the same queries must rank identically,
+  so the compaction is shown to have cost nothing in ranking;
 * and a comparison of the owner's own files before and after, because a live check that
   quietly writes to the owner's settings is worse than no check.
 
@@ -372,19 +374,25 @@ def main() -> int:
     say(f"  the reply quotes the contract: {MARKER in turn['reply']['text']}")
     say()
 
-    say("== parity with the module the ranking came from, over the reviewed catalog ==")
+    say("== the compact asset ranks what the reviewed catalog ranks ==")
     if WORKSPACE_CATALOG.is_file():
-        import skills_index                                           # noqa: E402
-        old = skills_index.load()
-        new = skills_module.load(catalog_path=skills_module.ASSET, roots=[], cached=False)
+        shipped = skills_module.load(catalog_path=skills_module.ASSET, roots=[], cached=False)
+        reviewed = skills_module.load(catalog_path=WORKSPACE_CATALOG, roots=[], cached=False)
         queries = ["take a screenshot of a page", "send a message to telegram",
                    "write release notes", "audit accessibility with wcag",
                    "review a pull request", "to be or not"]
         mismatches = [query for query in queries
-                      if [(hit.name, hit.score) for hit in new.search(query, 5)]
-                      != [(hit.name, hit.score) for hit in old.search(query, 5)]]
-        say(f"  {old.size} contracts addressable in both; {len(queries)} queries, "
-            f"{len(mismatches)} mismatch(es)")
+                      if [(hit.name, hit.score) for hit in shipped.search(query, 5)]
+                      != [(hit.name, hit.score) for hit in reviewed.search(query, 5)]]
+        say(f"  {shipped.size} contracts from the shipped asset ({skills_module.ASSET.stat().st_size} B), "
+            f"{reviewed.size} from the reviewed catalog ({WORKSPACE_CATALOG.stat().st_size} B); "
+            f"{len(queries)} queries, {len(mismatches)} mismatch(es)")
+        if mismatches:
+            say(f"  the compact asset lost ranking for: {mismatches}")
+            server.should_exit = True
+            provider.shutdown()
+            stub.store.close()
+            return 1
     else:
         say(f"  no reviewed catalog at {WORKSPACE_CATALOG}: parity not checked here "
             f"(tests/test_skills.py checks it where the file exists)")

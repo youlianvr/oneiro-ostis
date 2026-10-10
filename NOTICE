@@ -1,0 +1,81 @@
+Oneiro
+Copyright (c) 2026 Niko
+Distributed under the MIT License — see LICENSE.
+
+This product includes material from the sources named below. Each keeps its own
+terms, and the terms of the MIT License above do not replace them.
+
+--------------------------------------------------------------------------------
+CowAgent 2.1.9 — MIT License
+--------------------------------------------------------------------------------
+Source: https://github.com/zhayujie/CowAgent  (working copy kept as the archive
+        console/vendor/cowagent-2.1.9.zip, 4,394,330 bytes,
+        sha256 cc92ae3e8dbffdc52154e3b5199e44543a20eca10220edcaf0d38c5fac534f73)
+
+Used as the design and behaviour source for the product's console: conversation
+rendering, the composer, the handling of states and the styling techniques.
+The shell, the navigation and every panel were rewritten against Oneiro's own
+API; no CowAgent source file is shipped in the installer payload.
+
+--------------------------------------------------------------------------------
+ostis-example-app scaffold — MIT License
+--------------------------------------------------------------------------------
+The build skeleton copied into this repository when the project started: the
+CMake/CMakePresets files, docker-compose service definitions, repo.path, the
+interface/ directory and the problem-solver/cxx agent templates.
+
+--------------------------------------------------------------------------------
+sc-machine and py-sc-client — MIT License
+--------------------------------------------------------------------------------
+Runtime dependencies of the memory substrate. Declared in pyproject.toml and
+requirements.txt.
+
+--------------------------------------------------------------------------------
+Design-systems library — local working library, provenance recorded
+--------------------------------------------------------------------------------
+Source: tools/ux-ui-agent-skills/design-systems/library/ (138 systems, each with
+        a DESIGN.md), used locally and not redistributed.
+
+Provenance: the v1 theme names paper, editorial, cosmic and agentic match systems
+in that library; night (dark warm) does not exist there and is derived from
+warm-editorial plus a dark neutral base, as stated in docs/DESIGN.md. The product
+ships its own token values, not the library files.
+
+--------------------------------------------------------------------------------
+OpenCode — MIT License — format provenance only
+--------------------------------------------------------------------------------
+Source: the owner's live ~/.config/opencode/opencode.json and
+        projects/AGGG-4.0/opencode.json, both read read-only; and
+        tools/upstream/opencode-gaslight/, read as a reference.
+
+Used for the on-disk shape of the MCP server list (mcp.<name> with
+type: local|remote, command/url, enabled, environment) and for reference on agent
+loop and TUI techniques. No OpenCode code was copied verbatim: the reader, the
+writer and the errors in Oneiro are its own, and it never writes into another
+client's configuration. No licence obligation arises; recorded here as format
+provenance.
+
+--------------------------------------------------------------------------------
+Hermes — conventions only
+--------------------------------------------------------------------------------
+Source: the owner's ~/.config/hermes/config.yaml and cron directory, outside this
+        repository and read only for the conventions named in docs/DECISIONS-v1.md § 1.2.
+
+Taken: the settings vocabulary (base_url, key_env, discover_models, models), the
+idea of fallback_providers and agent.max_turns, and the cron-like job record as
+the model for oneiro/schedule.py. Hermes runtime state is neither read nor
+written by the product, and no Hermes code was copied verbatim. No licence
+obligation arises; recorded here as convention provenance.
+
+--------------------------------------------------------------------------------
+Skills catalog
+--------------------------------------------------------------------------------
+The compact catalog shipped as python/oneiro/assets/skills-catalog.json is derived
+from this workspace's own reviewed catalog, knowledge/wiki/skills-catalog.json; the
+source path and its sha256 are recorded inside the shipped asset.
+
+--------------------------------------------------------------------------------
+Deliberately not included
+--------------------------------------------------------------------------------
+knowledge-base/ims.ostis.kb carries no upstream licence, so it stays untracked in
+this repository and is never part of the installer payload.

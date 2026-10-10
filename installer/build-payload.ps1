@@ -66,8 +66,14 @@ if ($LASTEXITCODE -ne 0) { throw "docker tag failed with exit $LASTEXITCODE" }
 docker save -o (Join-Path $GraphDir 'oneiro-graph-0.2.0.tar') $GraphTag
 if ($LASTEXITCODE -ne 0) { throw "docker save failed with exit $LASTEXITCODE" }
 
-# The MIT grant travels with every copy of the sources it covers.
-Copy-Item -Path (Join-Path $Root 'LICENSE') -Destination $Out
+# The MIT grant and the attribution notice travel with every copy of the
+# sources they cover: docs/DECISIONS-v1.md 1.6 requires the payload to carry
+# NOTICE. A missing file is an error, not a warning.
+foreach ($document in 'LICENSE', 'NOTICE') {
+    $source = Join-Path $Root $document
+    if (-not (Test-Path $source)) { throw "$document is required in the payload but is missing at $source" }
+    Copy-Item -Path $source -Destination $Out
+}
 
 Copy-Item -Path (Join-Path $PSScriptRoot 'start-oneiro.cmd') -Destination $Out
 Copy-Item -Path (Join-Path $PSScriptRoot 'start-oneiro.ps1') -Destination $Out

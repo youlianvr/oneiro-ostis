@@ -100,12 +100,18 @@ loop and TUI techniques (MIT). Used as reading, not as a dependency.
   dark neutral base — stated in `docs/DESIGN.md` rather than pretended to be a library
   system.
 
-### 1.6 NOTICE obligations, to be discharged in W8
+### 1.6 NOTICE obligations — discharged in W9 (declared as a W8 deliverable)
 
 The installer payload carries a `NOTICE` naming: CowAgent 2.1.9 (MIT, console overlay and
 its archive), the design-systems library (local, provenance recorded), and any Hermes or
 OpenCode code copied verbatim rather than reimplemented. Until a package copies code
 rather than behaviour, no new obligation arises.
+
+**Status 2026-10-10:** `NOTICE` exists at the project root and both payload builders copy
+it beside `LICENSE`; `tests/test_installer_payload.py` fails if it is missing from the
+payload or from the payload manifest. The archive hash it names is the shipped
+`console/vendor/cowagent-2.1.9.zip` (4,394,330 bytes). No Hermes or OpenCode code was
+copied verbatim, so those entries record format provenance only.
 
 ## 2. Decisions inside v1 that are not the owner's (recorded so they can be overruled)
 

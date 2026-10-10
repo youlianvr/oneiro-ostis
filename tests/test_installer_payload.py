@@ -26,6 +26,41 @@ def test_build_payload_creates_manifest_and_required_files(tmp_path):
     assert len(manifest) > 20
 
 
+def test_the_payload_carries_the_licence_and_the_notice(tmp_path):
+    """docs/DECISIONS-v1.md 1.6: the installer payload carries NOTICE.
+
+    An installed copy that names nobody is a licence problem that no test would
+    otherwise catch, so the payload, its manifest and both builders are pinned
+    here: a dropped copy fails instead of shipping quietly.
+    """
+    project = Path(__file__).resolve().parents[1]
+    res = build_payload(tmp_path / "payload")
+
+    for document in ("NOTICE", "LICENSE"):
+        assert (project / document).is_file(), f"{document} is missing from the project root"
+        assert (res / document).is_file(), f"{document} did not reach the payload"
+
+    manifest = json.loads((res / "manifest.json").read_text(encoding="utf-8"))
+    for document in ("NOTICE", "LICENSE"):
+        assert document in manifest, f"{document} is not in the payload manifest"
+        on_disk = res / document
+        assert manifest[document] == __import__("hashlib").sha256(on_disk.read_bytes()).hexdigest()
+
+    # The real payload builder (powershell) must copy the same two files, and the
+    # Inno Setup script must ship the payload root, or the attribution never
+    # reaches the installed program.
+    ps1 = (project / "installer" / "build-payload.ps1").read_text(encoding="utf-8")
+    assert "NOTICE" in ps1, "build-payload.ps1 does not copy NOTICE into the payload"
+    iss = (project / "installer" / "oneiro.iss").read_text(encoding="utf-8")
+    assert 'Source: "payload\\*"' in iss, "oneiro.iss does not ship the payload root"
+
+    # The notice must actually name the sources the borrowing audit recorded.
+    notice = (project / "NOTICE").read_text(encoding="utf-8")
+    for source in ("CowAgent 2.1.9", "ostis-example-app", "Design-systems library",
+                   "OpenCode", "Hermes", "ims.ostis.kb"):
+        assert source in notice, f"NOTICE does not name {source}"
+
+
 def test_inno_setup_script_respects_data_safety_rules():
     iss_file = Path(__file__).resolve().parents[1] / "installer" / "oneiro.iss"
     content = iss_file.read_text(encoding="utf-8")

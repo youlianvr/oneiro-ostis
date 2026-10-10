@@ -53,7 +53,18 @@ def build_payload(destination: Path | None = None) -> Path:
         if src.exists():
             shutil.copy2(src, out / launcher)
 
-    # 3. Create launcher batch command for terminal usage
+    # 3. Ship the licence and the attribution notice beside the program.
+    # docs/DECISIONS-v1.md 1.6 and docs/MASTER-PLAN.md 1.12 require the payload to
+    # carry NOTICE, so a copy of the installed program states where its material came
+    # from. A missing file is an error, not a warning: an installer without the
+    # attribution would be a silent licence problem.
+    for document in ("NOTICE", "LICENSE"):
+        src = ROOT / document
+        if not src.is_file():
+            raise FileNotFoundError(f"{document} is required in the payload but is missing at {src}")
+        shutil.copy2(src, out / document)
+
+    # 4. Create launcher batch command for terminal usage
     cmd_file = out / "oneiro.cmd"
     cmd_file.write_text(
         "@echo off\r\n"
@@ -61,7 +72,7 @@ def build_payload(destination: Path | None = None) -> Path:
         encoding="ascii",
     )
 
-    # 4. Generate deterministic manifest
+    # 5. Generate deterministic manifest
     manifest = generate_sha256_manifest(out)
     manifest_file = out / "manifest.json"
     manifest_file.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")

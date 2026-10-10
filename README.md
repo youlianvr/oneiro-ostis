@@ -136,6 +136,9 @@ documented in `docs/GOAL-LIVE-SWARM.md`.
 - `docs/PLAN.md` — historical implementation plan (superseded by
   `docs/MASTER-PLAN.md`).
 - `docs/PROGRESS.md` — per-stage execution log.
+- `docs/ACCEPTANCE-REPORT.md` — the v1 acceptance bundle: artifact hashes, live-check exit
+  statuses, and the list of what was not verified; the pictures it cites are in
+  `docs/shots/oneiro-v1/`.
 - `docs/GOAL-LIVE-SWARM.md` — the live-swarm goal, its run log and evidence.
 - `docs/ARCHITECTURE-HYBRID.md` — where Oneiro, Hermes and OpenClaw meet.
 - `docs/PLAN-V2.md` — historical: the `v2` branch's original intent. The product
@@ -153,8 +156,12 @@ documented in `docs/GOAL-LIVE-SWARM.md`.
   `bench/memory/` with its measured numbers in `docs/PROJECT-CONTEXT.md` § 4.5;
   harness series in `docs/harness.md` (candidates judged by replay, winners
   measured online).
-- Organization layer runs live: three roles on real models, restart-aware
-  loop, isolated worktrees, unmerged PR packets, dashboard feed.
+- The v1 product is one package, `python/oneiro/`: agent loop, MCP hub, skills, memory,
+  research, schedules and the console, plus the installer. The office layer that used to run
+  here — three roles on live models, worktrees and unmerged PR packets — was retired with the
+  modules that carried it; its place is taken by tasks and schedules the owner sets.
+- Acceptance for v1 is `docs/MASTER-PLAN.md` § 6, evidenced row by row in
+  `docs/ACCEPTANCE-REPORT.md`; `docs/PROGRESS.md` closes with what is left after v1.
 
 ## License
 
@@ -164,8 +171,8 @@ MIT © 2026 Niko — the full grant is in [LICENSE](LICENSE), and the
 expression.
 
 Third-party material keeps its own terms regardless of this choice: CowAgent
-2.1.9 and the OSTIS example-app scaffold are MIT (attribution is a NOTICE
-obligation recorded in `docs/DECISIONS-v1.md` § 1.6 and shipped with the
-installer in W8), sc-machine and py-sc-client are MIT dependencies.
+2.1.9, the OSTIS example-app scaffold, sc-machine and py-sc-client are MIT.
+The attribution obligation of `docs/DECISIONS-v1.md` § 1.6 is discharged by
+[NOTICE](NOTICE), which the installer payload carries beside `LICENSE`.
 `knowledge-base/ims.ostis.kb` has no upstream license at all, so it stays
 untracked in this repository and out of the installer payload.

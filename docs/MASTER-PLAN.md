@@ -56,9 +56,12 @@ Acceptance is § 6, every row with its evidence. No evidence, no row.
 12. **License: MIT** (owner decision, 2026-10-09), granted by `LICENSE` at the
     repository root with copyright 2026 Niko; `pyproject.toml` and the README carry
     the same SPDX expression, matching the per-file MIT headers in `problem-solver/`.
-    This choice does not absorb third-party terms: NOTICE for CowAgent 2.1.9 and the
-    MIT example-app scaffold remains a W8 deliverable, and `ims.ostis.kb` — no
-    upstream license — stays untracked and outside the installer payload.
+    This choice does not absorb third-party terms: `NOTICE` names CowAgent 2.1.9, the
+    MIT example-app scaffold, the design-systems library, the OpenCode and Hermes format
+    provenance, and the MIT graph dependencies; the installer payload carries it beside
+    `LICENSE`, and a payload build fails without it (obligation discharged in W9, pinned
+    by `tests/test_installer_payload.py`). `ims.ostis.kb` — no upstream license — stays
+    untracked and outside the installer payload.
 
 ## 2. Standards and borrowing (verified on disk 2026-10-09)
 
@@ -289,17 +292,22 @@ Removal (after the migrated tests are green against the new modules): `native/*`
 `approval.py`, `question_tool.py`, the served copy of the overlay. Then the full § 6 matrix,
 a live demonstration, a report with hashes.
 **Evidence:** 32 legacy files safely retired via recycle bin (`_scripts/trash.sh`); zero
-runtime imports of retired modules from `python/oneiro/`; full test suite clean (35/35 passing,
-`mypy` 0 errors on 33 source files); 100% acceptance matrix verified and evidenced.
+runtime imports of retired modules from `python/oneiro/`; full suite clean — 563 tests in 35
+files passing, `mypy` 0 errors on 33 source files; the 20-row matrix below with its live checks,
+22 acceptance frames in `docs/shots/oneiro-v1/` and the artifact hashes in
+[ACCEPTANCE-REPORT.md](ACCEPTANCE-REPORT.md). Two defects the report uncovered were repaired
+before it was written: `live_w3_check.py` still imported the retired `skills_index` module (did
+not run at all; § 6 row 7's named evidence was empty) and `test_skills.py`'s parity test had lost
+its comparison while keeping its name. Both now measure what they claim.
 
 ## 6. Acceptance matrix
 
 | # | Check | Evidence | Status |
 | --- | --- | --- | --- |
-| 1 | Install outside the working folder | installer log, isolated out-of-tree payload staging (`scripts/build_installer_payload.py`), doctor execution | Verified (W8, `live_w8_check.py`) |
-| 2 | Application window and shortcut | PyWebView / WebView2 launcher (`oneiro/window.py`), Start Menu / Desktop shortcut in `oneiro.iss` | Verified (W6, W8, `test_console_screens.py`) |
+| 1 | Install outside the working folder | installer log, isolated out-of-tree payload staging (`scripts/build_installer_payload.py`), doctor execution; **shots:** the console served from the installed copy with `oneiro` resolving inside it ([ru](shots/oneiro-v1/installed-conversation-ru.png), [en](shots/oneiro-v1/installed-conversation-en.png)) — installing itself has no screen, that half is the payload manifest and the W8 log | Verified (W8, `live_w8_check.py`, `live_w9_shots.py`) |
+| 2 | Application window and shortcut | PyWebView / WebView2 launcher (`oneiro/window.py`), Start Menu / Desktop shortcut in `oneiro.iss`; **shots:** the screen the window carries, both languages ([ru](shots/oneiro-v1/ru-conversation.png), [en](shots/oneiro-v1/en-conversation.png)) — the launcher was verified in headless mode, a real desktop window was not opened | Verified (W6, W8, `test_console_screens.py`) |
 | 3 | Live conversation with tools | turn record: message, call, result, reply, provenance (`test_agent_loop.py`, `test_chat_slice.py`) | Verified (W4, W5, `live_w4_check.py`) |
-| 4 | Every refusal/approval explained | action and approval cards in feed, plain reasons without em-dashes (`test_approvals.py`, `test_agent_loop.py`) | Verified (W1, W6, `live_w6_check.py`) |
+| 4 | Every refusal/approval explained | action and approval cards in feed, plain reasons without em-dashes (`test_approvals.py`, `test_agent_loop.py`); **shot:** the feed that carries them, at rest ([ru](shots/oneiro-v1/ru-conversation.png), [en](shots/oneiro-v1/en-conversation.png)) — the frames show the feed, the card text is asserted by the live check | Verified (W1, W6, `live_w6_check.py`) |
 | 5 | An approval triggers exactly one call | end-to-end test "approve → ran → repeat asks again" (`test_approvals.py::test_the_owner_grants_one_exact_call`) | Verified (W1, `test_approvals.py`) |
 | 6 | A real MCP server | stdio & HTTP JSON-RPC transports, tools as `server.tool`, broken servers named (`test_mcp.py`, `live_w2_check.py`) | Verified (W2, `live_w2_check.py`) |
 | 7 | A skill found and applied | deterministic catalog ranking, contract inspection, tools `find_skills`/`read_skill` (`test_skills.py`, `live_w3_check.py`) | Verified (W3, `live_w3_check.py`) |
@@ -309,13 +317,18 @@ runtime imports of retired modules from `python/oneiro/`; full test suite clean 
 | 11 | An unknown outcome is not repeated | UNCERTAIN state, no blind retry, owner decision required (`test_domain_records.py`, `test_tasks.py`) | Verified (W1, `test_tasks.py`) |
 | 12 | Research with sources | web search with provenance, HTML extraction, sources cited in records (`test_research.py`, `live_w5_check.py`) | Verified (W5, `live_w5_check.py`) |
 | 13 | Attachment (text/image/PDF) | attachment intake, byte & page bounds, attachment-only turns (`test_attachments.py`, `live_w5_check.py`) | Verified (W5, `live_w5_check.py`) |
-| 14 | RU/EN and five themes | 2 languages x 5 themes, WCAG 2.2 AA contrast >= 4.5:1, restart persistence (`test_i18n_themes.py`, `live_w7_check.py`) | Verified (W7, `live_w7_check.py`) |
-| 15 | No JSON on screen | 5 canonical screens render HTML cards, zero raw JSON (`test_console_screens.py`, `live_w6_check.py`) | Verified (W6, `live_w6_check.py`) |
+| 14 | RU/EN and five themes | 2 languages x 5 themes, WCAG 2.2 AA contrast >= 4.5:1, restart persistence (`test_i18n_themes.py`, `live_w7_check.py`); **shots:** [docs/shots/oneiro-v1](shots/oneiro-v1/) — 10 language frames and 10 theme frames, `lang` and `data-theme` asserted before each shutter | Verified (W7, `live_w7_check.py`, `live_w9_shots.py`) |
+| 15 | No JSON on screen | 5 canonical screens render HTML cards, zero raw JSON (`test_console_screens.py`, `live_w6_check.py`); **shots:** all five screens in both languages ([tasks](shots/oneiro-v1/ru-tasks.png), [tools](shots/oneiro-v1/ru-tools.png), [settings](shots/oneiro-v1/ru-settings.png), [memory](shots/oneiro-v1/ru-memory.png), [en tasks](shots/oneiro-v1/en-tasks.png)) | Verified (W6, `live_w6_check.py`, `live_w9_shots.py`) |
 | 16 | Accessibility | contrast ratio >= 4.5:1 in all 5 themes, focus visible, reduced motion (`test_console_tokens.py`, `test_i18n_themes.py`) | Verified (W6, W7) |
 | 17 | Settings control behaviour | key changes behaviour and value visible in UI, honesty pass (`test_settings_honesty.py`, `test_settings_catalog.py`) | Verified (W0, W1, W7) |
 | 18 | No legacy in the work | legacy modules retired, zero imports from old modules, modern suite clean (`python -m pytest`, `mypy`) | Verified (W9, 35/35 passing) |
 | 19 | Upgrade preserves data | upgrade simulation preserves 100% settings and graph records (`test_installer_payload.py`, `live_w8_check.py`) | Verified (W8, `live_w8_check.py`) |
 | 20 | No false claims | `/api/status` and `doctor` report only verified integrations, 503 on unready services | Verified (W0, W8, `installed_smoke.py`) |
+
+The per-row evidence above is bundled with artifact hashes, live-check exit statuses and a
+named list of what was **not** verified in [ACCEPTANCE-REPORT.md](ACCEPTANCE-REPORT.md). A row
+with no evidence is not a row: where a claim could only be made by hand, the report says so
+instead of asserting it.
 
 ## 7. Checks and resource discipline
 

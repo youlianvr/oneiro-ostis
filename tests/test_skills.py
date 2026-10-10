@@ -150,15 +150,19 @@ def test_a_long_contract_is_cut_with_an_honest_note(catalog: skills.Catalog):
     assert len(long_text) < 1000
 
 
-def test_the_migrated_module_ranks_the_real_catalog_identically(tmp_path: Path):
-    """§ 6 row 7's parity half, verified against the reviewed catalog.
+def test_the_shipped_asset_ranks_the_reviewed_catalog_identically():
+    """§ 6 row 7's parity half, now that the reference module is retired.
 
-    The ranking is verified against the reviewed catalog:
-    it must produce deterministic ranking, scores, and names for the queries.
+    W3 proved the migration by ranking the reviewed workspace catalog with the old
+    `skills_index` module and with `oneiro.skills` and comparing the two. W9 retired
+    that module, so the comparison that survives — and is stronger for the shipped
+    artifact — is between the **compact asset inside the package** and the **reviewed
+    catalog the builder wrote it from**: the compaction must cost no ranking at all.
     """
     source = _real_catalog()
-    new = skills.load(catalog_path=source, roots=[], cached=False)
-    assert new.size > 0, "the catalog must have addressable records"
+    shipped = skills.load(catalog_path=skills.ASSET, roots=[], cached=False)
+    reviewed = skills.load(catalog_path=source, roots=[], cached=False)
+    assert shipped.size == reviewed.size > 0, "the asset must carry every reviewed record"
 
     queries = [
         "take a screenshot of a page", "browse the web and click through it",
@@ -171,9 +175,12 @@ def test_the_migrated_module_ranks_the_real_catalog_identically(tmp_path: Path):
         "to be or not", "invoice a customer", "set up a database migration",
     ]
     for query in queries:
-        results = new.search(query, 5)
-        assert len(results) > 0, f"Query '{query}' must yield matches"
-        assert all(hit.score > 0 for hit in results), f"All hits for '{query}' must have positive score"
+        from_shipped = [(hit.name, hit.score) for hit in shipped.search(query, 5)]
+        from_reviewed = [(hit.name, hit.score) for hit in reviewed.search(query, 5)]
+        assert from_shipped == from_reviewed, f"'{query}' ranks differently in the asset"
+        assert len(from_reviewed) > 0, f"Query '{query}' must yield matches"
+        assert all(score > 0 for _, score in from_reviewed), \
+            f"All hits for '{query}' must have positive score"
 
 
 # ---------- the shipped catalog and the folders ----------
