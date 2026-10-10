@@ -11,7 +11,8 @@ import pytest
 
 import sys
 
-from config import describe, path, reset, resolve, save, settings, value
+from config import (SettingsRejected, describe, path, reset, resolve, save, settings,
+                    value)
 
 # The module that defines these functions, whichever spelling imported them.
 # Patching the project .env path must hit the module that reads it.
@@ -134,6 +135,23 @@ def test_a_corrupt_file_is_reported_and_not_fatal(isolated_settings):
     isolated_settings.write_text("{not json", encoding="utf-8")
     assert value("graph.port") == 8090            # the default still answers
     assert describe()["error"]                    # and the reason is on record
+
+
+def test_a_refused_write_names_the_settings_and_never_the_values(isolated_settings):
+    """The page has to explain a refusal, and must not leak what was typed."""
+    with pytest.raises(SettingsRejected) as caught:
+        save({"graph.port": "not-a-port", "models.providers": '[{"name": "x"}]',
+              "llm.api_key": "sk-should-never-be-quoted" * 100})
+
+    reasons = caught.value.reasons
+    assert len(reasons) == 2, reasons          # the key is legal, so it is not a reason
+    assert any(reason.startswith("graph.port:") for reason in reasons), reasons
+    assert any(reason.startswith("models.providers:") for reason in reasons), reasons
+    joined = " ".join(reasons)
+    assert "not-a-port" not in joined
+    assert "sk-should-never-be-quoted" not in joined
+    # Nothing was written: the refusal happens before the file is touched.
+    assert not isolated_settings.exists()
 
 
 def test_the_description_carries_the_layer_that_answered(monkeypatch):

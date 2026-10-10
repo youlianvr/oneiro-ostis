@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "oneiro-ostis"
 version = "0.2.0.dev1"
 description = "Persistent OSTIS assistant — standalone rewrite foundation"
+license = "MIT"
 requires-python = ">=3.11,<3.15"
 dependencies = ["fastapi==0.141.1", "uvicorn==0.41.0"]
 
@@ -26,7 +27,9 @@ where = ["python"]
 include = ["oneiro", "oneiro.*"]
 
 [tool.setuptools.package-data]
-oneiro = ["static/*"]
+# The console's own files, and the compact skill catalog: `oneiro.skills` reads it, so a
+# wheel without `assets/` would ship a product whose catalog is not there.
+oneiro = ["static/*", "assets/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

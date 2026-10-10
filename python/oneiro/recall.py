@@ -80,10 +80,14 @@ class FactSet:
     used_chars: int
     complete: bool
     skipped: int
+    #: The budget this set was read under. It comes from the owner's declared
+    #: `memory.facts_budget`; the constant is only the default for callers that
+    #: have no settings to read.
+    limit_chars: int = CURATED_CHARS
 
     def to_dict(self) -> dict[str, Any]:
         return {"facts": self.facts, "used_chars": self.used_chars,
-                "limit_chars": CURATED_CHARS, "complete": self.complete,
+                "limit_chars": self.limit_chars, "complete": self.complete,
                 "skipped": self.skipped}
 
 
@@ -91,7 +95,7 @@ def _is_fact(row: dict[str, Any]) -> bool:
     return row.get("kind") == FACT_KIND
 
 
-async def current_facts(source: PageSource) -> FactSet:
+async def current_facts(source: PageSource, *, limit_chars: int = CURATED_CHARS) -> FactSet:
     """Facts in force: the newest revision of each id, removed ones excluded."""
     found = await scan(source, _is_fact)
     seen: set[str] = set()
@@ -108,21 +112,27 @@ async def current_facts(source: PageSource) -> FactSet:
                           "updated_at": row["updated_at"]})
     facts.reverse()                   # oldest first, so the list reads as it was written
     used = sum(len(fact["text"]) for fact in facts)
-    return FactSet(facts, used, found.complete, found.skipped)
+    return FactSet(facts, used, found.complete, found.skipped, limit_chars)
 
 
-async def latest_fact(source: PageSource, fact_id: str) -> dict[str, Any] | None:
-    """The current revision of one fact, whatever its state. None if never written.
+async def latest(source: PageSource, kind: str, record_id: str) -> dict[str, Any] | None:
+    """The newest stored revision of one record, or None if it was never written.
 
     Raises `ValueError` when an unreadable record sits above the answer, because
     then the current revision is unknown and must not be acted on.
     """
-    found = await scan(source, lambda row: _is_fact(row) and row["id"] == fact_id, want=1)
+    found = await scan(source, lambda row: row.get("kind") == kind and row["id"] == record_id,
+                       want=1)
     if found.skipped:
         raise ValueError("a newer stored revision could not be read")
     if not found.rows:
         return None
     return found.rows[0]
+
+
+async def latest_fact(source: PageSource, fact_id: str) -> dict[str, Any] | None:
+    """The current revision of one fact, whatever its state. None if never written."""
+    return await latest(source, FACT_KIND, fact_id)
 
 
 def fact_text_error(text: object) -> str | None:
@@ -133,10 +143,15 @@ def fact_text_error(text: object) -> str | None:
     return None
 
 
-def budget_error(used: int, replacing: int, text: str) -> str | None:
-    """Refuse a write that would push the curated set past its limit."""
-    if used - replacing + len(text.strip()) > CURATED_CHARS:
-        return (f"curated memory is limited to {CURATED_CHARS} characters; "
+def budget_error(used: int, replacing: int, text: str,
+                 limit: int = CURATED_CHARS) -> str | None:
+    """Refuse a write that would push the curated set past its declared budget.
+
+    `limit` is the owner's `memory.facts_budget`, passed in by the caller that can
+    read the settings, so the sentence in the refusal names the limit in force.
+    """
+    if used - replacing + len(text.strip()) > limit:
+        return (f"curated memory is limited to {limit} characters; "
                 f"it holds {used - replacing} without this fact")
     return None
 

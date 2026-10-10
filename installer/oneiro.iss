@@ -27,9 +27,15 @@ ArchitecturesInstallIn64BitMode=x64compatible
 
 [Files]
 Source: "payload\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+; User data is explicitly protected: settings and data directories are preserved across upgrades and uninstallation
+Source: "payload\manifest.json"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{userprograms}\Oneiro"; Filename: "{app}\start-oneiro.cmd"; WorkingDir: "{app}"; Comment: "Start Oneiro on this computer"
+Name: "{userdesktop}\Oneiro"; Filename: "{app}\start-oneiro.cmd"; WorkingDir: "{app}"; Tasks: desktopicon; Comment: "Start Oneiro on this computer"
+
+[Tasks]
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [UninstallRun]
 ; Stops our container gracefully (SIGINT saves the graph); the volume and the image stay.

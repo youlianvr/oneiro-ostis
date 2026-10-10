@@ -2,27 +2,295 @@
 const form = document.querySelector("#settings");
 let csrf = "";
 
-async function prerequisites() {
-  const response = await fetch("/api/status");
-  if (!response.ok) throw new Error("status unavailable");
-  const status = await response.json();
-  document.querySelector("#status").textContent = JSON.stringify(status, null, 2);
+// The state of the machine, said in plain human sentences (never raw JSON blobs).
+function statusLines(status) {
+  const lines = [status.ready ? "Ready to work." : "Not ready yet — see below."];
+  if (status.phase) lines.push(`Phase: ${status.phase}.`);
+  const memory = status.memory || {};
+  if (memory.verified) lines.push("Memory (OSTIS) is readable.");
+  else if (memory.tcp_reachable) lines.push("Memory (OSTIS) answers, but nothing could be read back out of the graph.");
+  else lines.push("Memory (OSTIS) is not reachable. It is required and has no substitute.");
+  const model = status.model || {};
+  if (model.verified) lines.push("The configured model answered a real call" + (model.used_tools ? ", including a tool call." : "."));
+  else lines.push("The model is not verified yet" + (model.reason ? `: ${model.reason}.` : "."));
+  const blocked = status.blocked || [];
+  if (blocked.length) lines.push("Still blocked:", ...blocked.map(item => `  - ${item}`));
+  return lines.join("\n");
 }
 
-// The page identity, the form and its values are rendered by the server from
-// the declared settings registry. This script only refreshes the live state and
-// submits what the owner typed.
-function watchResult(response) {
-  return response.json().then(result => {
-    document.querySelector("#result").textContent = response.ok
-      ? "Saved. Reloading to show the stored values." : result.error;
+async function prerequisites() {
+  const statusEl = document.querySelector("#status");
+  if (!statusEl) return;
+  try {
+    const response = await fetch("/api/status");
+    if (!response.ok) throw new Error("status unavailable");
+    const status = await response.json();
+    statusEl.textContent = statusLines(status);
+  } catch (_) {
+    statusEl.textContent = "Server unavailable. No readiness confirmed.";
+  }
+}
+
+// Token retrieval
+async function getToken() {
+  if (csrf) return csrf;
+  try {
+    const res = await (await fetch("/api/session")).json();
+    csrf = res.csrf || "";
+  } catch (_) {}
+  return csrf;
+}
+
+// -------------------------------------------------------------
+// 1. Conversation & Action Cards (Chat Screen)
+// -------------------------------------------------------------
+const chatForm = document.querySelector("#chat");
+const transcriptList = document.querySelector("#transcript");
+const attachBtn = document.querySelector("#btn-attach");
+const attachInput = document.querySelector("#attachment-file");
+const attachChip = document.querySelector("#attachment-chip");
+const inspectorContent = document.querySelector("#inspector-content");
+let pendingAttachments = [];
+
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text || "";
+  return div.innerHTML;
+}
+
+function renderActionStep(step) {
+  const isOk = step.ok !== false;
+  const kind = isOk ? "step" : "refusal";
+  let details = `<div class="action-card ${kind}">`;
+  details += `<strong>Tool: ${escapeHtml(step.tool || "action")}</strong> — `;
+  details += `<span>${isOk ? "Executed successfully" : escapeHtml(step.reason || "Refused by policy")}</span>`;
+  if (step.arguments && Object.keys(step.arguments).length) {
+    details += `<div><small>Args: ${escapeHtml(JSON.stringify(step.arguments))}</small></div>`;
+  }
+  if (step.result) {
+    const resText = typeof step.result === "string" ? step.result : JSON.stringify(step.result);
+    details += `<div><small>Result: ${escapeHtml(resText.slice(0, 300))}</small></div>`;
+  }
+  details += "</div>";
+  return details;
+}
+
+function renderMessage(item) {
+  const li = document.createElement("li");
+  li.className = item.role === "user" || item.role === "owner" ? "user" : "assistant";
+  
+  let body = `<div><strong>${escapeHtml(item.role)}:</strong> ${escapeHtml(item.text || "")}</div>`;
+  if (item.steps && item.steps.length) {
+    body += `<div class="steps-container">${item.steps.map(renderActionStep).join("")}</div>`;
+  }
+  li.innerHTML = body;
+  li.addEventListener("click", () => {
+    if (inspectorContent) {
+      inspectorContent.innerHTML = `
+        <h4>Message Details</h4>
+        <p><strong>Role:</strong> ${escapeHtml(item.role)}</p>
+        <p><strong>Text:</strong> ${escapeHtml(item.text)}</p>
+        <p><strong>Steps:</strong> ${item.steps ? item.steps.length : 0}</p>
+        <p><strong>Attachments:</strong> ${item.attachments ? item.attachments.length : 0}</p>
+      `;
+    }
+  });
+  return li;
+}
+
+if (attachBtn && attachInput) {
+  attachBtn.addEventListener("click", () => attachInput.click());
+  attachInput.addEventListener("change", async () => {
+    if (!attachInput.files || !attachInput.files.length) return;
+    const file = attachInput.files[0];
+    const token = await getToken();
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetch("/api/attachments", {
+        method: "POST",
+        headers: { "X-Oneiro-CSRF": token },
+        body: formData,
+      });
+      if (res.ok) {
+        const meta = await res.json();
+        pendingAttachments.push(meta.id);
+        if (attachChip) {
+          attachChip.hidden = false;
+          attachChip.textContent = `${meta.name} (${meta.size}b)`;
+        }
+      }
+    } catch (e) {
+      console.error("Upload error", e);
+    }
   });
 }
 
+if (chatForm) {
+  chatForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    const input = document.querySelector("#message");
+    const text = input ? input.value.trim() : "";
+    if (!text && !pendingAttachments.length) return;
+    const errEl = document.querySelector("#chat-error");
+    if (errEl) errEl.hidden = true;
+
+    const clientId = "web-" + Math.random().toString(36).substring(2, 10);
+    const payload = {
+      text: text,
+      client_id: clientId,
+      attachments: [...pendingAttachments]
+    };
+
+    // Render user message immediately
+    if (transcriptList) {
+      transcriptList.appendChild(renderMessage({ role: "owner", text: text }));
+      transcriptList.scrollTop = transcriptList.scrollHeight;
+    }
+    if (input) input.value = "";
+    pendingAttachments = [];
+    if (attachChip) attachChip.hidden = true;
+
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Oneiro-CSRF": token },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        const replyDoc = await res.json();
+        if (transcriptList && replyDoc.reply) {
+          transcriptList.appendChild(renderMessage({
+            role: replyDoc.reply.role || "assistant",
+            text: replyDoc.reply.text,
+            steps: replyDoc.steps
+          }));
+          transcriptList.scrollTop = transcriptList.scrollHeight;
+        }
+      } else {
+        const err = await res.json();
+        if (errEl) {
+          errEl.hidden = false;
+          errEl.textContent = err.error || "Turn refused";
+        }
+      }
+    } catch (e) {
+      if (errEl) {
+        errEl.hidden = false;
+        errEl.textContent = "Server communication failure";
+      }
+    }
+  });
+}
+
+// -------------------------------------------------------------
+// 2. Tasks & Schedules Screen
+// -------------------------------------------------------------
+async function loadTasksAndSchedules() {
+  const taskList = document.querySelector("#task-list");
+  const schedList = document.querySelector("#schedule-list");
+  if (!taskList && !schedList) return;
+
+  if (taskList) {
+    try {
+      const res = await fetch("/api/tasks");
+      if (res.ok) {
+        const data = await res.json();
+        const tasks = data.tasks || [];
+        if (!tasks.length) {
+          taskList.innerHTML = "<p class='muted'>No active or completed tasks.</p>";
+        } else {
+          taskList.innerHTML = tasks.map(t => `
+            <div class="card-item">
+              <div><strong>${escapeHtml(t.title)}</strong> <span class="pill">${escapeHtml(t.state)}</span></div>
+              <small class="muted">Role: ${escapeHtml(t.assigned_role || "executor")}</small>
+            </div>
+          `).join("");
+        }
+      }
+    } catch (_) {
+      taskList.innerHTML = "<p class='bad'>Failed to load tasks.</p>";
+    }
+  }
+
+  if (schedList) {
+    try {
+      const res = await fetch("/api/schedules");
+      if (res.ok) {
+        const data = await res.json();
+        const schedules = data.schedules || [];
+        if (!schedules.length) {
+          schedList.innerHTML = "<p class='muted'>No standing schedules configured.</p>";
+        } else {
+          schedList.innerHTML = schedules.map(s => `
+            <div class="card-item">
+              <div><strong>${escapeHtml(s.task_title || s.title || "")}</strong> <code>${escapeHtml(s.cron || "")}</code></div>
+              <small class="muted">Status: ${s.enabled ? "Active" : "Disabled"}</small>
+            </div>
+          `).join("");
+        }
+      }
+    } catch (_) {
+      schedList.innerHTML = "<p class='bad'>Failed to load schedules.</p>";
+    }
+  }
+}
+
+// -------------------------------------------------------------
+// 3. Tools Screen Tabs & Listings
+// -------------------------------------------------------------
+function setupTabs() {
+  const tabs = document.querySelectorAll(".tab-btn");
+  tabs.forEach(btn => {
+    btn.addEventListener("click", () => {
+      tabs.forEach(b => b.classList.remove("active"));
+      document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+      btn.classList.add("active");
+      const target = document.querySelector(`#${btn.dataset.tab}`);
+      if (target) target.classList.add("active");
+    });
+  });
+
+  const mcpContainer = document.querySelector("#mcp-servers-list");
+  const skillsContainer = document.querySelector("#skills-list");
+  if (mcpContainer) {
+    fetch("/api/mcp").then(r => r.json()).then(data => {
+      const servers = data.servers || [];
+      if (!servers.length) {
+        mcpContainer.innerHTML = "<p class='muted'>No MCP servers configured.</p>";
+      } else {
+        mcpContainer.innerHTML = servers.map(s => `
+          <div class="card-item">
+            <div><strong>${escapeHtml(s.name)}</strong> (${escapeHtml(s.type || "local")}) <span class="pill">${s.enabled ? "enabled" : "disabled"}</span></div>
+            <small class="muted">${escapeHtml(s.command || s.url || "")}</small>
+          </div>
+        `).join("");
+      }
+    }).catch(() => { mcpContainer.innerHTML = "<p class='muted'>MCP service offline.</p>"; });
+  }
+
+  if (skillsContainer) {
+    fetch("/api/skills").then(r => r.json()).then(data => {
+      const skills = data.skills || [];
+      if (!skills.length) {
+        skillsContainer.innerHTML = "<p class='muted'>No skills in catalog.</p>";
+      } else {
+        skillsContainer.innerHTML = skills.slice(0, 30).map(sk => `
+          <div class="card-item">
+            <div><strong>${escapeHtml(sk.name)}</strong></div>
+            <small class="muted">${escapeHtml(sk.purpose || "")}</small>
+          </div>
+        `).join("");
+      }
+    }).catch(() => { skillsContainer.innerHTML = "<p class='muted'>Skills catalog offline.</p>"; });
+  }
+}
+
+// -------------------------------------------------------------
+// 4. Settings Form Submission
+// -------------------------------------------------------------
 if (form) {
-  // Only what the owner actually changed is sent. Submitting the whole form
-  // would store every declared default explicitly and make the file lie about
-  // what is customized.
   const asEntered = new Map();
   for (const field of form.elements) {
     if (field.name) asEntered.set(field.name, field.value);
@@ -36,229 +304,31 @@ if (form) {
       if (name === "llm.api_key" && !value) continue;
       patch[name] = name.endsWith(".port") ? Number(value) : value;
     }
+    const resEl = document.querySelector("#result");
     if (!Object.keys(patch).length) {
-      document.querySelector("#result").textContent = "Nothing changed; nothing written.";
+      if (resEl) resEl.textContent = "Nothing changed; nothing written.";
       return;
     }
     try {
-      const response = await fetch("/api/settings", {method: "POST",
-        headers: {"Content-Type": "application/json", "X-Oneiro-CSRF": csrf},
-        body: JSON.stringify(patch)});
-      const message = await watchResult(response);
-      if (response.ok) setTimeout(() => location.reload(), 400);
-      else return message;
-    } catch (_) {
-      document.querySelector("#result").textContent = "Server unavailable. No successful save confirmed.";
-    }
-  });
-}
-
-fetch("/api/session").then(r => r.json()).then(session => { csrf = session.csrf; })
-  .then(prerequisites)
-  .catch(() => { document.querySelector("#status").textContent = "Server unavailable. No readiness confirmed."; });
-
-// Curated memory on the settings page. Every write is checked by the server
-// against the budget and the revision the owner read; a stale view is refused,
-// never silently overwritten. Text is set with textContent only.
-const factsBox = document.querySelector("#facts");
-if (factsBox) {
-  const list = document.querySelector("#facts-list");
-  const meter = document.querySelector("#facts-meter");
-  const errorBox = document.querySelector("#facts-error");
-  const addForm = document.querySelector("#fact-add");
-  const addField = document.querySelector("#fact-text");
-  let pendingAdd = null;
-  const say = message => { errorBox.textContent = message || ""; errorBox.hidden = !message; };
-  const token = async () => {
-    if (!csrf) csrf = (await (await fetch("/api/session")).json()).csrf;
-    return csrf;
-  };
-  const send = async (method, path, body) => {
-    const response = await fetch(path, {method,
-      headers: {"Content-Type": "application/json", "X-Oneiro-CSRF": await token()},
-      body: body === undefined ? undefined : JSON.stringify(body)});
-    return {ok: response.ok, result: await response.json()};
-  };
-  const show = listing => {
-    meter.textContent = `${listing.used_chars} of ${listing.limit_chars} characters used`;
-    if (!listing.complete || listing.skipped) {
-      meter.textContent += ". Stored memory could not be fully read, so changes are refused until it can be.";
-    }
-    list.replaceChildren();
-    for (const fact of listing.facts) {
-      const item = document.createElement("li");
-      const area = document.createElement("textarea");
-      area.rows = 2;
-      area.maxLength = 2000;
-      area.value = fact.text;
-      const save = document.createElement("button");
-      save.type = "button";
-      save.textContent = "Save";
-      save.addEventListener("click", async () => {
-        const {ok, result} = await send("POST", `/api/memory/facts/${encodeURIComponent(fact.id)}/edit`,
-          {text: area.value, client_id: crypto.randomUUID(), revision: fact.revision});
-        if (ok) say(""); else say(result.error);
-        await load();
+      const token = await getToken();
+      const response = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Oneiro-CSRF": token },
+        body: JSON.stringify(patch)
       });
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.textContent = "Remove";
-      remove.addEventListener("click", async () => {
-        const {ok, result} = await send("POST", `/api/memory/facts/${encodeURIComponent(fact.id)}/remove`,
-          {client_id: crypto.randomUUID(), revision: fact.revision});
-        if (ok) say(""); else say(result.error);
-        await load();
-      });
-      item.append(area, document.createElement("br"), save, document.createTextNode(" "), remove);
-      list.append(item);
-    }
-  };
-  const load = async () => {
-    try {
-      const response = await fetch("/api/memory/facts");
-      const listing = await response.json();
-      if (!response.ok) { say(listing.reason || listing.error); return; }
-      show(listing);
-    } catch (_) {
-      say("Server unavailable. The fact list could not be read.");
-    }
-  };
-  addForm.addEventListener("submit", async event => {
-    event.preventDefault();
-    const text = addField.value.trim();
-    if (!text) return;
-    // A retry of the same text reuses its client_id, so it cannot be stored twice.
-    if (!pendingAdd || pendingAdd.text !== text) pendingAdd = {text, clientId: crypto.randomUUID()};
-    try {
-      const {ok, result} = await send("POST", "/api/memory/facts", {text, client_id: pendingAdd.clientId});
-      if (!ok) { say(result.error); return; }
-      pendingAdd = null;
-      addField.value = "";
-      say("");
-      await load();
-    } catch (_) {
-      say("Server unavailable. The fact is not confirmed; saving it again keeps it to one copy.");
-    }
-  });
-  load();
-}
-
-// Chat: one owner message per submit. Retrying the same text reuses its client_id,
-// so the server publishes the message and its reply at most once even if the
-// first response was lost. Text is written with textContent only, never HTML.
-const chat = document.querySelector("#chat");
-if (chat) {
-  const field = document.querySelector("#message");
-  const transcript = document.querySelector("#transcript");
-  const errorBox = document.querySelector("#chat-error");
-  let pending = null;
-  const show = (who, text) => {
-    const item = document.createElement("li");
-    const label = document.createElement("strong");
-    label.textContent = who + ": ";
-    item.append(label, document.createTextNode(text));
-    transcript.append(item);
-  };
-  const fail = message => { errorBox.textContent = message; errorBox.hidden = false; };
-  // Conversations: the server keeps every one; the page only chooses which to show.
-  let conversation = "main";
-  const select = document.querySelector("#conversation-select");
-  const searchNote = document.querySelector("#search-note");
-  const results = document.querySelector("#search-results");
-  const csrfToken = async () => {
-    if (!csrf) csrf = (await (await fetch("/api/session")).json()).csrf;
-    return csrf;
-  };
-  const refreshConversations = async () => {
-    const response = await fetch("/api/conversations");
-    const listing = await response.json();
-    if (!response.ok) { fail(listing.reason || listing.error); return; }
-    const options = listing.conversations.map(item => [item.conversation_id, item.title || "Untitled conversation"]);
-    if (!options.some(([id]) => id === conversation)) options.unshift([conversation, "New conversation"]);
-    select.replaceChildren();
-    for (const [id, label] of options) {
-      const option = document.createElement("option");
-      option.value = id;
-      option.textContent = label;
-      select.append(option);
-    }
-    select.value = conversation;
-  };
-  const openConversation = async id => {
-    conversation = id;
-    pending = null;
-    transcript.replaceChildren();
-    errorBox.hidden = true;
-    const response = await fetch(`/api/conversations/${encodeURIComponent(id)}/messages`);
-    const listing = await response.json();
-    if (!response.ok) { fail(listing.reason || listing.error); return; }
-    for (const message of listing.messages) show(message.role === "owner" ? "You" : "Oneiro", message.text);
-    if (!listing.complete) {
-      const note = document.createElement("li");
-      note.className = "muted";
-      note.textContent = `Only the newest ${listing.messages.length} messages are shown.`;
-      transcript.prepend(note);
-    }
-    await refreshConversations();
-  };
-  select.addEventListener("change", () => openConversation(select.value));
-  document.querySelector("#new-conversation").addEventListener("click", async () => {
-    const response = await fetch("/api/conversations", {method: "POST", headers: {"X-Oneiro-CSRF": await csrfToken()}});
-    const created = await response.json();
-    if (response.ok) openConversation(created.conversation_id);
-  });
-  document.querySelector("#search").addEventListener("submit", async event => {
-    event.preventDefault();
-    const query = document.querySelector("#search-text").value.trim();
-    if (!query) return;
-    const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-    const found = await response.json();
-    results.replaceChildren();
-    if (!response.ok) { searchNote.textContent = found.error; return; }
-    // The note states what was searched. It only says "no match" for a complete read.
-    searchNote.textContent = found.note;
-    for (const hit of found.results) {
-      const item = document.createElement("li");
-      const text = document.createElement("span");
-      text.textContent = (hit.role === "owner" ? "You: " : "Oneiro: ") + hit.snippet;
-      const open = document.createElement("button");
-      open.type = "button";
-      open.textContent = "Open";
-      open.addEventListener("click", () => openConversation(hit.conversation_id));
-      item.append(text, document.createTextNode(" "), open);
-      results.append(item);
-    }
-  });
-  openConversation(conversation);
-  chat.addEventListener("submit", async event => {
-    event.preventDefault();
-    errorBox.hidden = true;
-    const text = field.value.trim();
-    if (!text) return;
-    if (!pending || pending.text !== text) pending = {text, clientId: crypto.randomUUID()};
-    try {
-      if (!csrf) csrf = (await (await fetch("/api/session")).json()).csrf;
-      const response = await fetch("/api/message", {method: "POST",
-        headers: {"Content-Type": "application/json", "X-Oneiro-CSRF": csrf},
-        body: JSON.stringify({text: pending.text, client_id: pending.clientId, conversation_id: conversation})});
       const result = await response.json();
-      if (!response.ok) {
-        fail(result.error || "The message was not answered.");
-        return;
+      if (response.ok) {
+        if (resEl) resEl.textContent = "Saved. Reloading to show the stored values.";
+        setTimeout(() => location.reload(), 400);
+      } else {
+        const why = (result.reasons || []).join("\n");
+        if (resEl) resEl.textContent = [result.error, why].filter(Boolean).join("\n");
       }
-      show("You", result.user.text);
-      show("Oneiro", result.reply.text);
-      // Said plainly when the reply was made with less than the owner's memory.
-      if (result.context && result.context.status !== "complete") {
-        const note = document.createElement("li");
-        note.className = "muted";
-        note.textContent = "Context: " + result.context.notes.join(" ");
-        transcript.append(note);
-      }
-      pending = null;
-      field.value = "";
     } catch (_) {
-      fail("Server unavailable. Your message is not confirmed; sending it again keeps it to one copy.");
+      if (resEl) resEl.textContent = "Server unavailable. No successful save confirmed.";
     }
   });
 }
+
+// Initializations
+getToken().then(prerequisites).then(loadTasksAndSchedules).then(setupTabs);

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import json
 import re
 import subprocess
@@ -12,7 +13,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from oneiro import config
+from oneiro import config, pages
 from oneiro.ownership import FileLease, OwnershipError
 from oneiro.runtime import Runtime
 from oneiro.web import create_app
@@ -22,6 +23,7 @@ from oneiro.web import create_app
 def isolated(tmp_path, monkeypatch):
     monkeypatch.setenv("ONEIRO_SETTINGS_FILE", str(tmp_path / "settings.json"))
     monkeypatch.setenv("ONEIRO_DATA_DIR", str(tmp_path / "runtime"))
+    monkeypatch.setenv("ONEIRO_MCP_FILE", str(tmp_path / "mcp.json"))
     # Source-checkout subprocesses do not inherit pytest's sys.path changes.
     # Installed-wheel smoke separately proves no PYTHONPATH is needed.
     monkeypatch.setenv("PYTHONPATH", str(Path(config.__file__).parents[1]))
@@ -276,16 +278,16 @@ def test_read_only_settings_are_refused_by_save():
 def test_each_route_renders_its_own_page():
     with TestClient(create_app()) as client:
         bodies = {}
-        for route, marker in (("/", "Conversation"), ("/settings", "Oneiro settings"),
-                              ("/setup", "Setup"), ("/oneiro/", "Graph panel")):
+        for route, marker in (("/?lang=en", "Conversation"), ("/settings?lang=en", "Oneiro settings"),
+                              ("/setup?lang=en", "Setup"), ("/oneiro/?lang=en", "Graph panel")):
             response = client.get(route)
             assert response.status_code == 200
             assert response.headers["content-type"].startswith("text/html")
             bodies[route] = response.text
             assert f"<h2>{marker}</h2>" in response.text, route
         assert len(set(bodies.values())) == 4, "routes must not share one document"
-        assert "Graph panel" not in bodies["/"]
-        assert 'id="message"' in bodies["/"], "the chat box is the only conversation control"
+        assert "Graph panel" not in bodies["/?lang=en"]
+        assert 'id="message"' in bodies["/?lang=en"], "the chat box is the only conversation control"
 
 
 def test_settings_form_is_generated_from_the_registry(monkeypatch):
@@ -314,19 +316,137 @@ def test_settings_form_is_generated_from_the_registry(monkeypatch):
     assert 'value="9899"' in page and 'value="8090"' in page
 
 
+def test_a_refused_save_explains_itself_without_echoing_what_was_typed():
+    """A refusal the owner cannot understand is a refusal they cannot fix."""
+    with TestClient(create_app()) as client:
+        token = client.get("/api/session").json()["csrf"]
+        response = client.post("/api/settings", headers={"X-Oneiro-CSRF": token},
+                               json={"graph.port": "not-a-port"})
+    assert response.status_code == 400
+    payload = response.json()
+    assert "Nothing was saved" in payload["error"]
+    assert any("graph.port" in reason for reason in payload["reasons"]), payload
+    assert "not-a-port" not in response.text
+    assert config.value("graph.port") == 8090, "a refused write changes nothing"
+    assert "unknown settings" in client_messages({"not_a_setting": "x"})
+
+
+def client_messages(patch: dict) -> str:
+    """Post one patch and return everything the client is told about it."""
+    with TestClient(create_app()) as client:
+        token = client.get("/api/session").json()["csrf"]
+        response = client.post("/api/settings", headers={"X-Oneiro-CSRF": token}, json=patch)
+    assert response.status_code == 400, response.text
+    return response.text
+
+
+def test_the_page_carries_the_theme_and_language_from_the_settings():
+    """W0: the tokens are real — the page names the theme it is painted in."""
+    with TestClient(create_app()) as client:
+        page = client.get("/settings").text
+        tokens = client.get("/console.css")
+    assert f'data-theme="{config.value("ui.theme")}"' in page
+    assert f'lang="{config.value("ui.language")}"' in page
+    # The tokens load before the layout, so no rule can disagree with the theme.
+    assert page.index('href="/console.css"') < page.index('href="/style.css"')
+    assert tokens.status_code == 200
+    assert tokens.headers["content-type"].startswith("text/css")
+    assert "[data-theme=" in tokens.text
+
+
+def _control(page: str, key: str) -> str:
+    """The element that carries a setting's name, and what follows it."""
+    before, _, after = page.partition(f'id="f-{key}"')
+    opening = before.rsplit("<", 1)[-1]
+    return opening + after.split("</div>", 1)[0]
+
+
+def test_a_closed_set_is_a_list_and_a_structure_is_editable_text():
+    """Choices and structured values must not be free text boxes."""
+    with TestClient(create_app()) as client:
+        page = client.get("/settings").text
+    # ui.theme: a select carrying exactly the declared options, current one chosen.
+    theme = _control(page, "ui.theme")
+    assert theme.startswith("select"), theme[:40]
+    assert re.findall(r'<option value="([^"]+)"', theme) == \
+        list(config._BY_KEY["ui.theme"].choices)
+    assert '<option value="night" selected>' in theme
+    # A boolean is a closed set too, and both states are visible.
+    tray = _control(page, "ui.tray")
+    assert '<option value="true"' in tray and '<option value="false" selected>' in tray
+    # models.providers is JSON text in a textarea, parsed and checked on write.
+    providers = html.unescape(_control(page, "models.providers"))
+    assert providers.startswith("textarea")
+    assert '"base_url"' in providers and '"key_env"' in providers
+
+
+def test_every_field_says_which_layer_answered_it():
+    """A default must not look like a stored preference (W0 evidence)."""
+    with TestClient(create_app()) as client:
+        page = client.get("/settings").text
+    described = {row["key"]: row for row in config.describe()["settings"]}
+    for key, row in described.items():
+        if key == "llm.api_key":
+            continue                     # a key reports whether one is in force, not a layer
+        assert f"Value from {pages.SOURCES[row['source']]}." in _control(page, key), \
+            f"{key} came from {row['source']} but the page does not say so"
+
+
+def test_a_declared_but_inactive_setting_says_so():
+    """`pending` settings are visible and honest about not being in force yet."""
+    with TestClient(create_app()) as client:
+        page = client.get("/settings?lang=en").text
+    assert config._BY_KEY["ui.density"].pending is True
+    assert "not in this build yet" in _control(page, "ui.density")
+    # A setting already in force carries no such note.
+    assert config._BY_KEY["web.port"].pending is False
+    assert "not in this build yet" not in _control(page, "web.port")
+    # The two keys the honesty pass wired (docs/PROGRESS.md) are in force on the page,
+    # and the key the plan never promised carries the label instead of looking wired.
+    for key in ("permissions.write_outside", "memory.facts_budget"):
+        assert config._BY_KEY[key].pending is False, key
+        assert "not in this build yet" not in _control(page, key)
+    assert config._BY_KEY["mcp.source"].pending is True
+    assert "not in this build yet" in _control(page, "mcp.source")
+
+
+def _submitted(page: str) -> dict:
+    """What a browser would send back from the settings form.
+
+    Only the settings form is read: the same page carries the facts form, and a
+    control from there is not part of the settings round trip. Every control
+    shape is handled — input, select, textarea, and the disabled control the
+    browser would omit entirely.
+    """
+    form = page.partition('<form id="settings"')[2].partition("</form>")[0]
+    assert form, "the settings form is not in the page"
+    patch: dict = {}
+    for match in re.finditer(r"<(input|select|textarea)\s([^>]*)>", form):
+        tag, attributes = match.group(1), match.group(2)
+        name = re.search(r'name="([^"]+)"', attributes)
+        if not name or "disabled" in attributes:
+            continue
+        key = name.group(1)
+        if tag == "select":
+            body = form[match.end():].split("</select>", 1)[0]
+            chosen = re.search(r'value="([^"]*)" selected', body)
+            raw = chosen.group(1) if chosen else ""
+        elif tag == "textarea":
+            body = form[match.end():].split("</textarea>", 1)[0]
+            raw = html.unescape(body)
+        else:
+            found = re.search(r'value="([^"]*)"', attributes)
+            raw = html.unescape(found.group(1) or "") if found else ""
+        patch[key] = int(raw) if key.endswith(".port") else raw
+    return patch
+
+
 def test_every_rendered_field_survives_a_form_round_trip():
     """What the browser sends back must be what the server accepts."""
     with TestClient(create_app()) as client:
         page = client.get("/settings").text
         token = client.get("/api/session").json()["csrf"]
-        patch: dict = {}
-        for attributes in re.findall(r"<input ([^>]*)>", page):
-            name = re.search(r'name="([^"]+)"', attributes)
-            if not name or "disabled" in attributes or name.group(1) == "llm.api_key":
-                continue
-            found = re.search(r'value="([^"]*)"', attributes)
-            raw = found.group(1) if found else ""
-            patch[name.group(1)] = int(raw) if name.group(1).endswith(".port") else raw
+        patch = _submitted(page)
         for setting in config.SETTINGS:
             if not setting.readonly and not setting.secret:
                 assert setting.key in patch, f"{setting.key} is rendered but not submittable"

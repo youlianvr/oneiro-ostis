@@ -111,7 +111,7 @@ def test_records_reject_empty_meaningful_fields():
     with pytest.raises(RecordError, match="question and chosen"):
         Decision(question="q")
     with pytest.raises(RecordError, match="role"):
-        ConversationMessage(conversation_id="c", role="owner", text="  ")
+        ConversationMessage(conversation_id="c", role="", text="hello")
 
 
 def test_decode_many_reads_a_store_and_names_the_bad_line():

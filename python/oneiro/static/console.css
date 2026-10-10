@@ -1,0 +1,206 @@
+/* Oneiro console — the design tokens, first version (W0).
+ *
+ * Five themes, one token vocabulary. A theme is a `[data-theme]` block that
+ * re-declares the same custom properties; nothing below the token block is
+ * allowed to name a colour directly, so a new theme cannot forget a surface.
+ *
+ * Where a colour comes from is recorded in docs/DESIGN.md. In short: four
+ * themes are the design-systems library systems of the same name (paper,
+ * editorial, cosmic, agentic), and `night` — dark and warm — is derived from
+ * the library's `warm-editorial` palette plus a dark neutral base, because the
+ * library has no dark theme of that character.
+ *
+ * No web fonts are loaded: the product is local-only and must render with what
+ * the machine has. The library families are named first, with real fallbacks.
+ */
+
+:root {
+  /* ---- geometry: shared by every theme, changed only here ---- */
+  --oi-space-1: 4px;
+  --oi-space-2: 8px;
+  --oi-space-3: 12px;
+  --oi-space-4: 16px;
+  --oi-space-5: 24px;
+  --oi-space-6: 32px;
+  --oi-radius-sm: 6px;
+  --oi-radius-md: 10px;
+  --oi-radius-lg: 16px;
+  --oi-radius-pill: 999px;
+  --oi-border-width: 1px;
+  --oi-shadow-1: 0 1px 2px rgb(0 0 0 / 8%);
+  --oi-shadow-2: 0 2px 16px rgb(0 0 0 / 12%);
+
+  /* ---- type ---- */
+  --oi-font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --oi-font-display: var(--oi-font-body);
+  --oi-font-mono: ui-monospace, "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
+  --oi-text-xs: 12px;
+  --oi-text-sm: 14px;
+  --oi-text-md: 16px;
+  --oi-text-lg: 18px;
+  --oi-text-xl: 24px;
+  --oi-text-2xl: 32px;
+  --oi-leading: 1.5;
+  --oi-weight-body: 400;
+  --oi-weight-strong: 600;
+
+  /* ---- motion: short and purposeful, never decorative ---- */
+  --oi-motion-fast: 120ms;
+  --oi-motion-base: 180ms;
+  --oi-ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ---- layout ---- */
+  --oi-focus-width: 2px;
+  --oi-focus-offset: 2px;
+}
+
+/* night — dark and warm. Default. Derived, see the note at the top. */
+[data-theme="night"] {
+  --oi-bg: #17130f;
+  --oi-bg-alt: #1d1813;
+  --oi-surface: #221c16;
+  --oi-surface-2: #2b241d;
+  --oi-fg: #f2ece4;
+  --oi-muted: #a79a8d;
+  --oi-border: #3a302a;
+  --oi-accent: #e0704a;
+  --oi-accent-fg: #1a120c;
+  --oi-accent-soft: #3a241b;
+  --oi-success: #5bb98c;
+  --oi-warning: #e0a253;
+  --oi-danger: #e8756a;
+  --oi-focus: #f0b28f;
+  color-scheme: dark;
+}
+
+/* paper — light, print-inspired (library: paper). */
+[data-theme="paper"] {
+  --oi-bg: #faf8f4;
+  --oi-bg-alt: #f4f1ea;
+  --oi-surface: #ffffff;
+  --oi-surface-2: #f1ede6;
+  --oi-fg: #111827;
+  --oi-muted: #62676f;
+  --oi-border: #e2ded5;
+  --oi-accent: #111111;
+  --oi-accent-fg: #faf8f4;
+  --oi-accent-soft: #eae6de;
+  --oi-success: #15803d;
+  --oi-warning: #a15c07;
+  --oi-danger: #b91c1c;
+  --oi-focus: #1d4ed8;
+  color-scheme: light;
+}
+
+/* editorial — serif, ink on white (library: editorial). */
+[data-theme="editorial"] {
+  --oi-bg: #ffffff;
+  --oi-bg-alt: #f7f7f7;
+  --oi-surface: #ffffff;
+  --oi-surface-2: #f1f1f1;
+  --oi-fg: #111111;
+  --oi-muted: #5f6368;
+  --oi-border: #e4e4e4;
+  --oi-accent: #1a1a1a;
+  --oi-accent-fg: #ffffff;
+  --oi-accent-soft: #ececec;
+  --oi-success: #146c43;
+  --oi-warning: #8a5200;
+  --oi-danger: #a4161a;
+  --oi-focus: #1a1a1a;
+  --oi-font-display: Gelasio, "Times New Roman", Georgia, serif;
+  color-scheme: light;
+}
+
+/* cosmic — cool light with a wide display face (library: cosmic). */
+[data-theme="cosmic"] {
+  --oi-bg: #ffffff;
+  --oi-bg-alt: #f4f6fc;
+  --oi-surface: #ffffff;
+  --oi-surface-2: #f2f5fd;
+  --oi-fg: #111827;
+  --oi-muted: #5b6478;
+  --oi-border: #dde3f0;
+  /* The library's #3B82F6 gives white-on-blue 3.7:1, below AA for text; the
+   * interaction colour is one step darker so a filled button is readable. */
+  --oi-accent: #1d4ed8;
+  --oi-accent-fg: #ffffff;
+  --oi-accent-soft: #e8efff;
+  --oi-success: #15803d;
+  --oi-warning: #a15c07;
+  --oi-danger: #b91c1c;
+  --oi-focus: #6d28d9;
+  --oi-font-display: Audiowide, var(--oi-font-body);
+  --oi-text-md: 15px;
+  color-scheme: light;
+}
+
+/* agentic — warm off-white with an orange accent (library: agentic). */
+[data-theme="agentic"] {
+  --oi-bg: #f7f5f0;
+  --oi-bg-alt: #f2efe8;
+  --oi-surface: #ffffff;
+  --oi-surface-2: #f6f6f1;
+  --oi-fg: #111827;
+  --oi-muted: #5f6572;
+  --oi-border: #e6e2d9;
+  /* Likewise: the library's #FF5701 reads 3.0:1 with white; darkened for text. */
+  --oi-accent: #b83f00;
+  --oi-accent-fg: #fffaf6;
+  --oi-accent-soft: #fdeee4;
+  --oi-success: #15803d;
+  --oi-warning: #a15c07;
+  --oi-danger: #b91c1c;
+  --oi-focus: #b83f00;
+  --oi-font-display: "Playfair Display", Georgia, serif;
+  color-scheme: light;
+}
+
+/* ---- base ------------------------------------------------------------------
+ * Only what every screen needs. The five screens arrive in W6; these rules stay
+ * valid underneath them.
+ */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--oi-bg);
+  color: var(--oi-fg);
+  font-family: var(--oi-font-body);
+  font-size: var(--oi-text-md);
+  font-weight: var(--oi-weight-body);
+  line-height: var(--oi-leading);
+  transition: background-color var(--oi-motion-base) var(--oi-ease),
+              color var(--oi-motion-base) var(--oi-ease);
+}
+
+h1, h2, h3 { font-family: var(--oi-font-display); line-height: 1.25; margin: 0 0 var(--oi-space-3); }
+h1 { font-size: var(--oi-text-2xl); }
+h2 { font-size: var(--oi-text-xl); }
+h3 { font-size: var(--oi-text-lg); }
+
+a { color: var(--oi-accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+
+small { color: var(--oi-muted); font-size: var(--oi-text-sm); }
+
+code, pre { font-family: var(--oi-font-mono); font-size: var(--oi-text-sm); }
+
+/* One visible focus treatment for keyboard users, in every theme. */
+:focus-visible {
+  outline: var(--oi-focus-width) solid var(--oi-focus);
+  outline-offset: var(--oi-focus-offset);
+  border-radius: var(--oi-radius-sm);
+}
+
+/* The owner may ask the system for less motion; honour it everywhere. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}

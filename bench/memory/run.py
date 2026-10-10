@@ -31,7 +31,17 @@ for extra in (PROJECT / "python", PROJECT / "bench" / "memory"):
         sys.path.insert(0, str(extra))
 
 from config import settings  # noqa: E402
-from llm import ChatClient, ProviderError  # noqa: E402
+try:
+    from llm import ChatClient, ProviderError  # noqa: E402
+except ImportError:
+    class ProviderError(Exception):  # type: ignore[no-redef]
+        pass
+
+    class ChatClient:  # type: ignore[no-redef]
+        def __init__(self, *args, **kwargs):
+            pass
+        def chat(self, *args, **kwargs):
+            raise ProviderError("llm module retired")
 
 import arms as arms_module  # noqa: E402
 import dataset as dataset_module  # noqa: E402

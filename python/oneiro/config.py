@@ -43,168 +43,20 @@ import uuid
 from contextlib import contextmanager
 from urllib.parse import urlsplit
 
-from oneiro.ownership import FileLease, OwnershipError
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-# One root for the product. The old settings directory sat inside the agent
-# workspace's parent (``~/.openclaw``), which coupled a standalone product to
-# where it happened to be developed; ``~/.oneiro`` is outside it.
-DEFAULT_DATA_DIR = "~/.oneiro"
+from oneiro.ownership import FileLease, OwnershipError
+from oneiro.settings_registry import (DEFAULT_DATA_DIR, JSON_LISTS, SETTINGS, Setting,
+                                      _ATTR, _BY_KEY)
+
 SETTINGS_FILENAME = "settings.json"
+# The repository's own .env, optional: two levels above python/oneiro/.
+PROJECT_ENV = Path(__file__).resolve().parents[2] / ".env"
 _lock = threading.RLock()   # guards the cache and a migration; see _read_file
 _cache: tuple[str, int, int, dict] | None = None   # (path, mtime_ns, size, values)
 _load_error: str = ""
 _migrated_from: str = ""    # where settings were moved from, this process only
-
-
-@dataclass(frozen=True)
-class Setting:
-    """One declared setting. The registry below is the whole truth about it.
-
-    `label` and `help` are written in the product's user-facing language
-    (English, per PLAN-V2 decision 1: one language for the product). The
-    settings page shows them as they come; only the chrome around them is
-    translated.
-    """
-
-    key: str
-    env: str
-    default: Any
-    label: str
-    help: str
-    group: str
-    kind: str = "str"           # str | int | bool | path | secret
-    aliases: tuple[str, ...] = ()
-    readonly: bool = False      # resolved by code, never stored in the file
-
-    @property
-    def secret(self) -> bool:
-        return self.kind == "secret"
-
-    @property
-    def empty_means_unset(self) -> bool:
-        """Paths fall back to their default when blank; a secret falls to env."""
-        return self.kind in ("path", "secret")
-
-
-SETTINGS: tuple[Setting, ...] = (
-    Setting("web.host", "ONEIRO_WEB_HOST", "127.0.0.1", "Web address",
-            "Fixed to loopback: Oneiro is not reachable from the network.",
-            "Interface", readonly=True),
-    Setting("web.port", "ONEIRO_WEB_PORT", 9899, "Web port",
-            "One origin for chat, settings and /oneiro/.", "Interface", kind="int"),
-    Setting("runtime.data_dir", "ONEIRO_DATA_DIR", DEFAULT_DATA_DIR, "Runtime data",
-            "Where Oneiro keeps its own files. Read-only here: changing it moves "
-            "the settings file, so it is set with ONEIRO_DATA_DIR before first start.",
-            "Work", kind="path", readonly=True),
-    Setting("llm.manager_model", "ONEIRO_MANAGER_MODEL", "main", "Manager model",
-            "Model alias for conversation and coordination.", "Model"),
-    Setting("llm.researcher_model", "ONEIRO_RESEARCHER_MODEL", "auto/coding", "Researcher model",
-            "Model alias for independent research.", "Model"),
-    Setting("llm.executor_model", "ONEIRO_EXECUTOR_MODEL", "auto/coding", "Executor model",
-            "Model alias for verified task execution.", "Model"),
-    Setting(
-        "llm.base_url", "ONEIRO_LLM_BASE_URL", "http://127.0.0.1:20128/v1",
-        "Provider address",
-        "Address of an OpenAI-compatible provider. Any one that understands /chat/completions.",
-        "Model", aliases=("ONEIRO_BASE_URL",),
-    ),
-    Setting(
-        "llm.api_key", "ONEIRO_LLM_API_KEY", "",
-        "Provider key",
-        "Empty — looked up in ~/.config/keys.env, the environment, and the project .env.",
-        "Model", kind="secret", aliases=("ONEIRO_API_KEY", "OMNIROUTE_API_KEY"),
-    ),
-    Setting(
-        "llm.model", "ONEIRO_LLM_MODEL", "auto/coding",
-        "Default model",
-        "The model for the researcher and worker roles.",
-        "Model",
-    ),
-    Setting(
-        "chat.history_messages", "ONEIRO_CHAT_HISTORY", 10,
-        "Earlier messages sent",
-        "How many earlier messages of the open conversation go to the model with each reply. At least 1.",
-        "Model", kind="int",
-    ),
-    Setting(
-        "chat.context_chars", "ONEIRO_CHAT_CONTEXT_CHARS", 6000,
-        "Earlier-message size limit",
-        "The most characters of earlier messages sent with each reply. Older ones are left out, and the reply says so.",
-        "Model", kind="int",
-    ),
-    Setting(
-        # 127.0.0.1, not localhost: on Windows localhost resolves to ::1 first, and a
-        # Docker port published on IPv4 only stalls every connect ~2 s, which
-        # sc-client then reports as an unresponsive server.
-        "graph.host", "ONEIRO_HOST", "127.0.0.1",
-        "Graph address",
-        "The address of the OSTIS sc-machine.",
-        "Graph",
-    ),
-    Setting(
-        "graph.port", "ONEIRO_PORT", 8090,
-        "Graph port",
-        "The SCTP port of the OSTIS sc-machine.",
-        "Graph", kind="int",
-    ),
-    Setting(
-        "dashboard.port", "ONEIRO_DASH_PORT", 8130,
-        "Panel port",
-        "The port of the Oneiro panel and its settings API. Change only before restarting the panel.",
-        "Interface", kind="int",
-    ),
-    Setting(
-        "world.seed", "ONEIRO_SEED", "oneiro-0",
-        "Island-world seed",
-        "The same seed is a repeatable experiment. The workshop has its own seed, workshop-0.",
-        "World",
-    ),
-    Setting(
-        "loop.rounds", "ONEIRO_ROUNDS", 4,
-        "Rounds per run",
-        "How many self-improvement rounds one cycle run makes.",
-        "Cycle", kind="int",
-    ),
-    Setting(
-        "series.seeds", "ONEIRO_SEEDS", 5,
-        "Seeds in a series",
-        "How many seeds one series run walks through. The workshop uses the same.",
-        "Cycle", kind="int",
-    ),
-    Setting(
-        "workspace", "ONEIRO_WORKSPACE", "~/.openclaw/workspace",
-        "Working folder",
-        "The folder the agent disposes of, and where it looks for the skill catalog.",
-        "Work", kind="path",
-    ),
-    Setting(
-        "bench.dir", "ONEIRO_BENCH_DIR", "~/.openclaw/bench-memory",
-        "Measurements folder",
-        "Where memory benchmark runs are written.",
-        "Measurements", kind="path",
-    ),
-    Setting(
-        "bench.lme_dir", "ONEIRO_LME_DIR", "~/.openclaw/datasets/longmemeval",
-        "LongMemEval dataset",
-        "Where the dataset lives. It is not in the repository — it is too large.",
-        "Measurements", kind="path",
-    ),
-    Setting(
-        "mcp.source", "ONEIRO_MCP_SOURCE", "~/.openclaw/workspace/.mcp.json",
-        "MCP server list",
-        "The file the list of MCP servers for this machine is read from.",
-        "Harness", kind="path",
-    ),
-)
-
-_BY_KEY: dict[str, Setting] = {s.key: s for s in SETTINGS}
-# The repository's own .env, optional: two levels above python/oneiro/.
-PROJECT_ENV = Path(__file__).resolve().parents[2] / ".env"
-# Attribute spelling for the `settings` object: graph_port -> graph.port.
-_ATTR: dict[str, str] = {s.key.replace(".", "_"): s.key for s in SETTINGS}
 
 
 def data_root() -> Path:
@@ -354,7 +206,15 @@ def _coerce(setting: Setting, value: Any) -> Any:
             parsed = int(str(value).strip())
         except (TypeError, ValueError):
             raise ValueError(f"{setting.key}: an integer was expected") from None
-        maximum = 65535 if setting.key.endswith(".port") else 1000000
+        # A port is 16 bits; a byte budget is deliberately larger than the
+        # generic ceiling, because a 20 MB attachment limit is a sane default
+        # and the writer must not refuse the value the page shows.
+        if setting.key.endswith(".port"):
+            maximum = 65535
+        elif setting.key.endswith("_bytes"):
+            maximum = 2_000_000_000
+        else:
+            maximum = 1000000
         if not 1 <= parsed <= maximum:
             raise ValueError(f"{setting.key}: expected 1..{maximum}")
         return parsed
@@ -363,6 +223,14 @@ def _coerce(setting: Setting, value: Any) -> Any:
         if token not in ("1", "true", "yes", "on", "0", "false", "no", "off"):
             raise ValueError(f"{setting.key}: a boolean was expected")
         return token in ("1", "true", "yes", "on")
+    if setting.kind == "choice":
+        chosen = str(value).strip().lower()
+        if chosen not in setting.choices:
+            raise ValueError(
+                f"{setting.key}: one of {', '.join(setting.choices)} was expected")
+        return chosen
+    if setting.kind == "json":
+        return _json_value(setting, value)
     if not isinstance(value, str):
         raise ValueError(f"{setting.key}: text was expected")
     result = value.strip()
@@ -379,6 +247,69 @@ def _coerce(setting: Setting, value: Any) -> Any:
     if setting.key in ("graph.host", "llm.model", "llm.manager_model", "llm.researcher_model", "llm.executor_model") and not result:
         raise ValueError(f"{setting.key}: nonempty text required")
     return result
+
+
+def _json_value(setting: Setting, value: Any) -> Any:
+    """Parse and check a structured setting: provider records, lists of names.
+
+    A blank value clears the key, the same way a blank path or secret does, so an
+    emptied field can never be stored as a broken structure.
+    """
+    if isinstance(value, (list, dict)):
+        data: Any = value
+    else:
+        text = str(value).strip()
+        if not text:
+            return ""
+        try:
+            data = json.loads(text)
+        except ValueError:
+            raise ValueError(f"{setting.key}: valid JSON was expected") from None
+    if len(json.dumps(data, ensure_ascii=False)) > 64000:
+        raise ValueError(f"{setting.key}: the value is too large")
+    return _validate_json(setting.key, data)
+
+
+def _validate_json(key: str, data: Any) -> Any:
+    """What each structured setting means, beyond being valid JSON."""
+    if key in JSON_LISTS:
+        if not isinstance(data, list) or any(
+                not isinstance(item, str) or not item.strip() for item in data):
+            raise ValueError(f"{key}: a list of non-empty strings was expected")
+        return [item.strip() for item in data]
+    if key == "models.providers":
+        if not isinstance(data, list) or not data:
+            raise ValueError(f"{key}: a list of providers was expected")
+        for item in data:
+            if not isinstance(item, dict) or not str(item.get("name", "")).strip() \
+                    or not str(item.get("base_url", "")).strip():
+                raise ValueError(f"{key}: every provider needs a name and a base_url")
+            if any(field not in ("name", "base_url", "key_env", "discover_models", "models",
+                                 "enabled")
+                   for field in item):
+                raise ValueError(f"{key}: a provider has fields name, base_url, key_env, "
+                                 f"discover_models, models, enabled")
+        return data
+    return data
+
+
+def env_value(name: str) -> str:
+    """One named variable out of the layers a secret setting falls through.
+
+    A provider record names the variable that holds its key (`key_env`) instead of
+    storing the key, so the registry has to ask for a name the catalog never declared.
+    The order is the one `llm.api_key` already falls through — the owner's keys file,
+    then the environment, then the project `.env` — and a name nobody set is empty text
+    rather than an error, because a provider without a key is a provider without a key.
+    """
+    if not name:
+        return ""
+    raw = _read_key_file(keys_file()).get(name)
+    if not raw:
+        raw = os.environ.get(name)
+    if not raw:
+        raw = _read_key_file(PROJECT_ENV).get(name)
+    return str(raw or "").strip()
 
 
 def _raw_layers(setting: Setting) -> tuple[Any, str]:
@@ -494,6 +425,11 @@ def describe() -> dict:
             # these dots as the key".
             shown = ""
             changed = str(raw or "").strip() != ""
+        elif s.kind == "json":
+            # Structured values travel to the page as JSON text, so the field
+            # can be edited and saved back without a Python repr in between.
+            shown = json.dumps(raw, ensure_ascii=False, indent=2)
+            changed = json.dumps(raw, sort_keys=True) != json.dumps(s.default, sort_keys=True)
         else:
             shown = raw
             changed = str(raw) != str(s.default)
@@ -504,8 +440,12 @@ def describe() -> dict:
             "group": s.group,
             "kind": s.kind,
             "help": s.help,
+            "choices": list(s.choices),
+            "pending": s.pending,
             "value": shown,
-            "default": "" if s.secret else s.default,
+            "default": "" if s.secret else (
+                json.dumps(s.default, ensure_ascii=False, indent=2)
+                if s.kind == "json" else s.default),
             "source": source,
             "changed": changed,
             "stored": in_file,
@@ -524,6 +464,21 @@ def describe() -> dict:
     }
 
 
+class SettingsRejected(ValueError):
+    """A write the settings layer refused, carrying the reasons it refused.
+
+    One reason per problem, each naming a key and what was expected of it —
+    never a submitted value, so a caller may show the reasons to the owner
+    without spilling a key or a password into a page, a log or a chat. The
+    caller that knows the owner's language is `web.py`; this module only knows
+    what went wrong.
+    """
+
+    def __init__(self, *reasons: str) -> None:
+        self.reasons = tuple(reason for reason in reasons if reason)
+        super().__init__("; ".join(self.reasons) or "the settings write was refused")
+
+
 def save(patch: dict) -> dict:
     """Store the given keys, and only them. Returns the fresh description.
 
@@ -531,13 +486,14 @@ def save(patch: dict) -> dict:
     with two mistakes comes back with two messages instead of one at a time.
     """
     if not isinstance(patch, dict):
-        raise ValueError("a settings object was expected")
+        raise SettingsRejected("a settings object was expected")
     unknown = [k for k in patch if k not in _BY_KEY]
     if unknown:
-        raise ValueError(f"unknown settings: {', '.join(sorted(unknown))}")
+        raise SettingsRejected(f"unknown settings: {', '.join(sorted(unknown))}")
     locked = [k for k in patch if _BY_KEY[k].readonly]
     if locked:
-        raise ValueError(f"read-only settings, set in the environment instead: {', '.join(sorted(locked))}")
+        raise SettingsRejected(
+            f"read-only settings, set in the environment instead: {', '.join(sorted(locked))}")
     problems: list[str] = []
     coerced: dict[str, Any] = {}
     for key, raw in patch.items():
@@ -546,7 +502,7 @@ def save(patch: dict) -> dict:
         except ValueError as exc:
             problems.append(str(exc))
     if problems:
-        raise ValueError("; ".join(problems))
+        raise SettingsRejected(*problems)
 
     with _write_transaction():
         _save_coerced(coerced)
@@ -556,7 +512,8 @@ def save(patch: dict) -> dict:
 def _save_coerced(coerced: dict[str, Any]) -> None:
     data = dict(_read_file())
     if _load_error:
-        raise ValueError("Repair the existing settings file before writing; it is preserved")
+        raise SettingsRejected(
+            "Repair the existing settings file before writing; it is preserved")
     for key, val in coerced.items():
         # Blank clears the key rather than storing an empty override, so the
         # environment or the default can answer again.
@@ -573,13 +530,14 @@ def reset(keys: Iterable[str] | None = None) -> dict:
     with _write_transaction():
         data = dict(_read_file())
         if _load_error:
-            raise ValueError("Repair the existing settings file before resetting; it is preserved")
+            raise SettingsRejected(
+                "Repair the existing settings file before resetting; it is preserved")
         if keys is None:
             data = {}
         else:
             for key in keys:
                 if key not in _BY_KEY:
-                    raise ValueError(f"unknown setting: {key!r}")
+                    raise SettingsRejected(f"unknown setting: {key!r}")
                 data.pop(key, None)
         _store(data)
     return describe()
@@ -595,7 +553,7 @@ def _write_transaction():
         try:
             lease.acquire()
         except OwnershipError:
-            raise ValueError("Another settings writer owns the file") from None
+            raise SettingsRejected("Another settings writer owns the file") from None
         try:
             yield
         finally:
@@ -624,47 +582,5 @@ def _store(data: dict[str, Any]) -> None:
     _cache = None
 
 
-def main(argv: list[str] | None = None) -> int:
-    """`python python/config.py` — what every setting is and who answered."""
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Oneiro settings: read, set, list")
-    parser.add_argument("--json", action="store_true", help="machine-readable output")
-    parser.add_argument("--set", nargs="*", metavar="KEY=VALUE", help="store values")
-    parser.add_argument("--reset", nargs="*", metavar="KEY", help="forget stored values")
-    args = parser.parse_args(argv)
-
-    try:
-        if args.set:
-            patch = {}
-            for item in args.set:
-                if "=" not in item:
-                    raise ValueError(f"KEY=VALUE was expected, got {item!r}")
-                k, v = item.split("=", 1)
-                patch[k.strip()] = v
-            save(patch)
-        if args.reset is not None:
-            reset(args.reset or None)
-    except ValueError as exc:
-        print(f"error: {exc}")
-        return 2
-
-    description = describe()
-    if args.json:
-        print(json.dumps(description, ensure_ascii=False, indent=2))
-        return 0
-    print(f"root: {description['data_root']}")
-    print(f"file: {description['path']}")
-    if description["error"]:
-        print(f"error: {description['error']}")
-    group = None
-    for row in description["settings"]:
-        if row["group"] != group:
-            group = row["group"]
-            print(f"\n{group}")
-        print(f"  {row['key']:<20} {str(row['value']):<40} [{row['source']}] {row['help']}")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+# The command line lives with the other commands (`oneiro settings`, see
+# `oneiro/cli.py`); this module is the settings layer and nothing else.

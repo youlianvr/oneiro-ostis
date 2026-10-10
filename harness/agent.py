@@ -33,9 +33,14 @@ from policy import HarnessPolicy, get_policy
 # own modules must keep priority or `import replay` silently resolves to the
 # wrong one and the replay tests fail with a missing attribute.
 sys.path.append(str(Path(__file__).resolve().parents[1] / "python"))
-import mcp_client  # noqa: E402
-import skills_index  # noqa: E402
+try:
+    import mcp_client  # noqa: E402
+    import skills_index  # noqa: E402
+except ImportError:
+    mcp_client = None  # type: ignore[assignment]
+    skills_index = None  # type: ignore[assignment]
 from config import settings  # noqa: E402
+CONTRACT_CHARS = 1200 if skills_index is None else skills_index.CONTRACT_CHARS
 
 # The provider is any OpenAI-compatible endpoint; the address and the key come
 # from the settings owner (see runner.api_key). Since 2026-09-22 the default
@@ -331,12 +336,12 @@ class ToolBox:
                     "and this episode was run without it]")
         return skills_index.render_search(self.skills, str(query), int(limit or 4))
 
-    def read_skill(self, name: str, chars: int = skills_index.CONTRACT_CHARS) -> str:
+    def read_skill(self, name: str, chars: int = CONTRACT_CHARS) -> str:
         """Open one contract, from the same file a person would open."""
-        if self.skills is None:
+        if self.skills is None or skills_index is None:
             return "[no skill catalog in this run]"
         return skills_index.render_contract(self.skills, str(name), int(chars or
-                                            skills_index.CONTRACT_CHARS))
+                                            CONTRACT_CHARS))
 
     def run_tests(self) -> str:
         return self._shell("python -m pytest -q -p no:cacheprovider")

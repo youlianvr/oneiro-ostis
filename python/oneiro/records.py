@@ -173,8 +173,10 @@ class ConversationMessage(Record):
     def __post_init__(self) -> None:
         if not self.conversation_id:
             raise RecordError("conversation_id is required")
-        if not self.role or not self.text.strip():
-            raise RecordError("role and non-empty text are required")
+        if not self.role:
+            raise RecordError("role is required")
+        if not self.text.strip() and not self.attachments:
+            raise RecordError("text or attachments are required")
 
 
 @dataclass(frozen=True)
@@ -244,10 +246,13 @@ class Action(Record):
     arguments: dict[str, Any] = field(default_factory=dict)
     effect: Effect = field(default_factory=Effect)
     result: str = ""
+    decision: str = ""                 # allow | deny | ask; empty on older records
 
     def __post_init__(self) -> None:
         if not self.tool.strip():
             raise RecordError("tool is required")
+        if self.decision and self.decision not in ("allow", "deny", "ask"):
+            raise RecordError(f"unknown decision {self.decision!r}")
 
     def may_retry(self) -> bool:
         """Whether this action may simply be run again.
@@ -391,10 +396,117 @@ class CuratedFact(Record):
             raise RecordError("fact text is required")
 
 
+@dataclass(frozen=True)
+class Question(Record):
+    """A question the assistant asked the owner, and the answer when it arrives.
+
+    Asking is not blocking: the question is a record, so an unanswered one
+    survives a restart and does not hold unrelated work. Until it is answered
+    the assistant does not pretend to know the answer, and it never treats its
+    own assumption as the owner's reply.
+    """
+
+    KIND: ClassVar[str] = "question"
+
+    question: str = ""
+    answer: str = ""
+    task_id: str = ""
+    conversation_id: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.question.strip():
+            raise RecordError("question text is required")
+
+    @property
+    def answered(self) -> bool:
+        return bool(self.answer.strip())
+
+    def with_answer(self, answer: str) -> "Question":
+        """A new revision carrying the owner's answer. The question is kept."""
+        if not answer.strip():
+            raise RecordError("an answer must not be empty")
+        if self.answered:
+            raise RecordError("this question already has an answer")
+        return replace(self, answer=answer.strip(), updated_at=now())
+
+
+@dataclass(frozen=True)
+class Approval(Record):
+    """The owner's decision about one exact action.
+
+    An approval names the tool and the arguments it authorises. It is not a
+    general licence: `covers` compares both, so an approval for one action can
+    never release a different one, and a stale approval cannot release a new
+    action even if the tool is the same.
+    """
+
+    KIND: ClassVar[str] = "approval"
+
+    action_id: str = ""
+    tool: str = ""
+    arguments_digest: str = ""
+    granted: bool = False
+    reason: str = ""
+    task_id: str = ""
+    consumed_action_id: str = ""   # the action this grant has already released
+
+    def __post_init__(self) -> None:
+        if not self.action_id.strip() or not self.tool.strip():
+            raise RecordError("action_id and tool are required")
+
+    @property
+    def available(self) -> bool:
+        """Granted by the owner and not yet spent on an action.
+
+        A grant is one-shot: releasing one call consumes it, so a refused or a
+        completed grant is never silently reused for a later request.
+        """
+        return (self.granted and not self.consumed_action_id
+                and self.provenance is Provenance.OWNER_INSTRUCTION)
+
+    def covers(self, tool: str, arguments_digest: str) -> bool:
+        """Whether this approval authorises exactly this call, and nothing else."""
+        return self.available and self.tool == tool and self.arguments_digest == arguments_digest
+
+    def consumed_by(self, action_id: str) -> "Approval":
+        """The revision marking this grant as spent on one action."""
+        if not action_id.strip():
+            raise RecordError("action_id is required")
+        if self.consumed_action_id:
+            raise RecordError("this approval has already been consumed")
+        return replace(self, consumed_action_id=action_id, updated_at=now())
+
+
+@dataclass(frozen=True)
+class Schedule(Record):
+    """One standing instruction: run this task on this cron expression.
+
+    The schedule is a record, not a line in a settings file, because the graph is
+    the memory: it survives a restart, the owner can see what is on a schedule,
+    and `last_fired_at` is what stops a process that starts again from firing the
+    minute it already fired.
+    """
+
+    KIND: ClassVar[str] = "schedule"
+
+    cron: str = ""
+    task_title: str = ""
+    task_detail: str = ""
+    role: str = "executor"
+    enabled: bool = True
+    last_fired_at: str = ""
+    last_task_id: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.cron.strip() or not self.task_title.strip():
+            raise RecordError("cron and task_title are required")
+
+
 _KINDS: dict[str, type[Record]] = {
     cls.KIND: cls for cls in (
         Record, ConversationMessage, Task, Run, Action, Decision, Note,
-        Experience, Experiment, Release, CuratedFact,
+        Experience, Experiment, Release, CuratedFact, Question, Approval,
+        Schedule,
     )
 }
 

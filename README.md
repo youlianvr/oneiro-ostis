@@ -1,32 +1,29 @@
 # Oneiro-OSTIS
 
-## Full rewrite — current state (2026-10-02)
+## Architecture and Status — v1 Rewrite Complete (2026-10-10)
 
-The English `v2` product is being rebuilt under [MASTER-PLAN](docs/MASTER-PLAN.md),
-the plan of record; section 1 of it carries the binding owner decisions. The actual
-module census, preserved data, tests and blockers are in
-[REWRITE-BASELINE](docs/REWRITE-BASELINE.md). Russian `main` stays separate.
-The missing cloud PR is not a prerequisite.
+The product architecture has been unified under [MASTER-PLAN](docs/MASTER-PLAN.md)
+(packages W0 through W9 closed and verified).
 
-A standalone **foundation**, not the completed assistant, now installs with:
+Standalone installation & execution:
 
 ```bash
 uv sync --locked --group dev
-uv run --locked oneiro doctor  # exit 1 honestly means assistant not ready
-uv run --locked oneiro serve   # manual loopback server, default 9899
+uv run --locked oneiro doctor  # checks runtime prerequisites & models
+uv run --locked oneiro serve   # starts same-origin loopback server on 9899
 ```
 
-The wheel contains `oneiro` and its static assets, not CowAgent/OpenClaw/legacy
-agent engines. It serves same-origin `/`, `/settings`, `/setup`, `/oneiro/` and
-configuration diagnostics. Conversation and the actual graph panel are **not yet
-integrated**: their APIs return 503, never invented results. `ONEIRO_SETTINGS_FILE`
-selects the shared settings file; the old location remains compatible until a
-verified migration. No ancestor `.env` search is performed by the new package.
-`ONEIRO_DATA_DIR` holds process ownership only, not a substitute memory database.
+The distribution packages `oneiro`, its web console static assets, compact skills catalog,
+and configuration management:
+- **Conversation:** 3-zone layout with live tools, provenance tracking, and cards.
+- **Tasks & Schedules:** cron-like scheduled tasks, queued/running execution, quiet hours.
+- **MCP & Skills:** local stdio and remote HTTP JSON-RPC MCP servers, deterministic skill indexing.
+- **Models:** multi-provider LLM integration with capability probing, automatic fallback, and usage accounting.
+- **Languages & Themes:** full RU/EN localization, 5 themes meeting WCAG 2.2 AA contrast standards.
+- **Installer:** Windows Inno Setup payload preserving user data and knowledge graph on upgrades.
 
-Full native installer, desktop shortcut, graph migration, Linux VM and production
-acceptance remain pending. Historical installation and scientific evidence below
-are preserved for existing installations; they do not certify the new package.
+All legacy prototype scripts, unrouted channels, and provisional harnesses have been cleanly retired.
+
 
 ## Historical implementation and scientific record
 
@@ -158,3 +155,17 @@ documented in `docs/GOAL-LIVE-SWARM.md`.
   measured online).
 - Organization layer runs live: three roles on real models, restart-aware
   loop, isolated worktrees, unmerged PR packets, dashboard feed.
+
+## License
+
+MIT © 2026 Niko — the full grant is in [LICENSE](LICENSE), and the
+`Distributed under the MIT License` headers already carried by
+`problem-solver/` agree with it. `pyproject.toml` declares the same SPDX
+expression.
+
+Third-party material keeps its own terms regardless of this choice: CowAgent
+2.1.9 and the OSTIS example-app scaffold are MIT (attribution is a NOTICE
+obligation recorded in `docs/DECISIONS-v1.md` § 1.6 and shipped with the
+installer in W8), sc-machine and py-sc-client are MIT dependencies.
+`knowledge-base/ims.ostis.kb` has no upstream license at all, so it stays
+untracked in this repository and out of the installer payload.

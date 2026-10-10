@@ -66,6 +66,9 @@ if ($LASTEXITCODE -ne 0) { throw "docker tag failed with exit $LASTEXITCODE" }
 docker save -o (Join-Path $GraphDir 'oneiro-graph-0.2.0.tar') $GraphTag
 if ($LASTEXITCODE -ne 0) { throw "docker save failed with exit $LASTEXITCODE" }
 
+# The MIT grant travels with every copy of the sources it covers.
+Copy-Item -Path (Join-Path $Root 'LICENSE') -Destination $Out
+
 Copy-Item -Path (Join-Path $PSScriptRoot 'start-oneiro.cmd') -Destination $Out
 Copy-Item -Path (Join-Path $PSScriptRoot 'start-oneiro.ps1') -Destination $Out
 
