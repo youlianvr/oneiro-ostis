@@ -14,6 +14,12 @@ written back. Importing from another client is a read of that client's file and 
 of ours, never the other way round: `survey()` only looks, `preview()` says what would be
 added, and `save()` is the only thing that writes.
 
+`survey()` reads the list of every harness installed on this machine — OpenCode, OpenClaw,
+Claude Desktop, Claude Code, Codex CLI, Cursor, VS Code, Windsurf, Gemini CLI, Cline, Roo
+Code, Zed and Continue — in the shape each one writes: JSON, TOML, or a folder holding one
+file per server. Every row names the file a server came from, and a file that is not there
+is reported as absent rather than guessed at.
+
 Two transports, one discipline:
 
 * **local** — a child process speaking line-delimited JSON-RPC over stdio;
@@ -32,6 +38,7 @@ built-in tool, and it can be refused or confirmed exactly like one.
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import json
 import os
 import queue
@@ -39,6 +46,7 @@ import shutil
 import subprocess
 import threading
 import time
+import tomllib
 import urllib.error
 import urllib.request
 import uuid
@@ -145,19 +153,36 @@ def _name_ok(name: str) -> str:
     return text
 
 
-def _entry_to_server(name: str, raw: Any) -> Server:
-    """One config entry in any shape the ecosystem writes, or a named refusal."""
-    if not isinstance(raw, dict):
-        raise McpError("a server entry must be an object")
-    kind = str(raw.get("type") or "").strip().lower()
+def _argv_of(raw: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
+    """The command line in any shape the ecosystem writes it.
+
+    Zed nests the program inside the entry (`command: {path, args, env}`); everywhere
+    else the program is `command` and its arguments sit beside it. A command given as
+    one list is the whole argv; given as a string it is the program.
+    """
     command = raw.get("command")
     args = raw.get("args")
+    nested: dict[str, Any] = {}
+    if isinstance(command, dict):
+        nested = command
+        args = nested.get("args", args)
+        command = nested.get("path") or nested.get("command")
     argv: list[str] = []
     if isinstance(command, list):
         argv = [str(item) for item in command]
     elif isinstance(command, str) and command.strip():
         argv = [command.strip(), *[str(item) for item in (args or [])]]
-    url = str(raw.get("url") or "").strip()
+    return argv, nested
+
+
+def _entry_to_server(name: str, raw: Any) -> Server:
+    """One config entry in any shape the ecosystem writes, or a named refusal."""
+    if not isinstance(raw, dict):
+        raise McpError("a server entry must be an object")
+    kind = str(raw.get("type") or "").strip().lower()
+    argv, nested = _argv_of(raw)
+    # Gemini spells a remote server `httpUrl`; the rest of the ecosystem uses `url`.
+    url = str(raw.get("url") or raw.get("httpUrl") or "").strip()
     if kind in ("http", "sse", "streamable-http", "remote"):
         kind = REMOTE
     elif kind in ("stdio", "local", ""):
@@ -168,13 +193,16 @@ def _entry_to_server(name: str, raw: Any) -> Server:
         raise McpError("a remote server needs a url")
     if kind == LOCAL and not argv:
         raise McpError("a local server needs a command")
-    environment = raw.get("environment") if isinstance(raw.get("environment"), dict) else raw.get("env")
+    environment = next((value for value in (raw.get("environment"), raw.get("env"),
+                                            nested.get("env"))
+                        if isinstance(value, dict)), {})
     kept = {key: value for key, value in raw.items()
-            if key not in ("type", "command", "args", "url", "enabled",
-                           "environment", "env", "cwd")}
+            if key not in ("type", "command", "args", "url", "httpUrl", "enabled",
+                           "disabled", "environment", "env", "cwd")}
     return Server(
         name=_name_ok(name), kind=kind, command=tuple(argv), url=url,
-        enabled=bool(raw.get("enabled", True)),
+        # Cline switches a server off with `disabled` rather than `enabled`.
+        enabled=bool(raw.get("enabled", True)) and not bool(raw.get("disabled")),
         environment=tuple((str(key), str(value))
                           for key, value in (environment or {}).items()),
         cwd=str(raw.get("cwd") or ""), extra=kept)
@@ -188,11 +216,39 @@ def _block(document: dict[str, Any]) -> dict[str, Any]:
         if isinstance(servers, dict):
             return servers
         return {key: value for key, value in mcp.items() if key != "servers"}
-    for key in ("mcpServers", "servers"):
+    for key in ("mcpServers", "servers", "context_servers"):
         found = document.get(key)
         if isinstance(found, dict):
             return found
     return {}
+
+
+def _named_list(entries: Any) -> dict[str, Any]:
+    """A list of named servers, as one client writes them, as the map this build reads."""
+    found: dict[str, Any] = {}
+    for entry in entries if isinstance(entries, list) else []:
+        if isinstance(entry, dict) and isinstance(entry.get("name"), str):
+            found[str(entry["name"])] = entry
+    return found
+
+
+def _server_map(document: Any, shape: str, kind: str) -> dict[str, Any]:
+    """The server map inside a document, in the spelling its own client uses.
+
+    The declared key is tried first and the ecosystem's other spellings after it, so a
+    format that moved between releases is read rather than reported as empty.
+    """
+    if not isinstance(document, dict):
+        return {}
+    if kind == "toml":                      # Codex: [mcp_servers.<name>]
+        table = document.get("mcp_servers")
+        return dict(table) if isinstance(table, dict) else {}
+    declared = document.get(shape)
+    if isinstance(declared, dict):
+        return dict(declared)
+    if isinstance(declared, list):          # Continue: a list of named servers
+        return _named_list(declared)
+    return _block(document)
 
 
 @dataclass
@@ -279,21 +335,185 @@ def load(path: Path | str | None = None) -> Document:
 
 # ---------- what the owner's other clients declare (read only) ----------
 
-CLIENTS = (
-    ("OpenCode", Path.home() / ".config" / "opencode" / "opencode.json", "opencode"),
-    ("OpenClaw", Path.home() / ".openclaw" / "workspace" / ".mcp.json", "mcpServers"),
-    ("Claude Desktop", Path(os.environ.get("APPDATA", Path.home() / "AppData/Roaming"))
-     / "Claude" / "claude_desktop_config.json", "mcpServers"),
-    ("Cursor", Path.home() / ".cursor" / "mcp.json", "mcpServers"),
-    ("VS Code", Path(os.environ.get("APPDATA", Path.home() / "AppData/Roaming"))
-     / "Code" / "User" / "mcp.json", "vscode"),
-    ("Windsurf", Path.home() / ".codeium" / "windsurf" / "mcp_config.json", "mcpServers"),
+
+@dataclass(frozen=True)
+class Client:
+    """One harness this build knows how to read, and where its list lives.
+
+    `user` files are resolved against the running user's profile and `project` files
+    against the folder the owner works in (`tools.workspace`), because a harness writes
+    its project-scope list beside the code rather than beside its own settings. A file
+    that is not there is simply absent: nothing about its schema is guessed from that.
+    """
+
+    label: str
+    #: The key holding the server map in this client's own files.
+    shape: str
+    #: `json`, `toml`, or `dir` for a folder holding one file per server.
+    kind: str = "json"
+    user: tuple[Path, ...] = ()
+    project: tuple[str, ...] = ()
+
+
+def _home() -> Path:
+    return Path.home()
+
+
+def _appdata() -> Path:
+    return Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+
+
+#: Every harness this build reads, in the order the survey reports them. The shapes are
+#: the published ones and are read defensively (`_server_map`): the declared key first,
+#: then the spellings the rest of the ecosystem uses.
+CLIENTS: tuple[Client, ...] = (
+    Client("OpenCode", "opencode",
+           user=(_home() / ".config" / "opencode" / "opencode.json",
+                 _home() / ".config" / "opencode" / "opencode.jsonc")),
+    Client("OpenClaw", "mcpServers",
+           user=(_home() / ".openclaw" / "workspace" / ".mcp.json",)),
+    Client("Claude Desktop", "mcpServers",
+           user=(_appdata() / "Claude" / "claude_desktop_config.json",)),
+    # Claude Code keeps its user list in one file and a project list beside the project.
+    Client("Claude Code", "mcpServers", user=(_home() / ".claude.json",),
+           project=(".mcp.json",)),
+    # Codex writes TOML: [mcp_servers.<name>] with command/args/env or a url.
+    Client("Codex CLI", "mcp_servers", kind="toml",
+           user=(_home() / ".codex" / "config.toml",)),
+    Client("Cursor", "mcpServers", user=(_home() / ".cursor" / "mcp.json",),
+           project=(".cursor/mcp.json",)),
+    # The workspace file spells its map `servers`; so does the user profile.
+    Client("VS Code", "servers",
+           user=(_appdata() / "Code" / "User" / "mcp.json",),
+           project=(".vscode/mcp.json",)),
+    Client("Windsurf", "mcpServers",
+           user=(_home() / ".codeium" / "windsurf" / "mcp_config.json",)),
+    Client("Gemini CLI", "mcpServers", user=(_home() / ".gemini" / "settings.json",),
+           project=(".gemini/settings.json",)),
+    Client("Cline", "mcpServers",
+           user=(_home() / ".cline" / "data" / "settings" / "cline_mcp_settings.json",)),
+    Client("Roo Code", "mcpServers", project=(".roo/mcp.json",)),
+    Client("Zed", "context_servers",
+           user=(_appdata() / "Zed" / "settings.json",
+                 _home() / ".config" / "zed" / "settings.json")),
+    Client("Continue", "mcpServers", kind="dir",
+           user=(_home() / ".continue" / "mcpServers",),
+           project=(".continue/mcpServers",)),
 )
+
+#: What a folder of one-file-per-server configs may hold.
+_CONFIG_SUFFIXES = (".json", ".yaml", ".yml")
+
+
+def _workspace_root() -> Path:
+    """The folder the owner works in, where a harness keeps its project-scope list.
+
+    The setting is read here rather than at import time, so a redirect of the settings
+    file is honoured; a value that cannot be read falls back to the folder Oneiro runs
+    in, and the row a survey prints names the folder it actually looked in.
+    """
+    try:
+        raw = str(config.value("tools.workspace") or "").strip()
+    except Exception:
+        raw = ""
+    return Path(raw).expanduser() if raw else Path.cwd()
+
+
+def _clients(clients: Iterable[Client | tuple[Any, ...]]) -> tuple[Client, ...]:
+    """The client table in one shape, accepting the older `(label, path, shape)` form."""
+    normalised: list[Client] = []
+    for entry in clients:
+        if isinstance(entry, Client):
+            normalised.append(entry)
+            continue
+        parts = tuple(entry)
+        target = Path(str(parts[1])) if len(parts) > 1 else None
+        normalised.append(Client(str(parts[0]) if parts else "",
+                                 str(parts[2]) if len(parts) > 2 else "",
+                                 user=(target,) if target is not None else ()))
+    return tuple(normalised)
+
+
+def _files_of(client: Client, root: Path) -> tuple[Path, ...]:
+    """Every file this client's list could be in, in the order it is looked at."""
+    candidates: list[Path] = list(client.user)
+    candidates.extend(root / relative for relative in client.project)
+    if client.kind != "dir":
+        return tuple(candidates)
+    expanded: list[Path] = []
+    for folder in candidates:
+        expanded.append(folder)
+        if not folder.is_dir():
+            continue
+        try:
+            expanded.extend(sorted(child for child in folder.iterdir()
+                                   if child.is_file()
+                                   and child.suffix.lower() in _CONFIG_SUFFIXES))
+        except OSError:                 # a folder that cannot be listed is not read
+            continue
+    return tuple(expanded)
+
+
+def candidate_paths(clients: Iterable[Client | tuple[Any, ...]] = CLIENTS) -> tuple[Path, ...]:
+    """Every file the survey looks at, whether or not it is there.
+
+    A caller that has to prove nothing was written — a live check, a test — fingerprints
+    these, rather than the files it happens to know about.
+    """
+    root = _workspace_root()
+    found: list[Path] = []
+    for client in _clients(clients):
+        found.extend(_files_of(client, root))
+    return tuple(found)
+
+
+def _yaml_module() -> Any | None:
+    """A YAML parser, when this runtime happens to carry one.
+
+    PyYAML is not a declared dependency of the product and is not in the installer
+    payload, so a YAML config is read where a parser exists and named as unreadable
+    where it does not — never skipped in silence, and never guessed at by hand.
+
+    The lookup is dynamic, the same guard the graph modules use for their optional
+    extra: it ships no stubs, so a static import would make the typecheck mean one thing
+    on a machine that has PyYAML and another where it is absent.
+    """
+    try:
+        if importlib.util.find_spec("yaml") is None:
+            return None
+        return importlib.import_module("yaml")
+    except (ImportError, ValueError):    # no module, or a path the finder cannot walk
+        return None
+
+
+def _read_config(path: Path, kind: str) -> tuple[Any, str]:
+    """A config file as data, or a named reason why it could not be read."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return None, f"unreadable ({type(exc).__name__})"
+    if kind == "toml":
+        try:
+            return tomllib.loads(text), ""
+        except (ValueError, TypeError) as exc:
+            return None, f"unreadable ({type(exc).__name__})"
+    if path.suffix.lower() in (".yaml", ".yml"):
+        module = _yaml_module()
+        if module is None:
+            return None, "a YAML config, and this runtime has no YAML parser"
+        try:
+            return module.safe_load(text), ""
+        except Exception as exc:        # the parser's own error types are its own
+            return None, f"unreadable ({type(exc).__name__})"
+    try:
+        return json.loads(text), ""
+    except ValueError as exc:
+        return None, f"unreadable ({type(exc).__name__})"
 
 
 @dataclass(frozen=True)
 class Found:
-    """One client config: what it is, whether it is there, and what it declares."""
+    """One config file of one client: whether it is there, and what it declares."""
 
     client: str
     path: str
@@ -301,38 +521,55 @@ class Found:
     servers: tuple[Server, ...] = ()
     problems: tuple[dict[str, str], ...] = ()
     error: str = ""
+    #: Every file this client's list could live in, so a row that found nothing can say
+    #: where it looked instead of only that it found nothing.
+    paths: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {"client": self.client, "path": self.path, "found": self.found,
                 "servers": [{"name": server.name, "kind": server.kind,
                              "source": server.source, "enabled": server.enabled}
                             for server in self.servers],
-                "problems": list(self.problems), "error": self.error}
+                "problems": list(self.problems), "error": self.error,
+                "paths": list(self.paths)}
 
 
-def survey(clients: Iterable[tuple[str, Path, str]] = CLIENTS) -> list[Found]:
-    """What each known client declares. Reads only; nothing is written anywhere."""
-    reports: list[Found] = []
-    for label, path, _shape in clients:
-        if not path.is_file():
-            reports.append(Found(client=label, path=str(path)))
-            continue
+def _read_client(client: Client, path: Path, files: tuple[Path, ...]) -> Found:
+    """One client file: what it declares, or the shape of what could not be read."""
+    document, error = _read_config(path, client.kind)
+    looked = tuple(str(item) for item in files)
+    if error:
+        return Found(client=client.label, path=str(path), found=True, error=error,
+                     paths=looked)
+    servers: list[Server] = []
+    problems: list[dict[str, str]] = []
+    for name, entry in _server_map(document, client.shape, client.kind).items():
         try:
-            document = json.loads(path.read_text(encoding="utf-8"))
-            block = _block(document) if isinstance(document, dict) else {}
-        except (OSError, ValueError) as exc:
-            reports.append(Found(client=label, path=str(path), found=True,
-                                 error=f"unreadable ({type(exc).__name__})"))
-            continue
-        servers: list[Server] = []
-        problems: list[dict[str, str]] = []
-        for name, entry in block.items():
-            try:
-                servers.append(_entry_to_server(str(name), entry))
-            except McpError as exc:
-                problems.append({"name": str(name), "reason": str(exc)})
-        reports.append(Found(client=label, path=str(path), found=True,
-                             servers=tuple(servers), problems=tuple(problems)))
+            servers.append(_entry_to_server(str(name), entry))
+        except McpError as exc:
+            problems.append({"name": str(name), "reason": str(exc)})
+    return Found(client=client.label, path=str(path), found=True,
+                 servers=tuple(servers), problems=tuple(problems), paths=looked)
+
+
+def survey(clients: Iterable[Client | tuple[Any, ...]] = CLIENTS) -> list[Found]:
+    """What each known client declares. Reads only; nothing is written anywhere.
+
+    One row per **file**, not per client: a harness that keeps a user-scope and a
+    project-scope list gets a row for each, because a row's job is to name the file a
+    server came from. A client with no file at all still gets one row, so `mcp sources`
+    can say where it looked instead of staying quiet.
+    """
+    reports: list[Found] = []
+    root = _workspace_root()
+    for client in _clients(clients):
+        files = _files_of(client, root)
+        present = [path for path in files if path.is_file()]
+        for path in present:
+            reports.append(_read_client(client, path, files))
+        if not present:
+            reports.append(Found(client=client.label, path=str(files[0]) if files else "",
+                                 paths=tuple(str(item) for item in files)))
     return reports
 
 

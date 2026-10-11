@@ -432,7 +432,8 @@ def _print_sources(machine: bool) -> int:
         return 0
     for report in reports:
         if not report["found"]:
-            _say(f"{report['client']:<16} {report['path']}  (no such file here)")
+            looked = "; ".join(report.get("paths") or [report["path"]])
+            _say(f"{report['client']:<16} (no such file here — looked in {looked})")
             continue
         if report["error"]:
             _say(f"{report['client']:<16} {report['path']}  {report['error']}")

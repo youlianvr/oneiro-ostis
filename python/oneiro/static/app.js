@@ -277,8 +277,12 @@ function setupTabs() {
   });
 
   const mcpContainer = document.querySelector("#mcp-servers-list");
+  const mcpSources = document.querySelector("#mcp-sources-list");
   const skillsContainer = document.querySelector("#skills-list");
-  if (mcpContainer) {
+
+  // The servers in *our* list: what Oneiro itself has been told to open.
+  function renderMcp() {
+    if (!mcpContainer) return;
     fetch("/api/mcp").then(r => r.json()).then(data => {
       const servers = data.servers || [];
       if (!servers.length) {
@@ -293,6 +297,62 @@ function setupTabs() {
       }
     }).catch(() => { mcpContainer.innerHTML = `<p class='muted'>${escapeHtml(T["mcp.offline"])}</p>`; });
   }
+
+  // The servers another harness already declares on this machine, each with the file it
+  // was found in and a button that copies exactly that one into our list. Adopting reads
+  // the other client's file and writes ours; nothing is written into theirs. A file that
+  // could not be read is listed too, because a config silently missing from the screen is
+  // how a person concludes it was not found — the reason itself is the command line's
+  // (`oneiro mcp sources`), which keeps backend prose off a translated page.
+  function renderMcpSources() {
+    if (!mcpSources) return;
+    fetch("/api/mcp").then(r => r.json()).then(data => {
+      const reports = data.sources || [];
+      const rows = reports.flatMap(report => (report.servers || []).map(server => ({
+        ...server, client: report.client, file: report.path })));
+      const unreadable = reports.filter(report => report.error);
+      const html = rows.map(row => `
+          <div class="card-item">
+            <div><strong>${escapeHtml(row.name)}</strong> (${escapeHtml(row.kind || "local")})</div>
+            <small class="muted">${escapeHtml(T["mcp.declared_in"])} ${escapeHtml(row.client)}: ${escapeHtml(row.file)}</small>
+            <button type="button" class="mcp-adopt" data-name="${escapeHtml(row.name)}">${escapeHtml(T["mcp.adopt"])}</button>
+          </div>
+        `).join("") + unreadable.map(report => `
+          <div class="card-item">
+            <div><strong>${escapeHtml(report.client)}</strong></div>
+            <small class="muted">${escapeHtml(report.path)} — ${escapeHtml(T["mcp.unreadable"])}</small>
+          </div>
+        `).join("");
+      if (!html) {
+        mcpSources.innerHTML = `<p class='muted'>${escapeHtml(T["mcp.sources_none"])}</p>`;
+        return;
+      }
+      mcpSources.innerHTML = html;
+      mcpSources.querySelectorAll("button.mcp-adopt").forEach(button => {
+        button.addEventListener("click", async () => {
+          const token = await getToken();
+          try {
+            const response = await fetch("/api/mcp/import", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Oneiro-CSRF": token },
+              body: JSON.stringify({ write: true, only: [button.dataset.name] })
+            });
+            const body = await response.json().catch(() => ({}));
+            button.textContent = response.ok ? T["mcp.adopted"] : T["mcp.adopt_failed"];
+            button.disabled = true;
+            if (response.ok) renderMcp();
+            else if (body.error) button.title = String(body.error);
+          } catch (_) {
+            button.textContent = T["mcp.adopt_failed"];
+            button.disabled = true;
+          }
+        });
+      });
+    }).catch(() => { mcpSources.innerHTML = `<p class='muted'>${escapeHtml(T["mcp.offline"])}</p>`; });
+  }
+
+  renderMcp();
+  renderMcpSources();
 
   if (skillsContainer) {
     fetch("/api/skills").then(r => r.json()).then(data => {

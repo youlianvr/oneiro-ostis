@@ -1832,8 +1832,83 @@ half-written (20 distinct hashes, `theme-night-*` identical to its conversation 
 within the run), and the payload was rebuilt from this tree (43 entries, manifest
 `f2f164d21b6e9601b30197b9e3663d68a199349c7d24bc3f8285be49fdacd613`) — so
 `docs/ACCEPTANCE-REPORT.md` § 1, § 2, § 3, § 4 and § 5 carry this run's numbers, and § 6's claim
-that "no `sc-server` was running" was corrected, because one was. `_scripts/validate_doc_routes.py`
-OK after the last doc edit.
+that "no `sc-server` was running" was corrected, because one was. `_scripts/validate_doc_routes.py`OK after the last doc edit.
+
+## 2026-10-12 — P1: the harnesses this machine already has, and one control to take their servers
+
+Scope, recorded before the edits this entry closes: Oneiro must find the MCP servers that already
+exist on this machine, in the owner's own harness configs, and offer them for adoption — without
+writing a byte into anyone else's file. Acceptance: `oneiro mcp sources` names the servers in
+`~/.claude.json` and `~/.codex/config.toml` together with the file each came from; unit tests cover
+TOML parsing, a name collision against Oneiro's own entry and the byte-for-byte immutability of a
+foreign file; one live check on the real surface proves the same; the Tools → MCP screen lists
+every found server with the file it came from and an adopt control, and re-polls at startup.
+
+The defect, as found: `mcp.CLIENTS` was a six-row table taken from documentation — OpenCode,
+OpenClaw, Claude Desktop, Cursor, VS Code, Windsurf — and neither of the two harnesses this machine
+actually uses was in it: Claude Code's `~/.claude.json` (`kogiQA-mcp-browser`) and Codex CLI's
+`~/.codex/config.toml` (`[mcp_servers.*]`: `kogiQA-mcp-browser`, `node_repl`). Nothing failed,
+because nothing looked there — the same shape of blindness as the panel that measured a TCP
+connect while the page measured a read.
+
+What the pass changed:
+
+1. **The table is thirteen clients.** Claude Code (`~/.claude.json`, user scope) and Codex CLI
+   (`~/.codex/config.toml`) join the six; Gemini CLI (`.gemini/settings.json`), Cline
+   (`~/.cline/data/settings/cline_mcp_settings.json`), Roo Code (`.roo/mcp.json`), Zed
+   (`context_servers`), Continue (a folder of one-file configs) and VS Code's workspace file
+   (`servers`) were added, and project scope now covers `.mcp.json` and `.cursor/mcp.json`.
+   TOML is read with the standard library's `tomllib` — no new dependency. `_server_map` reads the
+   key that client declares first and the ecosystem's other spellings after it, so a format that
+   moved between releases is read rather than reported empty; an absent file is reported absent
+   with the paths that were looked in; an unreadable one names its reason. A YAML config in a
+   Continue folder needs PyYAML, which the product does not ship, so it is reported unreadable
+   where no parser exists — through the same dynamic lookup the graph extra already uses, because
+   a static import of an untyped optional extra makes the typecheck mean one thing here and
+   another where the extra is absent.
+2. **One row per file, not per client.** `Found` carries the paths a client's list could be in, so
+   a row that found nothing says where it looked — and `candidate_paths()` exposes the whole set,
+   which is what lets a check fingerprint every file the survey touches instead of the ones it
+   happens to know about.
+3. **The Tools → MCP screen shows and offers them.** Each found server renders with the client and
+   file it came from and one control that calls `POST /api/mcp/import` with `only` and the CSRF
+   token; `renderMcpSources()` runs at startup with the rest of the screen, so reopening the app
+   re-reads the machine. The only write path is Oneiro's own `mcp.file`: adopting copies one
+   server into our list and writes nothing into the file it came from.
+
+Checks, each a plain command with its exit status read from the process:
+
+- `python -m mypy python/oneiro` — Success: no issues found in 33 source files, exit 0.
+- `python -m pytest -q` — 606 passed, 2 warnings, exit 0 (598 before this pass; the eight new
+  tests are in `tests/test_mcp.py`: the TOML shape Codex writes, a collision against Oneiro's own
+  entry, and immutability of a foreign file by hash).
+- `tests/live_w1_check.py` … `tests/live_w9_shots.py` and `tests/i18n_measure.py` — exit 0 each.
+
+Measured by `tests/live_w2_check.py` itself (its own output): the survey reads OpenCode
+(`unityMCP` remote, `kogiQA-mcp-browser`), OpenClaw (30 servers), **Claude Code**
+(`~/.claude.json`: `kogiQA-mcp-browser`), **Codex CLI** (`~/.codex/config.toml`: `kogiQA-mcp-browser`,
+`node_repl`), VS Code (`unityMCP`, `kogiQA-mcp-browser`) and Cline (9 servers), and reports the
+other seven paths as absent, each with the paths it looked in (Claude Desktop, Cursor, Windsurf,
+Gemini CLI, Roo, Zed, Continue). Read back from the raw files, independently of the survey:
+`['kogiQA-mcp-browser']` and `['kogiQA-mcp-browser', 'node_repl']` — the same names. `/tools?lang=en`
+carries the found-servers block and `app.js` carries the adopt control. "Nothing of anyone else's
+was written": 20 candidate paths, every row `unchanged`, including `~/.claude.json`
+(`2d153073bb83d523`), `~/.codex/config.toml` (`c18868292e4d4e1c`), Cline (`510f208a1ab1439a`),
+OpenClaw (`c25357a1740d9aff`) and VS Code (`a5e38b341c1f2597`).
+
+Artifacts: the 22 acceptance frames were re-shot by this pass — the Tools screen changed, so its
+frames grew from 70,426 to 379,578 bytes — and the payload was rebuilt from this tree: 43 entries,
+`manifest.json` 4,383 bytes `8d18d7dd62f1d41c49290def95eeddbddb103495df76c49f1113b29b293b668f`.
+`docs/ACCEPTANCE-REPORT.md` § 1, § 2 (both language tables and all 22 frame hashes), § 3 row 2, § 4,
+§ 5 item 16 and § 6 carry this run's numbers, and `_scripts/validate_doc_routes.py` was run after
+the last doc edit.
+
+Boundaries: only `projects/ostis/oneiro-ostis/` was touched or committed; the owner's settings,
+keys and graph were read and never written (their fingerprints are `unchanged` in the live logs);
+every console ran on a free loopback port with an isolated data root and was stopped afterwards;
+the preview on 9899 was neither disturbed nor stopped. Still deferred and untouched: the mypy
+override, the settings layer's dependence on a temporary § 2 file, and DOM-only client drift.
+
 
 
 

@@ -11,6 +11,11 @@ accepted deliverable found that § 6 row 14 (RU/EN) had been asserted from evide
 not support it — the settings screen served English on a Russian page. § 5 records that
 defect and its repair, and § 2 now carries the measurement rather than a claim.
 
+Re-measured 2026-10-12 by the pass that widened the MCP survey to the harnesses this machine
+actually uses (§ 5 item 16): § 1's manifest hash, § 2's twenty-two frames and both language
+tables, § 3's row 2 and § 4's counts are that run's output, taken from the artifacts on disk
+and from the checks' own logs — not carried over from the previous pass.
+
 Nothing here is verified against a copy in a worktree: every command ran in this checkout,
 and every live check keeps its settings, data root and keys in a temporary folder while
 fingerprinting the owner's own files before and after.
@@ -22,7 +27,7 @@ fingerprinting the owner's own files before and after.
 | `NOTICE` | 4,618 | `8b348dd92cbd1989428a89c05cc062452fc93c6afee48815420e0dfafa40c6c1` |
 | `LICENSE` | 1,061 | `6367df4033615b0c0626662c15a562afba3e061d72b2c2e4d37c230abdd4882c` |
 | `python/oneiro/assets/skills-catalog.json` (shipped catalog) | 409,403 | `f5ddd9d025563ab96f9fbf5de6d62a3d71e66cd010f99e57fe9dcd1760ca0245` |
-| payload `manifest.json` (43 entries) | 4,383 | `f2f164d21b6e9601b30197b9e3663d68a199349c7d24bc3f8285be49fdacd613` |
+| payload `manifest.json` (43 entries) | 4,383 | `8d18d7dd62f1d41c49290def95eeddbddb103495df76c49f1113b29b293b668f` |
 | `console/vendor/cowagent-2.1.9.zip` (named by `NOTICE`) | 4,394,330 | `cc92ae3e8dbffdc52154e3b5199e44543a20eca10220edcaf0d38c5fac534f73` |
 
 The payload hash is of the manifest `scripts/build_installer_payload.py` writes at the end of
@@ -35,21 +40,30 @@ later pass, as it must: it covers every shipped file, and the last two passes ed
 `python/oneiro/graph_worker.py`, `memory.py`, `web.py`, `runtime.py` and `i18n.py` among them.
 The build this table's hash comes from was made after the pass that made a down target
 remembered and gave the probe's memo an age, which changed `graph_worker.py` and `memory.py`
-again — so the hash moved, as it must.
+again — so the hash moved, as it must. The build this table's hash comes from is the one the
+2026-10-12 pass made, after the MCP survey learned to read the harnesses this machine really
+uses; it changed `python/oneiro/mcp.py`, `mcp_surface.py`, `pages.py`, `i18n.py` and
+`static/app.js`, so the manifest hash moved again, as it must. The other four rows of this table
+are byte-identical to the previous pass: `NOTICE`, `LICENSE`, the shipped catalog and the vendor
+archive were not touched.
 
 ## 2. Acceptance screenshots (`docs/shots/oneiro-v1/`)
 
 Twenty-two frames, written by `python tests/live_w9_shots.py` against the web console on a
 free loopback port (never the owner's preview on 9899), with the document's `lang` and
-`data-theme` asserted before the shutter.
+`data-theme` asserted before the shutter. All twenty-two were re-shot by the 2026-10-12 pass:
+the Tools screen grew the found-servers block (§ 5 item 16), so every frame in this table is new
+here.
 
-The hashes below are the run of 2026-10-11 recorded with this file — the re-shoot taken after
-the pass that made a down target remembered and gave the probe's memo an age, so the frames
-show the console this report describes. It replaced a set a killed run had left half-written,
-which is why all 22 files are new here. **They are not stable between runs**, and the file does
+The hashes below are the run of 2026-10-12 recorded with this file — the re-shoot taken by the
+pass that widened the MCP survey, so the frames show the console this report describes, Tools
+screen included. This set replaced the previous pass's frames, all twenty-two of them, because the
+Tools screen changed; that earlier run had itself replaced a set a killed run had left
+half-written. **They are not stable between runs**, and the file does
 not pretend otherwise: runs over identical code produce different hashes each time
 (`ru-settings.png` 901,253 bytes before the first of these passes, 900,150 in it, 898,836 in
-the second, 899,728 in the third, 901,464 in the fourth, 901,446 in the run recorded below)
+the second, 899,728 in the third, 901,464 in the fourth, 901,446 in the previous report's run,
+900,689 in the run recorded below)
 because Chromium's rasterizer is not bit-reproducible. What *is* stable is the set's structure: 22 files, 20
 distinct hashes, because `theme-night-*` always equals its `*-conversation.png` counterpart
 *within the same run* (checked: identical hash, not just identical size) — `night` is the
@@ -59,28 +73,28 @@ must expect its own hashes, not these.
 
 | Frame | Bytes | SHA-256 |
 | --- | --- | --- |
-| `ru-conversation.png` | 82,912 | `5e90c6ecd7f6df86b06a2ae08b432298d7f54aee0e4c679823d74f411548368e` |
-| `ru-tasks.png` | 78,507 | `fdafbd208cdda7667fd753f02cd57633302081d7f724d5afabdf18c53c4ff922` |
-| `ru-tools.png` | 70,426 | `7e7eae2d8c45e6e85ec2014eaa878e953494fe333dd5a08b64d49d013ab6945f` |
-| `ru-settings.png` | 901,446 | `1c1369bb7dd11a5f9d26e0dd8a4e86bea2fa6f0d8b45a6467ee9fbf2db070e2a` |
-| `ru-memory.png` | 78,438 | `25113f24f3727a81d9fca66d99ea1e348365293bfe62c002d6bdbc3f54eb5d2b` |
-| `en-conversation.png` | 82,298 | `6c145bb72f380e6cc0cff39afb0eec0f667a37143f2043b5cc00df649d551da6` |
-| `en-tasks.png` | 79,119 | `68a254b189aaceddba462d82851c9d7298d77300103e15e5aa11a5b027020c72` |
-| `en-tools.png` | 71,013 | `97fcd7991c7c75ab380083f0f8bccfb21a99ec5ce982d9b55f90ae5f740af876` |
-| `en-settings.png` | 794,139 | `b3ff6496fc2e26eda243bfc79db9133676e6a457382447c73c0e5e60b74fbae3` |
-| `en-memory.png` | 78,898 | `b7fe429385985c212e2ec26433fb8c4cdfb36783da3102ebbb25667bb51fb251` |
-| `theme-night-ru.png` | 82,912 | `5e90c6ecd7f6df86b06a2ae08b432298d7f54aee0e4c679823d74f411548368e` |
-| `theme-night-en.png` | 82,298 | `6c145bb72f380e6cc0cff39afb0eec0f667a37143f2043b5cc00df649d551da6` |
-| `theme-paper-ru.png` | 83,237 | `ef92ddc88d76ef447460a9687692d2f2cd301c67d5e6ead6f7f6ee350d157a4e` |
-| `theme-paper-en.png` | 82,697 | `7c4e80ae3837f06a0b5e0f404e5eda72a979a70cf2ac47d760eb9403e9b13a41` |
-| `theme-editorial-ru.png` | 73,093 | `65d4602860554f5f63cdb7723bf4b7f18866332c7f1e0077907208b2ab22317d` |
-| `theme-editorial-en.png` | 70,892 | `1d6d2ce5f3b4fd47be7e942a008e5e15fc12592eeeacbebc05689602dee44bbd` |
-| `theme-cosmic-ru.png` | 80,620 | `b23db18656b4f47e98d38d5a8d993df65b1b84daa0982c3cdabbaa2b3ddf64be` |
-| `theme-cosmic-en.png` | 81,012 | `e614b342532c6c0a7d6907c05a25beb63a8e0bcf65f60e60d120e6ea360dc045` |
-| `theme-agentic-ru.png` | 85,649 | `5ed5ac6508b72da07a50dd72f2b903d713746aa0e71d9f8cf54927e59160dcd5` |
-| `theme-agentic-en.png` | 84,598 | `bdc3e0c6b8620f4282473adb637b932ffcceefa6c6ad403c5313d2680ac5bd58` |
-| `installed-conversation-ru.png` | 83,276 | `2887c8e7df1f8a56d547f09d9502e79e22427270d08155c90047d9c37a34a6f6` |
-| `installed-conversation-en.png` | 82,535 | `a6155623e6759f97a47cbb17e5e7db1bb2ae9d00b26b280341afa59d14776717` |
+| `ru-conversation.png` | 82,928 | `2e3dcfb52e8c41a088f356ca2a4945f32e018f03f7f8bd6f78745c59b9d7cf52` |
+| `ru-tasks.png` | 78,528 | `c4389fbaaa3e233e26ecd2ee2f245c6adf98146a05447ad27b29877d880be298` |
+| `ru-tools.png` | 379,578 | `6c9356589515ff8e4dc064d230411d44fcd17cf56fa0d4157167c4bf4ebc4993` |
+| `ru-settings.png` | 900,689 | `58610e96ffe1fadec3b6db76bed57bece2ba59ccd63710a309ebb9cb6232ab8a` |
+| `ru-memory.png` | 78,464 | `352a36ef6fe0e8007fbc17073bee395dd46059367768e5cf537e544c799c32cc` |
+| `en-conversation.png` | 82,017 | `c87ddfd77fc4f937c6b3367ca46dd713148cc15b3d06ae3c2370dcf2d4aa4825` |
+| `en-tasks.png` | 78,837 | `1896e1ee8d0e94d6d4f4b012f42969abf403b006e62c3dd5404d7d2a958c6979` |
+| `en-tools.png` | 379,973 | `8fe00d30e6aa665ac230e6447e5cdaf34e6d3d3244a33d4c90690e8362c8afe9` |
+| `en-settings.png` | 792,906 | `5ca3d2ed0388a3a5aa14f2823631b1c56bf6a780d7b190d1b63b44d61eb6a606` |
+| `en-memory.png` | 78,631 | `d716e72c9d1de365bf5f4ed8ba2e2e6f9ab1acb3b3d9806bb33dff78ab8b3eb9` |
+| `theme-night-ru.png` | 82,928 | `2e3dcfb52e8c41a088f356ca2a4945f32e018f03f7f8bd6f78745c59b9d7cf52` |
+| `theme-night-en.png` | 82,017 | `c87ddfd77fc4f937c6b3367ca46dd713148cc15b3d06ae3c2370dcf2d4aa4825` |
+| `theme-paper-ru.png` | 83,247 | `98862ca1187c4ad80ee6ac283c2a4e4cc0674fa852655f2e90b1060d8cc4c16e` |
+| `theme-paper-en.png` | 82,444 | `f47eb09002b6264ba3c104680bbabec5be00f029d51308a967fbe8260083f3f5` |
+| `theme-editorial-ru.png` | 73,118 | `abcd70ce53e43cb09ff3c31c73848f7a717acbd4949653144cccdad6e7c1d3d1` |
+| `theme-editorial-en.png` | 70,616 | `e65c693d502c04e45835c3cb9c8194ddf83afd06cf367479a2356091d926f1bf` |
+| `theme-cosmic-ru.png` | 80,635 | `676d8917870413f04e1446c286413b6eebfecddcaefd94b146473f9816e55ba1` |
+| `theme-cosmic-en.png` | 80,755 | `64af8032dfc66b01c558cc25c7b776008ee16b62cefff590190bc13baf21d413` |
+| `theme-agentic-ru.png` | 85,662 | `887ab6cedc5838898e6ee104c905a32b2f34ece21be8f01d9e39c3c951fd00a0` |
+| `theme-agentic-en.png` | 84,337 | `1cecb32ff958149b8a5b04be369e6062cf1b5fc1b9c95d808cc45a51ca72d8e2` |
+| `installed-conversation-ru.png` | 83,167 | `37c77bdd3ee79aee1aafb2d9b9bf995ae93d6cfa8bbae6cc67a76fd4c0f7a11c` |
+| `installed-conversation-en.png` | 82,350 | `f6e3507aafff91e6e3f1888f0ec1c61c44f2bf95bd161accae827a255e9ca7d3` |
 
 Every frame is checked against the catalog **before** the shutter: a `ru` frame must carry
 `oneiro.i18n`'s Russian text for that screen as element text or attribute value, and must not
@@ -109,13 +123,16 @@ both that the Russian side holds no English sentence and that the two languages 
 | --- | --- | --- | --- | --- |
 | conversation | 9 | 922 | **0** | **0** |
 | tasks | 11 | 927 | **0** | **0** |
-| tools | 9 | 841 | **0** | **0** |
+| tools | 17 | 5,206 | **0** | **0** |
 | settings | 82 | 15,352 | **0** | **0** |
 | memory | 10 | 987 | **0** | **0** |
 
 Both this table and the served-markup one below were re-measured in the run that re-shot the
-frames (§ 3) and are unchanged by these repairs: what changed in that pass is when the graph
-lane remembers a target, and how long the probe's note stands for it — not a string.
+frames (§ 3). Four of its five rows are unchanged; `tools` is not, and that is what this pass is
+about: the found-servers block added to the Tools screen (§ 5 item 16) took that screen's English
+sentences from 9 to 17 and its Russian characters from 841 to 5,206. What changed in the earlier
+pass was when the graph lane remembers a target, and how long the probe's note stands for it —
+not a string.
 
 The panel is included because it used to be *removed* before that comparison, and the removal
 is what hid the defect a first pass fixed: `/api/status` served `run \`oneiro verify-model\` to
@@ -164,8 +181,8 @@ visible lines; the script prints the same rows):
 | `/` | en | 25 | 0 | 25 | 4 |
 | `/tasks` | ru | 24 | 22 | 2 | **0** |
 | `/tasks` | en | 24 | 0 | 24 | 4 |
-| `/tools` | ru | 34 | 27 | 7 | **0** |
-| `/tools` | en | 34 | 0 | 34 | 3 |
+| `/tools` | ru | 37 | 30 | 7 | **0** |
+| `/tools` | en | 37 | 0 | 37 | 6 |
 | `/settings` | ru | 201 | 167 | 34 | **0** |
 | `/settings` | en | 201 | 0 | 201 | 80 |
 | `/memory` | ru | 22 | 20 | 2 | **0** |
@@ -200,7 +217,7 @@ Each was run as a plain command in this checkout; the exit status is the process
 | Check | What it proves | Exit |
 | --- | --- | --- |
 | `python tests/live_w1_check.py` | tasks, schedules, approvals, restart | 0 |
-| `python tests/live_w2_check.py` | MCP over stdio and HTTP JSON-RPC | 0 |
+| `python tests/live_w2_check.py` | MCP over stdio and HTTP JSON-RPC, and the harness configs this machine really uses surveyed read-only — Claude Code (`~/.claude.json`), Codex CLI (`~/.codex/config.toml`, read as TOML), Cline, OpenCode, OpenClaw, VS Code — with both files read back independently of the survey and all twenty candidate paths fingerprinted unchanged | 0 |
 | `python tests/live_w3_check.py` | skills: shipped catalog, folders, CLI, HTTP, a full turn | 0 |
 | `python tests/live_w4_check.py` | conversation with tools, probes, memory writes | 0 |
 | `python tests/live_w5_check.py` | research with sources, attachments | 0 |
@@ -213,15 +230,23 @@ Each was run as a plain command in this checkout; the exit status is the process
 still exits 0: the installed copy is asked for a doctor report in a temporary root with no
 model key and no graph, and `ready=False` with a named phase is the honest answer there.
 
+All ten were re-run as plain commands in the pass these numbers come from, on the same tree as
+the commit, and each kept its own exit status: 0. `tests/live_w9_shots.py` re-shot the
+twenty-two frames in that run, so § 2's table is that run's output.
+
 ## 4. Suite and typecheck
 
 | Command | Result |
 | --- | --- |
 | `python -m mypy python/oneiro` | Success: no issues found in 33 source files (exit 0) |
-| `python -m pytest -q` | 598 passed, 2 warnings, 0 failed (exit 0) |
+| `python -m pytest -q` | 606 passed, 2 warnings, 0 failed (exit 0) |
 
-598 tests passed across 36 `tests/test_*.py` files (three added by the pass § 5 items 12
-and 13 record). The translation rule lives in
+606 tests passed across 36 `tests/test_*.py` files. Eight of them belong to this pass and all
+eight are in `tests/test_mcp.py`: the TOML shape Codex writes, a name collision against Oneiro's
+own entry, and the byte-for-byte immutability of a foreign file (hash before and after). Three
+more were added by the pass § 5 items 12
+and 13 record. Both gates were re-run as plain commands on the final tree, exit status read from
+the process: `mypy` exit 0 over 33 source files, `pytest` exit 0. The translation rule lives in
 `tests/test_i18n_themes.py` (parametrised over the five canonical screens, `/setup` and the
 legacy graph route, plus a mirror of the readiness panel and a test of the measurement
 itself) and in the live check above; the agreement between the panel and the graph page in
@@ -413,6 +438,28 @@ notes, which said the matrix was fully verified.
     already proved: no `cast`, no `# type: ignore`, and `mypy` is clean over 33 files in § 4. It
     is recorded here because a pass that shipped a type error and then said "mypy clean" would be
     the kind of claim this report exists to prevent.
+16. **The survey read six clients and missed both harnesses the owner actually uses.**
+    `mcp.CLIENTS` named OpenCode, OpenClaw, Claude Desktop, Cursor, VS Code and Windsurf — a table
+    assembled from documentation — while this machine's own lists live in `~/.claude.json` (Claude
+    Code, holding `kogiQA-mcp-browser`) and `~/.codex/config.toml` (Codex CLI, `[mcp_servers.*]`,
+    holding `kogiQA-mcp-browser` and `node_repl`), two files the survey never opened. A product
+    whose promise is "connect an MCP server" could not see the servers already configured beside
+    it, and no check failed, because none of them looked there. Repaired by widening the table to
+    thirteen clients — Claude Code, Codex CLI (TOML through the standard library's `tomllib`, no
+    new dependency), Gemini CLI, Cline, Roo Code, Zed (`context_servers`), Continue (a folder of
+    one-file configs), VS Code's workspace file (`servers`) beside the user profile, and the
+    project-scope `.mcp.json` and `.cursor/mcp.json` — and by reading each shape defensively: the
+    key that client declares first, the ecosystem's other spellings after it, an absent file
+    reported as absent with the paths it looked in. The Tools → MCP screen now lists every found
+    server with the client and the file it came from and a control that copies exactly that one
+    into Oneiro's list; `renderMcpSources()` runs at startup together with the rest of the screen,
+    so reopening the app re-reads the machine. Nothing is written into a foreign file: the only
+    write path is Oneiro's own `mcp.file`, and `tests/live_w2_check.py` fingerprints all twenty
+    candidate paths before and after the whole run — `~/.claude.json` `2d153073bb83d523`,
+    `~/.codex/config.toml` `c18868292e4d4e1c` and
+    `~/.cline/data/settings/cline_mcp_settings.json` `510f208a1ab1439a` among them — with every row
+    `unchanged`, and reads the two harness files back independently of the survey to confirm the
+    same names (`['kogiQA-mcp-browser']` and `['kogiQA-mcp-browser', 'node_repl']`).
 
 ## 6. What was not verified, and why
 
@@ -464,6 +511,18 @@ Named gaps, not silent ones.
   it prints `installed console stopped (exit 1)`. That number is the stop mechanism, not the
   console's health: it had answered `/api/health` and served both frames before it. A
   graceful-shutdown exit code was not verified here.
+- **A harness whose shape is not the published one is reported, not guessed.** The widened survey
+  reads the key that client declares first and the ecosystem's other spellings after it, so a
+  format that moved between releases is read rather than reported empty; a file that is absent is
+  named absent, with every path that was looked in, and a file that cannot be parsed is named with
+  its reason instead of being skipped in silence. Zed, Cline and Continue were confirmed only
+  partially when the table was written, so those three are read defensively by design: a schema
+  this build does not know surfaces as a named problem row, never as a server that quietly appears
+  with the wrong arguments. A YAML config inside a Continue folder needs PyYAML, which the product
+  does not ship, so where no parser exists the file is listed as unreadable — no hand-rolled YAML.
+  Of the thirteen clients, six were found on this machine (OpenCode, OpenClaw, Claude Code, Codex
+  CLI, Cline, VS Code); the other seven paths were reported as absent rather than exercised, and
+  the schemas of Gemini CLI, Roo, Zed and Continue therefore remain documentation-based.
 - **`harness/`.** This development-only tree (not shipped, not in the payload) still names the
   retired `mcp_client` and `skills_index` in a guarded import and gets `None` for both;
   `bench/memory/run.py` still relies on the `python/config.py` compatibility shim. Neither is
@@ -478,6 +537,7 @@ python -m pytest -q                    # includes the RU/EN measurement
 python tests/i18n_measure.py           # the § 2 table, and it fails on English on ru
 python tests/live_w1_check.py          # … w2 … w8, then:
 python tests/live_w9_shots.py          # rewrites docs/shots/oneiro-v1/ (22 frames)
+python -m oneiro mcp sources           # what the harnesses on this machine declare (read only)
 python ../../../_scripts/validate_doc_routes.py   # workspace-root validator; three levels up from here
 ```
 

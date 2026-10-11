@@ -282,10 +282,187 @@ def test_the_survey_names_the_clients_and_writes_nothing(tmp_path: Path):
     """The real survey of this machine, read-only."""
     report = mcp.survey()
 
-    assert [row.client for row in report] == [label for label, _, _ in mcp.CLIENTS]
+    assert report, "the survey read nothing at all"
+    assert {row.client for row in report} <= {client.label for client in mcp.CLIENTS}
+    # Every config file that is there is reported, so a harness this table knows about
+    # cannot be skipped in silence, and every row names the file it is about.
+    for path in mcp.candidate_paths():
+        if path.is_file():
+            assert any(row.found and row.path == str(path) for row in report), path
     for row in report:
         assert Path(row.path).is_absolute()
         assert row.to_dict()["found"] is bool(row.found)
+        assert row.to_dict()["paths"]
+
+
+def test_the_client_table_reads_the_harnesses_this_machine_actually_has():
+    """Claude Code and Codex are in the table, with the files they really write.
+
+    Both were missing, and their lists exist: `mcp sources` reported a machine whose
+    other clients declare nothing while two of them held servers («measured 2026-10-11
+    on the owner's machine: `~/.claude.json` and `~/.codex/config.toml`»).
+    """
+    table = {client.label: client for client in mcp.CLIENTS}
+
+    assert {"Claude Code", "Codex CLI", "Gemini CLI", "Cline", "Roo Code", "Zed",
+            "Continue"} <= set(table)
+    assert table["Claude Code"].user == (Path.home() / ".claude.json",)
+    assert table["Claude Code"].project == (".mcp.json",)
+    assert (table["Codex CLI"].kind, table["Codex CLI"].shape) == ("toml", "mcp_servers")
+    assert table["Codex CLI"].user == (Path.home() / ".codex" / "config.toml",)
+    assert table["VS Code"].shape == "servers"
+    assert table["VS Code"].project == (".vscode/mcp.json",)
+    assert table["Zed"].shape == "context_servers"
+    assert table["Continue"].kind == "dir"
+    assert table["Cline"].user == (Path.home() / ".cline" / "data" / "settings"
+                                   / "cline_mcp_settings.json",)
+
+
+def test_a_toml_list_and_a_json_list_are_read_from_their_own_files(tmp_path: Path):
+    codex = tmp_path / "config.toml"
+    codex.write_text('model = "a-model"\n\n'
+                     '[mcp_servers.node_repl]\ncommand = "node"\nargs = ["repl.js"]\n'
+                     '[mcp_servers.node_repl.env]\nNODE_ENV = "dev"\n\n'
+                     '[mcp_servers.hosted]\nurl = "https://host/mcp"\n', encoding="utf-8")
+    claude = tmp_path / ".claude.json"
+    claude.write_text(json.dumps({"mcpServers": {
+        "browser": {"command": "npx", "args": ["-y", "b"]}}}), encoding="utf-8")
+
+    report = mcp.survey([mcp.Client("Codex CLI", "mcp_servers", kind="toml", user=(codex,)),
+                         mcp.Client("Claude Code", "mcpServers", user=(claude,))])
+
+    codex_row, claude_row = report
+    assert codex_row.path == str(codex) and claude_row.path == str(claude)
+    assert [(server.name, server.kind) for server in codex_row.servers] == [
+        ("node_repl", "local"), ("hosted", "remote")]
+    assert codex_row.servers[0].command == ("node", "repl.js")
+    assert dict(codex_row.servers[0].environment) == {"NODE_ENV": "dev"}
+    assert [server.name for server in claude_row.servers] == ["browser"]
+
+
+def test_a_client_with_no_file_says_where_it_looked(tmp_path: Path):
+    absent = tmp_path / "absent.json"
+
+    report = mcp.survey([mcp.Client("Cursor", "mcpServers", user=(absent,))])
+
+    assert len(report) == 1 and report[0].found is False and report[0].servers == ()
+    assert report[0].paths == (str(absent),)
+
+
+def test_a_project_scope_list_is_read_beside_the_code(tmp_path: Path, monkeypatch):
+    """A harness writes its project list in the project, not in its own settings."""
+    project = tmp_path / "code"
+    project.mkdir()
+    (project / ".mcp.json").write_text(json.dumps({"mcpServers": {
+        "project-tool": {"command": "tool"}}}), encoding="utf-8")
+    isolate(tmp_path, monkeypatch)
+    config.save({"tools.workspace": str(project)})
+
+    report = mcp.survey([mcp.Client("Claude Code", "mcpServers",
+                                    user=(tmp_path / "no-user-file.json",),
+                                    project=(".mcp.json",))])
+
+    assert Path(report[0].path) == project / ".mcp.json"
+    assert [server.name for server in report[0].servers] == ["project-tool"]
+    assert Path(str(config.value("tools.workspace"))) == project
+
+
+def test_the_other_spellings_are_read_too(tmp_path: Path):
+    """Zed nests the program, Cline switches a server off, Gemini says `httpUrl`."""
+    zed_dir, cline_dir, gemini_dir = tmp_path / "zed", tmp_path / "cline", tmp_path / "gemini"
+    for folder in (zed_dir, cline_dir, gemini_dir):
+        folder.mkdir()
+    (zed_dir / "settings.json").write_text(json.dumps({"context_servers": {
+        "zed-tool": {"source": "custom",
+                     "command": {"path": "npx", "args": ["-y", "zed"],
+                                 "env": {"ZED_KEY": "1"}}}}}), encoding="utf-8")
+    (cline_dir / "mcp.json").write_text(json.dumps({"mcpServers": {
+        "off-tool": {"command": "tool", "disabled": True}}}), encoding="utf-8")
+    (gemini_dir / "settings.json").write_text(json.dumps({"mcpServers": {
+        "web-tool": {"httpUrl": "https://g/mcp"}}}), encoding="utf-8")
+
+    report = mcp.survey([mcp.Client("Zed", "context_servers",
+                                    user=(zed_dir / "settings.json",)),
+                         mcp.Client("Cline", "mcpServers", user=(cline_dir / "mcp.json",)),
+                         mcp.Client("Gemini CLI", "mcpServers",
+                                    user=(gemini_dir / "settings.json",))])
+
+    zed_tool, off_tool, web_tool = (row.servers[0] for row in report)
+    assert zed_tool.command == ("npx", "-y", "zed")
+    assert dict(zed_tool.environment) == {"ZED_KEY": "1"}
+    assert off_tool.enabled is False
+    assert (web_tool.kind, web_tool.url) == ("remote", "https://g/mcp")
+
+
+def test_a_folder_of_configs_is_read_and_a_yaml_file_needs_a_parser(tmp_path: Path,
+                                                                   monkeypatch):
+    """Continue keeps one file per server, and YAML is read only with a parser."""
+    folder = tmp_path / "mcpServers"
+    folder.mkdir()
+    (folder / "one.json").write_text(json.dumps({"mcpServers": {
+        "json-tool": {"command": "tool"}}}), encoding="utf-8")
+    (folder / "two.yaml").write_text("mcpServers:\n  - name: yaml-tool\n    command: tool\n",
+                                     encoding="utf-8")
+    client = mcp.Client("Continue", "mcpServers", kind="dir", user=(folder,))
+
+    # Without a parser the YAML file is named as unreadable, not skipped in silence.
+    monkeypatch.setattr(mcp, "_yaml_module", lambda: None)
+    without = mcp.survey([client])
+
+    assert {Path(row.path).name for row in without} == {"one.json", "two.yaml"}
+    yaml_row = next(row for row in without if row.path.endswith(".yaml"))
+    assert yaml_row.found is True and "no YAML parser" in yaml_row.error
+    json_row = next(row for row in without if row.path.endswith(".json"))
+    assert [server.name for server in json_row.servers] == ["json-tool"]
+
+    class FakeYaml:
+        @staticmethod
+        def safe_load(_text: str) -> dict:
+            return {"mcpServers": [{"name": "yaml-tool", "command": "tool"}]}
+
+    # With one, the list form Continue writes is read like any other map.
+    monkeypatch.setattr(mcp, "_yaml_module", lambda: FakeYaml)
+    with_parser = mcp.survey([client])
+
+    yaml_row = next(row for row in with_parser if row.path.endswith(".yaml"))
+    assert yaml_row.error == ""
+    assert [server.name for server in yaml_row.servers] == ["yaml-tool"]
+
+
+def test_a_config_that_cannot_be_parsed_is_a_named_error(tmp_path: Path):
+    broken = tmp_path / "config.toml"
+    broken.write_text("this is not = = toml\n", encoding="utf-8")
+
+    report = mcp.survey([mcp.Client("Codex CLI", "mcp_servers", kind="toml",
+                                    user=(broken,))])
+
+    assert report[0].found is True and report[0].servers == ()
+    assert report[0].error.startswith("unreadable (")
+
+
+def test_adopting_a_server_writes_ours_and_leaves_theirs_byte_identical(tmp_path: Path):
+    """Read theirs, write ours, and prove the difference by fingerprint.
+
+    The machine's own configs are fingerprinted beside the synthetic ones, because they
+    are the files this build reads most often and the ones it must never write.
+    """
+    codex = tmp_path / "config.toml"
+    codex.write_text('[mcp_servers.node_repl]\ncommand = "node"\n', encoding="utf-8")
+    claude = tmp_path / ".claude.json"
+    claude.write_text(json.dumps({"mcpServers": {"b": {"command": "tool"}}}),
+                      encoding="utf-8")
+    ours = tmp_path / "mcp.json"
+    clients = [mcp.Client("Codex CLI", "mcp_servers", kind="toml", user=(codex,)),
+               mcp.Client("Claude Code", "mcpServers", user=(claude,))]
+    watched = [*mcp.candidate_paths(clients), *mcp.candidate_paths()]
+    before = {path: path.read_bytes() if path.is_file() else None for path in watched}
+
+    written = mcp.apply_import(mcp.load(ours), mcp.survey(clients))
+
+    assert written["written"] == ["b", "node_repl"]
+    assert json.loads(ours.read_text(encoding="utf-8"))["mcp"]["node_repl"]["command"] == ["node"]
+    for path, raw in before.items():
+        assert (path.read_bytes() if path.is_file() else None) == raw, f"{path} was written"
 
 
 # ---------- the transports, with real servers ----------
@@ -544,7 +721,9 @@ def test_the_http_surface_lists_sources_opens_tools_and_calls(servers: Path, tmp
         assert {row["state"] for row in listing["servers"]} == {"closed"}
         assert listing["autostart"] is True
         assert listing["nothing_declared"] is False
-        assert {row["client"] for row in listing["sources"]} == {row[0] for row in mcp.CLIENTS}
+        labels = {client.label for client in mcp.CLIENTS}
+        assert {row["client"] for row in listing["sources"]} <= labels
+        assert all(Path(row["path"]).is_absolute() for row in listing["sources"])
 
         assert post(client, "/api/mcp", {}, csrf).status_code in (404, 405)
 

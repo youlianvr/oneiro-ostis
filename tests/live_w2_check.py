@@ -41,6 +41,7 @@ import sys
 import tempfile
 import threading
 import time
+import tomllib
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -237,6 +238,11 @@ class Browser:
     def status_get(self, path: str) -> tuple[int, dict]:
         return self._open(urllib.request.Request(self.base + path))
 
+    def raw(self, path: str) -> str:
+        """A page or a script as the console serves it, for a markup assertion."""
+        with urllib.request.urlopen(self.base + path, timeout=60) as response:
+            return response.read().decode("utf-8")
+
     def post(self, path: str, body: dict) -> tuple[int, dict]:
         request = urllib.request.Request(
             self.base + path, data=json.dumps(body).encode("utf-8"),
@@ -315,7 +321,9 @@ def main() -> int:
         }
     }, indent=2) + "\n", encoding="utf-8")
 
-    client_paths = [Path(path) for _label, path, _shape in mcp.CLIENTS]
+    # Every file the survey will look at, including the project-scope candidates, so the
+    # proof that nothing was written covers all of them rather than the ones known here.
+    client_paths = list(mcp.candidate_paths())
     before = fingerprints(client_paths)
 
     links = MemoryLinks()
@@ -371,12 +379,55 @@ def main() -> int:
     say("== what the other clients on this machine declare (read only) ==")
     for report in seen["sources"]:
         if not report["found"]:
-            say(f"  {report['client']:<16} {report['path']}  (no such file here)")
+            looked = "; ".join(report.get("paths") or [report["path"]])
+            say(f"  {report['client']:<16} (no such file here — looked in {looked})")
             continue
         declared = ", ".join(f"{row['name']} ({row['kind']})" for row in report["servers"])
         say(f"  {report['client']:<16} {report['path']}")
         say(f"      declares: {declared or 'nothing'}"
             + (f"  {report['error']}" if report["error"] else ""))
+    say()
+
+    # The harnesses this machine really uses were invisible to the client table before
+    # this pass: their files exist and hold servers, and nothing looked at them. Proving
+    # they are read needs the raw file, not the product's own reading of it.
+    say("== read back from the raw files, independently of the survey ==")
+    comparisons = (("Claude Code", Path.home() / ".claude.json", "mcpServers"),
+                   ("Codex CLI", Path.home() / ".codex" / "config.toml", "mcp_servers"))
+    mismatches: list[str] = []
+    for label, path, key in comparisons:
+        if not path.is_file():
+            say(f"  {label:<16} {path}  (no such file on this machine, nothing to compare)")
+            continue
+        raw = path.read_text(encoding="utf-8")
+        held = tomllib.loads(raw) if path.suffix == ".toml" else json.loads(raw)
+        expected = sorted(str(name) for name in (held.get(key) or {}))
+        row = next((item for item in seen["sources"] if item["path"] == str(path)), None)
+        read = sorted(server["name"] for server in ((row or {}).get("servers") or []))
+        say(f"  {label:<16} {path}")
+        say(f"      the file holds:  {expected or 'nothing'}")
+        say(f"      the survey read: {read or 'nothing'}"
+            + ("" if row else "   (no row at all for this file)"))
+        if row is None or read != expected:
+            mismatches.append(f"{label}: the survey did not report what {path} holds")
+    if mismatches:
+        for line in mismatches:
+            say(f"  PROBLEM: {line}")
+        return 1
+    say()
+
+    say("== the panel carries the found-servers block, with a control to take one ==")
+    tools_page = browser.raw("/tools?lang=en")
+    script = browser.raw("/app.js")
+    for needle in ('id="mcp-sources-list"', "Found in other clients"):
+        if needle not in tools_page:
+            say(f"  PROBLEM: /tools?lang=en does not carry {needle!r}")
+            return 1
+    for needle in ("mcp-adopt", "/api/mcp/import"):
+        if needle not in script:
+            say(f"  PROBLEM: the client script does not carry {needle!r}")
+            return 1
+    say("  /tools?lang=en carries the block, and /app.js carries the adopt control")
     say()
 
     say("== the tools one server offers, over the HTTP surface ==")
