@@ -205,9 +205,12 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
         if page == "graph":
             host = str(config.value("graph.host"))
             port = int(config.value("graph.port"))
-            facts = await asyncio.wait_for(
-                asyncio.to_thread(memory.probe, host, port),
-                timeout=memory.PROBE_TIMEOUT + 2)
+            # Bounded inside the probe, not by a `wait_for` around the thread: an outer
+            # deadline raises out of this handler and leaves `500 Internal Server Error`
+            # (measured 2026-10-11 against a port that accepted TCP and never answered),
+            # while `probe_within` returns the facts that say the read did not finish.
+            facts = await asyncio.to_thread(memory.probe_within, host, port,
+                                            budget=memory.PROBE_BUDGET)
         return HTMLResponse(pages.render(page, description, error=description["error"],
                                         facts=facts, lang=lang))
 
@@ -402,13 +405,29 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
     def refused(status: int, error: str, **extra: Any) -> JSONResponse:
         return JSONResponse({"error": error, **extra}, status_code=status)
 
+    #: The deadline a *page-facing* read gets. A screen issues several of these, and one
+    #: holding the graph lane's own 10 s deadline each is how `/tasks` failed to settle
+    #: for more than 30 s with an unreachable graph (measured 2026-10-11: /api/tasks
+    #: 10.04 s, /api/schedules 9.11 s, /api/conversations 8.98 s). A bounded read answers
+    #: with `unavailable` instead. Writes keep the lane's own, longer deadline: an
+    #: abandoned write is an uncertain write, and that is a different trade.
+    PAGE_READ_BUDGET = 3.0
+
+    async def page_read(work: Any, *, budget: float = PAGE_READ_BUDGET) -> Any:
+        """One bounded graph read for a page, or the reason it did not answer."""
+        try:
+            return await asyncio.wait_for(work, timeout=budget)
+        except TimeoutError:
+            raise GraphQueryError(
+                "graph_timeout", "the graph lane did not answer the page in time") from None
+
     @app.get("/api/memory/facts")
     async def facts() -> JSONResponse:
         try:
-            return JSONResponse((await recall.current_facts(
-                owner, limit_chars=_facts_budget())).to_dict())
+            found = await page_read(recall.current_facts(owner, limit_chars=_facts_budget()))
         except GraphQueryError as exc:
             return unavailable(exc)
+        return JSONResponse(found.to_dict())
 
     @app.post("/api/memory/facts")
     async def add_fact(request: Request) -> JSONResponse:
@@ -517,9 +536,10 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
     @app.get("/api/conversations")
     async def conversations() -> JSONResponse:
         try:
-            return JSONResponse(await recall.conversation_list(owner))
+            listed = await page_read(recall.conversation_list(owner))
         except GraphQueryError as exc:
             return unavailable(exc)
+        return JSONResponse(listed)
 
     @app.post("/api/conversations")
     async def new_conversation() -> JSONResponse:
@@ -531,7 +551,8 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
         if not _CONVERSATION.fullmatch(conversation_id):
             return refused(400, "conversation_id must be 1..64 letters, digits or hyphens")
         try:
-            found = await recall.history(owner, conversation_id, limit=_check_limit(limit))
+            found = await page_read(recall.history(owner, conversation_id,
+                                                   limit=_check_limit(limit)))
         except GraphQueryError as exc:
             if exc.code == "bad_limit":
                 return refused(400, exc.reason)
@@ -548,7 +569,7 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
                 or any(len(word) > 64 for word in words)):
             return refused(400, f"query must be 1..{SEARCH_CHARS} characters, at most {SEARCH_WORDS} words")
         try:
-            found = await recall.search_messages(owner, words, limit=SEARCH_LIMIT)
+            found = await page_read(recall.search_messages(owner, words, limit=SEARCH_LIMIT))
         except GraphQueryError as exc:
             return unavailable(exc)
         results = [{**_message_out(row), "snippet": recall.snippet(row["text"], words[0])}
@@ -572,7 +593,7 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
     @app.get("/api/memory/records")
     async def memory_records(cursor: str | None = None, limit: str | None = None) -> JSONResponse:
         try:
-            page = await owner.memory_page(cursor=cursor, limit=_check_limit(limit))
+            page = await page_read(owner.memory_page(cursor=cursor, limit=_check_limit(limit)))
         except GraphQueryError as exc:
             invalid = exc.code in ("bad_cursor", "bad_limit", "bad_scan_limit")
             return JSONResponse({"error": exc.code, "reason": exc.reason, "fallback": None},
@@ -583,7 +604,7 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
     @app.get("/api/memory/records/{record_id}")
     async def memory_entity(record_id: str) -> JSONResponse:
         try:
-            record = await owner.memory_entity(record_id)
+            record = await page_read(owner.memory_entity(record_id))
         except GraphQueryError as exc:
             return JSONResponse({"error": exc.code, "reason": exc.reason, "fallback": None}, status_code=503)
         return JSONResponse({"record": record}, status_code=200 if record is not None else 404)
@@ -593,9 +614,8 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
         """The owner's tasks, what Oneiro said on its own, and what it may start."""
         level = tasks.level()
         try:
-            found = await tasks.view(owner)
-            spoken = await tasks.notices(owner)
-            offered = await tasks.suggestions(owner)
+            found, spoken, offered = await page_read(asyncio.gather(
+                tasks.view(owner), tasks.notices(owner), tasks.suggestions(owner)))
         except GraphQueryError as exc:
             return unavailable(exc)
         return JSONResponse({**found.to_dict(), "level": level,
@@ -614,11 +634,12 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
         if not _RECORD_ID.fullmatch(task_id):
             return refused(404, "no such task")
         try:
-            return JSONResponse(await tasks.history(owner, task_id))
+            history = await page_read(tasks.history(owner, task_id))
         except TaskError as exc:
             return refused(404, str(exc))
         except GraphQueryError as exc:
             return unavailable(exc)
+        return JSONResponse(history)
 
     @app.post("/api/tasks")
     async def task_create(request: Request) -> JSONResponse:
@@ -667,9 +688,10 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
     @app.get("/api/schedules")
     async def schedule_list() -> JSONResponse:
         try:
-            return JSONResponse(await schedule.listing(owner))
+            listed = await page_read(schedule.listing(owner))
         except GraphQueryError as exc:
             return unavailable(exc)
+        return JSONResponse(listed)
 
     @app.post("/api/schedules")
     async def schedule_create(request: Request) -> JSONResponse:
@@ -735,8 +757,8 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
         """
         host = str(config.value("graph.host"))
         port = int(config.value("graph.port"))
-        facts = await asyncio.wait_for(asyncio.to_thread(memory.probe, host, port),
-                                       timeout=memory.PROBE_TIMEOUT + 2)
+        facts = await asyncio.to_thread(memory.probe_within, host, port,
+                                        budget=memory.PROBE_BUDGET)
         return JSONResponse(facts.to_dict(), status_code=200 if facts.reachable else 503)
 
     return app

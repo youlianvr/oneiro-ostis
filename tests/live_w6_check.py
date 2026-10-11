@@ -1,9 +1,11 @@
-"""Live check for W6: Console screens and window launcher.
+"""Live check for W6: Console screens, the memory states and the window launcher.
 
 Run it with `python tests/live_w6_check.py`. It provides end-to-end evidence
 for § 5 W6 and acceptance matrix § 6:
 * Row 2: Application window / browser fallback.
 * Row 4: Every refusal/approval explained via action cards (no raw JSON on screen).
+* Row 14: The readiness panel and the graph page agree about memory, in every state
+  the memory substrate can be in (see `graph_states` below).
 * Row 15: No JSON on screen across all 5 canonical routes.
 * Row 16: Accessibility and keyboard focus elements present.
 * Ensures zero-leak: user's settings and files remain completely unchanged.
@@ -63,6 +65,135 @@ def free_port() -> int:
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         return int(probe.getsockname()[1])
+
+
+class SilentPort:
+    """A socket that accepts a connection and never answers it.
+
+    This is the state that used to put `500 Internal Server Error` on the graph page: the
+    read inside `sc_client` has no deadline, so an outer `wait_for` raised out of the
+    route. A listener that holds the connection open reproduces it exactly.
+    """
+
+    def __enter__(self) -> int:
+        self._listener = socket.socket()
+        self._listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._listener.bind(("127.0.0.1", 0))
+        self._listener.listen(8)
+        self._held: list[socket.socket] = []
+        self._stop = threading.Event()
+        self._keeper = threading.Thread(target=self._hold, daemon=True)
+        self._keeper.start()
+        return int(self._listener.getsockname()[1])
+
+    def _hold(self) -> None:
+        while not self._stop.is_set():
+            try:
+                connection, _ = self._listener.accept()
+            except OSError:
+                return
+            self._held.append(connection)      # accepted, never answered
+
+    def __exit__(self, *exc: object) -> None:
+        self._stop.set()
+        for connection in self._held:
+            connection.close()
+        self._listener.close()
+        self._keeper.join(timeout=2)
+
+
+def graph_states(work: Path, configured_port: int) -> int:
+    """Row 14/15 with the memory substrate in three states, through the real routes.
+
+    A machine without `sc-server` cannot present a *live* graph on demand, so this
+    section reports what the configured graph is and asserts the two states any socket
+    can be put into - closed, and accepting-but-silent. All three states, for every
+    screen, are asserted in `tests/test_graph_states.py`, which patches only the probe's
+    answer; what is added here is the real thing: real sockets, the real probe, the real
+    routes, and the panel the browser fills.
+    """
+    from starlette.testclient import TestClient
+
+    from oneiro import i18n, memory
+    from oneiro.runtime import Runtime
+    from oneiro.web import create_app
+    from test_i18n_themes import (_english_sentences, _panel, _reads_as_english_prose,
+                                  _strings, _visible_lines)
+
+    say("\n== 3. The memory substrate in three states (row 14/15) ==")
+    screens = ("/", "/tasks", "/tools", "/settings", "/memory", "/setup", "/oneiro/")
+    limit = memory.PROBE_BUDGET + 3.0
+    problems: list[str] = []
+    with SilentPort() as silent_port:
+        states = (("configured", configured_port), ("closed", free_port()),
+                  ("silent", silent_port))
+        for label, port in states:
+            settings = work / f"settings-graph-{label}.json"
+            settings.write_text(json.dumps({"graph.port": port}), encoding="utf-8")
+            os.environ["ONEIRO_SETTINGS_FILE"] = str(settings)
+            with TestClient(create_app(Runtime(), scheduler=False)) as client:
+                say(f"  -- {label}: graph.port={port}")
+                for route in screens:
+                    started = time.monotonic()
+                    response = client.get(f"{route}?lang=ru")
+                    elapsed = time.monotonic() - started
+                    body = response.text
+                    prose = _english_sentences(_visible_lines(body))
+                    bad = []
+                    if response.status_code != 200:
+                        bad.append(f"HTTP {response.status_code}")
+                    if not response.headers["content-type"].startswith("text/html"):
+                        bad.append("not HTML")
+                    if "Internal Server Error" in body:
+                        bad.append("English error body")
+                    if prose:
+                        bad.append(f"English prose {sorted(prose)[:2]}")
+                    if elapsed >= limit:
+                        bad.append(f"{elapsed:.1f}s exceeds the {limit:.0f}s budget")
+                    say(f"     {route:<10} {response.status_code} {elapsed:5.2f}s "
+                        f"prose={len(prose)} {'; '.join(bad) or 'ok'}")
+                    problems.extend(f"{label} {route}: {item}" for item in bad)
+
+                status = client.get("/api/status").json()
+                graph = client.get("/api/graph")
+                panel = _panel(status, "ru")
+                library_prose = [(where, value) for where, value in _strings(status)
+                                 if _reads_as_english_prose(value)]
+                says_readable = i18n.t("status.memory_ok", "ru") in panel.splitlines()
+                page = client.get("/oneiro/?lang=ru").text
+                page_readable = i18n.t("graph.readable", "ru", arcs=1, anchor="",
+                                       elapsed=0)[:24] in page
+                say(f"     /api/graph -> {graph.status_code} "
+                    f"codes={[item['code'] for item in graph.json()['blocked']]}")
+                say(f"     memory: verified={status['memory']['verified']} "
+                    f"reachable={status['memory']['tcp_reachable']}")
+                say(f"     panel: {[line for line in panel.splitlines() if line.startswith('Память')]}")
+                if graph.status_code == 500:
+                    problems.append(f"{label} /api/graph: 500")
+                if says_readable != status["memory"]["verified"]:
+                    problems.append(f"{label}: the panel disagrees with the probe")
+                if page_readable != status["memory"]["verified"]:
+                    problems.append(f"{label}: the graph page disagrees with the probe")
+                if library_prose:
+                    problems.append(f"{label}: the panel payload carries the library's prose: "
+                                    f"{library_prose[:1]}")
+
+        # A screen's own reads, with the graph down: chained reads must not each hold the
+        # graph lane's 10 s deadline (measured 2026-10-11: /api/tasks 10.04 s before).
+        os.environ["ONEIRO_SETTINGS_FILE"] = str(work / "settings-graph-closed.json")
+        with TestClient(create_app(Runtime(), scheduler=False)) as client:
+            for route in ("/api/tasks", "/api/schedules"):
+                started = time.monotonic()
+                response = client.get(route)
+                elapsed = time.monotonic() - started
+                say(f"  {route:<16} {response.status_code} {elapsed:5.2f}s with the graph down")
+                if response.status_code != 503 or elapsed >= limit:
+                    problems.append(f"a screen did not settle: {route} -> "
+                                    f"{response.status_code} in {elapsed:.1f}s")
+
+    for problem in problems:
+        say(f"  PROBLEM: {problem}")
+    return 1 if problems else 0
 
 
 def main() -> int:
@@ -137,8 +268,13 @@ def main() -> int:
         server.should_exit = True
         server_thread.join(timeout=5)
 
-    # 3. Check zero-leak on owner files
-    say("\n== 3. Integrity check: owner files ==")
+    # 3. The three memory states, then the zero-leak check.
+    state_exit = graph_states(WORK, int(config.value("graph.port")))
+    if state_exit != 0:
+        say("ERROR: the memory states did not answer as row 14/15 requires.")
+        return state_exit
+
+    say("\n== 4. Integrity check: owner files ==")
     after = fingerprint(WATCHED)
     problems = []
     for path, seen in before.items():

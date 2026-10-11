@@ -5,13 +5,12 @@ import asyncio
 import importlib.util
 import os
 import shutil
-import socket
 import time
 import uuid
 from typing import Any
 
 from oneiro import __version__
-from oneiro import config, models
+from oneiro import config, memory, models
 from oneiro.ownership import FileLease
 from oneiro.graph_worker import GraphWorker
 from oneiro.query import GraphQueryError
@@ -211,15 +210,17 @@ class Runtime:
 
     @staticmethod
     def _inspect() -> dict[str, Any]:
-        # A TCP probe proves reachability only. It does not validate vocabulary,
-        # graph persistence, provider authorization, model tools or vision.
+        # The memory verdict comes from reading the graph, not from a TCP connect: a
+        # socket that answers proves reachability and nothing else, and reporting
+        # `verified: False` while the graph page showed a successful read made the
+        # panel contradict the page it links to (measured 2026-10-11 against the
+        # owner's live graph). `probe_within` is bounded, so a graph that never answers
+        # costs the panel a fixed wait instead of hanging it. Provider authorization,
+        # model tools and vision are still not proven here.
         host = str(config.value("graph.host"))
         port = int(config.value("graph.port"))
-        try:
-            with socket.create_connection((host, port), timeout=0.5):
-                reachable = True
-        except OSError:
-            reachable = False
+        graph = memory.probe_within(host, port, timeout=memory.STATUS_TIMEOUT,
+                                    budget=memory.PROBE_BUDGET)
         dependencies = {name: importlib.util.find_spec(name) is not None
                         for name in ("sc_client", "sc_kpm", "websocket")}
         # The registry knows the providers, the model per role and what was really probed;
@@ -230,8 +231,10 @@ class Runtime:
         return {
             "ready": False,
             "phase": "agent",
-            "memory": {"required": "OSTIS", "tcp_reachable": reachable,
-                       "verified": False, "fallback": None},
+            "memory": {"required": "OSTIS", "tcp_reachable": graph.reachable,
+                       "verified": graph.verified, "fallback": None,
+                       "arcs_found": graph.arcs_found, "anchor": graph.anchor,
+                       "checked_at": graph.checked_at, "elapsed_ms": graph.elapsed_ms},
             "model": {"configured": bool(first.get("key_found")), "verified": False,
                       "providers": facts["providers"], "roles": facts["roles"],
                       "fallback": facts["fallback"], "discovered": facts["discovered"],
@@ -243,10 +246,11 @@ class Runtime:
             "dependencies": dependencies,
             "docker_cli": bool(shutil.which("docker")),
             "runtime_connected": False,
+            # The panel reports the probe's own codes with machine data only, so the
+            # same moment cannot read as "nothing could be read back" here and as a
+            # readable graph on the page this panel links to.
             "blocked": ([{"code": "blocked.adapter_absent"}]
-                        + ([] if reachable else
-                           [{"code": "blocked.graph_unreachable",
-                             "data": {"host": host, "port": port}}])),
+                        + memory.panel_reasons(graph)),
             "settings_error": config.describe()["error"],
             "autostart": False,
             "pid": os.getpid(),

@@ -39,6 +39,7 @@ REASON_KEYS: tuple[str, ...] = (
     "reason.verify_model",
     "blocked.client_absent", "blocked.graph_unreachable", "blocked.arcs_unresolved",
     "blocked.graph_empty", "blocked.identifiers_unreadable", "blocked.probe_failed",
+    "blocked.probe_timeout", "blocked.graph_unreadable",
     "blocked.adapter_absent", "blocked.model_unverified",
 )
 
@@ -96,13 +97,35 @@ _REASONS: dict[str, tuple[str, str]] = {
         "дуги-идентификаторы есть, но их содержимое не читается обратно",
         "identifier arcs exist but their content could not be read back",
     ),
+    # Interpolates the dependency's own exception text, so it is the one place a page
+    # carries an English clause inside a Russian sentence. It is the *graph page's*
+    # diagnosis: the readiness panel never probes the graph itself, and `panel_reasons`
+    # reports `blocked.graph_unreadable` (machine data only) instead of this code.
     "blocked.probe_failed": (
         "чтение графа прервано: {exception}",
         "reading the graph stopped: {exception}",
     ),
+    "blocked.probe_timeout": (
+        "чтение графа не завершилось за {seconds} с: память не ответила",
+        "the graph read did not finish within {seconds}s: memory did not answer",
+    ),
+    #: What the readiness panel reports when a read did not come back: the verdict, no
+    #: library text, because the panel is on every screen and the graph page holds the
+    #: diagnosis.
+    "blocked.graph_unreadable": (
+        "граф памяти не отдал чтение, поэтому содержимое не подтверждено — причину "
+        "называют страница «Граф» и журнал",
+        "the memory graph did not return a read, so its content is unverified - the Graph "
+        "page and the log name the cause",
+    ),
+    # The typed adapter is a declared prerequisite and stays named here when it is
+    # missing. It must not claim memory is unverified: the read *is* verified when the
+    # graph answers, and the line above this one says so (measured 2026-10-11, the
+    # panel printed both at once after the verdict moved to the real probe).
     "blocked.adapter_absent": (
-        "типовой адаптер OSTIS не подключён, поэтому память не проверена",
-        "the typed OSTIS adapter is not integrated, so memory is not verified",
+        "типовой адаптер OSTIS не подключён: память читается через sc_client напрямую",
+        "the typed OSTIS adapter is not integrated: memory is read through sc_client "
+        "directly",
     ),
     "blocked.model_unverified": (
         "настроенная модель не проверена",
@@ -207,8 +230,8 @@ _RU: dict[str, str] = {
     "status.ready": "Готов к работе.",
     "status.not_ready": "Не готов — см. ниже.",
     "status.phase": "Фаза: {phase}.",
-    "status.memory_ok": "Память (OSTIS) доступна для чтения.",
-    "status.memory_readback": "Память (OSTIS) отвечает, но из графа ничего не удалось прочитать обратно.",
+    "status.memory_ok": "Память (OSTIS) проверена чтением графа.",
+    "status.memory_readback": "Память (OSTIS) отвечает, но чтение графа не подтверждено — причина ниже.",
     "status.memory_unreachable": "Память (OSTIS) недоступна. Она обязательна и не имеет заменителей.",
     "status.model_ok": "Настроенная модель ответила на реальный запрос.",
     "status.model_ok_tools": "Настроенная модель ответила на реальный запрос, включая вызов инструмента.",
@@ -366,8 +389,8 @@ _EN: dict[str, str] = {
     "status.ready": "Ready to work.",
     "status.not_ready": "Not ready yet — see below.",
     "status.phase": "Phase: {phase}.",
-    "status.memory_ok": "Memory (OSTIS) is readable.",
-    "status.memory_readback": "Memory (OSTIS) answers, but nothing could be read back out of the graph.",
+    "status.memory_ok": "Memory (OSTIS) is verified by reading the graph.",
+    "status.memory_readback": "Memory (OSTIS) answers, but the graph read is not confirmed - the reason is below.",
     "status.memory_unreachable": "Memory (OSTIS) is not reachable. It is required and has no substitute.",
     "status.model_ok": "The configured model answered a real call.",
     "status.model_ok_tools": "The configured model answered a real call, including a tool call.",

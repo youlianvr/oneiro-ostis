@@ -1698,6 +1698,47 @@ Measured after: 582 tests pass, mypy is clean with a fresh cache (`--cache-dir`)
 screen shows English prose with `#status` included, the deployed frames were re-shot (22 files,
 20 distinct) and `docs/ACCEPTANCE-REPORT.md` carries the new table and the new defect records.
 
+## 2026-10-11 — The panel that contradicted its own page, and the read with no deadline
+
+A second read-only audit of `3b3dc603e`, this time on the live DOM with the owner's real
+settings and an isolated data root, found the two defects the addendum above left behind.
+Neither was visible from a green check: one contradicting pair of surfaces, one unhandled
+path. Both are closed here.
+
+1. **The readiness panel contradicted the graph page.** In the owner's environment — a live
+   `sc-server`, `probe` reading an arc back, `/oneiro/` reporting a readable graph — the panel
+   said memory answered but nothing could be read back, because `Runtime._inspect` measured a
+   TCP connect and hardcoded `verified: False`. The panel's verdict is the probe's own now
+   (`memory.probe_within`; the panel's reasons carry machine data only), and the standing
+   `blocked.adapter_absent` line was reworded so it cannot contradict the line above it.
+   `tests/test_graph_states.py` asserts the agreement in all three states, and
+   `tests/live_w6_check.py` puts a real socket into the closed and silent states and drives
+   every screen and the chained reads through the real routes.
+2. **A port that accepted TCP and never answered turned the graph route into a 500.** The read
+   inside `sc_client` has no deadline, so `serve()`'s outer `wait_for(memory.probe,
+   PROBE_TIMEOUT + 2)` raised `TimeoutError` out of the handler: `/oneiro/?lang=ru` and
+   `/api/graph` answered `500 text/plain "Internal Server Error"` — 21 bytes of English on a
+   Russian screen — and `/tasks?lang=ru` never settled, because each read behind it held the
+   lane's own 10 s deadline (measured before: `/api/tasks` 10.04 s). The read is bounded now
+   (`PROBE_BUDGET`, at most one lingering silent worker, a 3 s `PAGE_READ_BUDGET` shared by
+   page-facing reads), so every route answers a localized page inside a fixed budget in all
+   three states.
+3. **The report named the panel as the place the exception prose can appear.** § 6 said the
+   own `blocked.probe_failed` clause (`ConnectionAbortedError: …`) could surface on the
+   readiness panel; the panel never probes the graph, so that text can only surface on the
+   graph page. The row now says what was measured, and the panel's own verdict line is pinned
+   by the test above.
+
+Checks: `python -m pytest -q` 592 passed (36 `tests/test_*.py` files, `test_graph_states.py`
+new in this pass); `python -m mypy python/oneiro` clean in 33 files; `tests/live_w1_check.py` …
+`live_w8_check.py` and `tests/live_w9_shots.py` all exit 0; `tests/i18n_measure.py` exit 0;
+`_scripts/validate_doc_routes.py` OK.
+
+Measured after: the acceptance frames were re-shot after the fix (22 files, 20 distinct,
+`theme-night-*` still identical to its conversation counterpart) and the installer payload was
+rebuilt (43 entries, manifest `5a829efb…`), so `docs/ACCEPTANCE-REPORT.md` carries the new
+§§ 1-5 numbers, the corrected § 6 wording and the two new defect records.
+
 
 
 

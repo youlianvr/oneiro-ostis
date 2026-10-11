@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import importlib.util
 import socket
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -35,6 +36,22 @@ SAMPLE_LIMIT = 8
 #: Longest a graph read may take before it is abandoned and reported as a
 #: timeout rather than holding a request open.
 PROBE_TIMEOUT = 4.0
+
+#: The longest any page waits for the memory substrate before it says the read did
+#: not finish. The read inside `sc_client` has no deadline of its own, so a port that
+#: answers the connection and then goes silent used to hang the graph route until an
+#: outer `wait_for` raised out of it and left `500 Internal Server Error` on screen
+#: (measured 2026-10-11). Every route now asks `probe_within`, which returns facts
+#: within this budget instead of an exception.
+PROBE_BUDGET = 6.0
+
+#: The TCP check a status page can afford. The panel is fetched on every screen, so a
+#: closed port must not hold it; the graph page keeps `PROBE_TIMEOUT` because it is the
+#: page a person opened on purpose.
+STATUS_TIMEOUT = 0.5
+
+#: The codes a probe can finish with when the read does not complete in its budget.
+TIMEOUT_CODE = "blocked.probe_timeout"
 
 
 @dataclass(frozen=True)
@@ -75,6 +92,80 @@ def _tcp_reachable(host: str, port: int, timeout: float) -> bool:
             return True
     except OSError:
         return False
+
+
+#: At most one worker whose read never came back may linger: while it is alive every
+#: further call reports the timeout immediately instead of starting another one. This
+#: is what keeps a silent graph from turning into one stuck thread per page view.
+_STUCK: threading.Thread | None = None
+_STUCK_LOCK = threading.Lock()
+
+
+#: A probe outcome a *panel* may interpolate: machine data only. The library's own
+#: exception sentence is deliberately absent — `blocked.probe_failed` carries it on the
+#: graph page, and printing it on every screen would spread the one English clause the
+#: acceptance report names as a boundary.
+PANEL_DATA = ("host", "port", "arcs", "anchor", "seconds")
+
+#: A probe outcome in the panel's own vocabulary: the panel states the verdict and the
+#: reason category, and the graph page carries the diagnosis.
+_PANEL_CODES = {"blocked.probe_failed": "blocked.graph_unreadable",
+                TIMEOUT_CODE: "blocked.graph_unreadable"}
+
+
+def panel_reasons(facts: GraphFacts) -> list[dict[str, Any]]:
+    """What a status page may report: codes with machine data, never a sentence."""
+    reported: list[dict[str, Any]] = []
+    for item in facts.blocked:
+        code = str(item.get("code", "")) if isinstance(item, dict) else str(item)
+        mapped = _PANEL_CODES.get(code)
+        if mapped is not None:
+            # The panel's own sentence, and it asks for no data: the diagnosis (and the
+            # library's text) stays on the graph page.
+            reported.append({"code": mapped})
+            continue
+        raw = item.get("data") if isinstance(item, dict) else None
+        data = {key: value for key, value in (raw or {}).items() if key in PANEL_DATA}
+        reported.append({"code": code, "data": data} if data else {"code": code})
+    return reported
+
+
+def probe_within(host: str, port: int, *, timeout: float = PROBE_TIMEOUT,
+                 budget: float = PROBE_BUDGET) -> GraphFacts:
+    """`probe`, with a deadline: it returns facts and never raises or hangs.
+
+    The read runs in a daemon worker so a dependency that never returns cannot hold a
+    request open; `budget` bounds it. A graph that is still silent in the next window
+    is reported from the same facts, not by starting a second stuck worker.
+    """
+    global _STUCK
+    with _STUCK_LOCK:
+        if _STUCK is not None and _STUCK.is_alive():
+            return _timed_out(host, port, timeout, budget)
+    box: list[GraphFacts] = []
+
+    def read() -> None:
+        try:
+            box.append(probe(host, port, timeout=timeout))
+        except Exception as exc:                       # noqa: BLE001 - reported, never raised
+            box.append(GraphFacts(blocked=(
+                {"code": "blocked.probe_failed",
+                 "data": {"exception": f"{type(exc).__name__}: {exc}"}},)))
+
+    worker = threading.Thread(target=read, name="oneiro-probe", daemon=True)
+    worker.start()
+    worker.join(budget)
+    if worker.is_alive():
+        with _STUCK_LOCK:
+            _STUCK = worker
+        return _timed_out(host, port, timeout, budget)
+    return box[0] if box else _timed_out(host, port, timeout, budget)
+
+
+def _timed_out(host: str, port: int, timeout: float, budget: float) -> GraphFacts:
+    """The read did not finish. Reachability is measured here, not claimed."""
+    return GraphFacts(reachable=_tcp_reachable(host, port, timeout),
+                      blocked=(({"code": TIMEOUT_CODE, "data": {"seconds": budget}},)))
 
 
 def probe(host: str, port: int, *, timeout: float = PROBE_TIMEOUT) -> GraphFacts:
