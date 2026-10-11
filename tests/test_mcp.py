@@ -768,7 +768,9 @@ def test_the_page_marks_as_inactive_exactly_what_is_inactive(tmp_path: Path):
     from oneiro import pages
 
     description = config.describe()
-    markup = pages.render("settings", description, error="", facts=None)
+    # Rendered in English on purpose: the sentence being counted is the English one,
+    # and the default language of the product is Russian.
+    markup = pages.render("settings", description, error="", facts=None, lang="en")
 
     declared_only = [row["key"] for row in description["settings"] if row["pending"]]
     assert markup.count("Declared here; the part of Oneiro that") == len(declared_only)

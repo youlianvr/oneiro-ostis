@@ -49,8 +49,12 @@ def test_conversation_screen_has_three_zones_and_action_feed(tmp_path):
 
 
 def test_tasks_screen_has_split_view_for_tasks_and_schedules(tmp_path):
+    # The words are asserted in English, because the words are catalog text: the
+    # default language is Russian, so the screen is asked for in the language whose
+    # sentences are being pinned here. The Russian side is measured in
+    # test_i18n_themes.py.
     with TestClient(make_app(tmp_path, MemoryLinks())) as client:
-        res = client.get("/tasks")
+        res = client.get("/tasks?lang=en")
         text = res.text
         assert "Active &amp; Queued Tasks" in text or "Active & Queued Tasks" in text
         assert "Standing Schedules" in text
@@ -60,7 +64,7 @@ def test_tasks_screen_has_split_view_for_tasks_and_schedules(tmp_path):
 
 def test_tools_screen_has_three_tabs(tmp_path):
     with TestClient(make_app(tmp_path, MemoryLinks())) as client:
-        res = client.get("/tools")
+        res = client.get("/tools?lang=en")
         text = res.text
         assert "MCP Servers" in text
         assert "Skills Catalog" in text

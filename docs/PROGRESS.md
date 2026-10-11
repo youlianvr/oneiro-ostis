@@ -1622,6 +1622,41 @@ becomes a package of record in `docs/MASTER-PLAN.md`.
    `bench/memory/run.py`. Deciding their fate — adapt to `oneiro.skills` / `oneiro.mcp`, or retire
    them with the benchmark — is a small follow-up package, not a v1 blocker.
 
+## 2026-10-11 — The interface becomes bilingual, and its report stops overclaiming
+
+W7 recorded RU/EN as closed, and W9 signed off § 6 row 14 from that note. Reading the accepted
+deliverable showed the note was wrong: `/settings?lang=ru` served the registry's English
+`label`/`help` for all 62 settings, and the composer buttons, the tagline and the readiness
+panel were English literals in `pages.py`, `static/page.html` and `static/app.js`. The catalogue
+held translations that nothing rendered.
+
+Repair — the catalogue is now the single owner of every visible string:
+
+- `python/oneiro/i18n.py`: 287 keys in both languages; `setting_text` and `group_text` render a
+  declaration's own wording only until a translation exists, so a new setting still needs one
+  entry and nothing else.
+- `python/oneiro/pages.py`, `static/page.html`, `static/app.js`: every literal replaced by a key;
+  the script reads its sentences from a JSON block the page embeds (`i18n.client_catalog`).
+- `tests/test_i18n_themes.py`: the shared-English-sentence rule for the five canonical screens,
+  `/setup` and the legacy graph route, plus a test that the measurement can see a shared sentence.
+- `tests/live_w9_shots.py`, `tests/live_w6_check.py`: frames are checked against the catalogue
+  before the shutter, so a failure now means a mislabelled picture, not a stale expectation.
+
+Measured, on the running console: `/settings` in Russian holds **0** English prose sentences
+(was 48); the five screens share **0** English sentences between RU and EN on the rendered DOM.
+The leftover Latin on the Russian settings page is paths and machine values
+(`C:\Users\pc\.oneiro\settings.json`, `"base_url": ...`), named in § 6 of the report instead of
+being hidden by the measurement.
+
+The report was corrected in the same pass: its per-run screenshot hashes had been asserted as a
+determinism proof (a re-run produces 22 different hashes; what is stable is the set's *structure*
+— 22 files, 20 distinct images), its measurement table mixed a DOM count with an HTML count, and
+its § 5 now records this defect as the third one found while writing the evidence rather than
+listing only the two that were already closed.
+
+Checks: `python -m pytest -q` 580 passed; `python -m mypy python/oneiro` clean in 33 files;
+`tests/live_w1_check.py` … `live_w9_shots.py` all exit 0; `_scripts/validate_doc_routes.py` OK.
+
 
 
 

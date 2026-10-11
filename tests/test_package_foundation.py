@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from oneiro import config, pages
+from oneiro import config, i18n, pages
 from oneiro.ownership import FileLease, OwnershipError
 from oneiro.runtime import Runtime
 from oneiro.web import create_app
@@ -381,14 +381,20 @@ def test_a_closed_set_is_a_list_and_a_structure_is_editable_text():
 
 
 def test_every_field_says_which_layer_answered_it():
-    """A default must not look like a stored preference (W0 evidence)."""
+    """A default must not look like a stored preference (W0 evidence).
+
+    Asked in English: `pages.SOURCES` names a catalog key, and the sentence the page
+    renders is that key's text in the language of the request (the product defaults to
+    Russian, so the English wording is the one to pin here).
+    """
     with TestClient(create_app()) as client:
-        page = client.get("/settings").text
+        page = client.get("/settings?lang=en").text
     described = {row["key"]: row for row in config.describe()["settings"]}
     for key, row in described.items():
         if key == "llm.api_key":
             continue                     # a key reports whether one is in force, not a layer
-        assert f"Value from {pages.SOURCES[row['source']]}." in _control(page, key), \
+        said = i18n.t(pages.SOURCES[row["source"]], "en")
+        assert f"Value from {said}." in _control(page, key), \
             f"{key} came from {row['source']} but the page does not say so"
 
 

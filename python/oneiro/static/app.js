@@ -1,20 +1,28 @@
 "use strict";
+
+// Every sentence on screen comes from the page's i18n block (`#i18n`, rendered by
+// `oneiro/pages.py` from `oneiro/i18n.py`). This file holds markup and behaviour only:
+// a literal sentence here could only ever be one language.
+const i18nBlock = document.getElementById("i18n");
+const T = i18nBlock ? JSON.parse(i18nBlock.textContent) : {};
+
 const form = document.querySelector("#settings");
 let csrf = "";
 
 // The state of the machine, said in plain human sentences (never raw JSON blobs).
 function statusLines(status) {
-  const lines = [status.ready ? "Ready to work." : "Not ready yet — see below."];
-  if (status.phase) lines.push(`Phase: ${status.phase}.`);
+  const lines = [status.ready ? T["status.ready"] : T["status.not_ready"]];
+  if (status.phase) lines.push(T["status.phase"].replace("{phase}", status.phase));
   const memory = status.memory || {};
-  if (memory.verified) lines.push("Memory (OSTIS) is readable.");
-  else if (memory.tcp_reachable) lines.push("Memory (OSTIS) answers, but nothing could be read back out of the graph.");
-  else lines.push("Memory (OSTIS) is not reachable. It is required and has no substitute.");
+  if (memory.verified) lines.push(T["status.memory_ok"]);
+  else if (memory.tcp_reachable) lines.push(T["status.memory_readback"]);
+  else lines.push(T["status.memory_unreachable"]);
   const model = status.model || {};
-  if (model.verified) lines.push("The configured model answered a real call" + (model.used_tools ? ", including a tool call." : "."));
-  else lines.push("The model is not verified yet" + (model.reason ? `: ${model.reason}.` : "."));
+  if (model.verified) lines.push(model.used_tools ? T["status.model_ok_tools"] : T["status.model_ok"]);
+  else if (model.reason) lines.push(T["status.model_unverified_reason"].replace("{reason}", model.reason));
+  else lines.push(T["status.model_unverified"]);
   const blocked = status.blocked || [];
-  if (blocked.length) lines.push("Still blocked:", ...blocked.map(item => `  - ${item}`));
+  if (blocked.length) lines.push(T["status.blocked_title"], ...blocked.map(item => `  - ${item}`));
   return lines.join("\n");
 }
 
@@ -23,11 +31,11 @@ async function prerequisites() {
   if (!statusEl) return;
   try {
     const response = await fetch("/api/status");
-    if (!response.ok) throw new Error("status unavailable");
+    if (!response.ok) throw new Error("status-unavailable");
     const status = await response.json();
     statusEl.textContent = statusLines(status);
   } catch (_) {
-    statusEl.textContent = "Server unavailable. No readiness confirmed.";
+    statusEl.textContent = T["status.unavailable"];
   }
 }
 
@@ -62,14 +70,14 @@ function renderActionStep(step) {
   const isOk = step.ok !== false;
   const kind = isOk ? "step" : "refusal";
   let details = `<div class="action-card ${kind}">`;
-  details += `<strong>Tool: ${escapeHtml(step.tool || "action")}</strong> — `;
-  details += `<span>${isOk ? "Executed successfully" : escapeHtml(step.reason || "Refused by policy")}</span>`;
+  details += `<strong>${escapeHtml(T["action.tool"])}: ${escapeHtml(step.tool || T["action.unnamed"])}</strong> — `;
+  details += `<span>${isOk ? escapeHtml(T["action.executed"]) : escapeHtml(step.reason || T["action.refused"])}</span>`;
   if (step.arguments && Object.keys(step.arguments).length) {
-    details += `<div><small>Args: ${escapeHtml(JSON.stringify(step.arguments))}</small></div>`;
+    details += `<div><small>${escapeHtml(T["action.args"])}: ${escapeHtml(JSON.stringify(step.arguments))}</small></div>`;
   }
   if (step.result) {
     const resText = typeof step.result === "string" ? step.result : JSON.stringify(step.result);
-    details += `<div><small>Result: ${escapeHtml(resText.slice(0, 300))}</small></div>`;
+    details += `<div><small>${escapeHtml(T["action.result"])}: ${escapeHtml(resText.slice(0, 300))}</small></div>`;
   }
   details += "</div>";
   return details;
@@ -87,11 +95,11 @@ function renderMessage(item) {
   li.addEventListener("click", () => {
     if (inspectorContent) {
       inspectorContent.innerHTML = `
-        <h4>Message Details</h4>
-        <p><strong>Role:</strong> ${escapeHtml(item.role)}</p>
-        <p><strong>Text:</strong> ${escapeHtml(item.text)}</p>
-        <p><strong>Steps:</strong> ${item.steps ? item.steps.length : 0}</p>
-        <p><strong>Attachments:</strong> ${item.attachments ? item.attachments.length : 0}</p>
+        <h4>${escapeHtml(T["inspector.heading"])}</h4>
+        <p><strong>${escapeHtml(T["inspector.role"])}:</strong> ${escapeHtml(item.role)}</p>
+        <p><strong>${escapeHtml(T["inspector.text"])}:</strong> ${escapeHtml(item.text)}</p>
+        <p><strong>${escapeHtml(T["inspector.steps"])}:</strong> ${item.steps ? item.steps.length : 0}</p>
+        <p><strong>${escapeHtml(T["inspector.attachments"])}:</strong> ${item.attachments ? item.attachments.length : 0}</p>
       `;
     }
   });
@@ -121,7 +129,7 @@ if (attachBtn && attachInput) {
         }
       }
     } catch (e) {
-      console.error("Upload error", e);
+      console.error("attachment-upload-failed", e);
     }
   });
 }
@@ -172,13 +180,13 @@ if (chatForm) {
         const err = await res.json();
         if (errEl) {
           errEl.hidden = false;
-          errEl.textContent = err.error || "Turn refused";
+          errEl.textContent = err.error || T["chat.turn_refused"];
         }
       }
     } catch (e) {
       if (errEl) {
         errEl.hidden = false;
-        errEl.textContent = "Server communication failure";
+        errEl.textContent = T["chat.server_failure"];
       }
     }
   });
@@ -199,18 +207,18 @@ async function loadTasksAndSchedules() {
         const data = await res.json();
         const tasks = data.tasks || [];
         if (!tasks.length) {
-          taskList.innerHTML = "<p class='muted'>No active or completed tasks.</p>";
+          taskList.innerHTML = `<p class='muted'>${escapeHtml(T["tasks.none"])}</p>`;
         } else {
           taskList.innerHTML = tasks.map(t => `
             <div class="card-item">
               <div><strong>${escapeHtml(t.title)}</strong> <span class="pill">${escapeHtml(t.state)}</span></div>
-              <small class="muted">Role: ${escapeHtml(t.assigned_role || "executor")}</small>
+              <small class="muted">${escapeHtml(T["inspector.role"])}: ${escapeHtml(t.assigned_role || "executor")}</small>
             </div>
           `).join("");
         }
       }
     } catch (_) {
-      taskList.innerHTML = "<p class='bad'>Failed to load tasks.</p>";
+      taskList.innerHTML = `<p class='bad'>${escapeHtml(T["tasks.load_failed"])}</p>`;
     }
   }
 
@@ -221,18 +229,21 @@ async function loadTasksAndSchedules() {
         const data = await res.json();
         const schedules = data.schedules || [];
         if (!schedules.length) {
-          schedList.innerHTML = "<p class='muted'>No standing schedules configured.</p>";
+          schedList.innerHTML = `<p class='muted'>${escapeHtml(T["schedules.none"])}</p>`;
         } else {
-          schedList.innerHTML = schedules.map(s => `
+          schedList.innerHTML = schedules.map(s => {
+            const state = s.enabled ? T["tasks.active"] : T["tasks.disabled"];
+            return `
             <div class="card-item">
               <div><strong>${escapeHtml(s.task_title || s.title || "")}</strong> <code>${escapeHtml(s.cron || "")}</code></div>
-              <small class="muted">Status: ${s.enabled ? "Active" : "Disabled"}</small>
+              <small class="muted">${escapeHtml(T["tasks.status_label"].replace("{state}", state))}</small>
             </div>
-          `).join("");
+          `;
+          }).join("");
         }
       }
     } catch (_) {
-      schedList.innerHTML = "<p class='bad'>Failed to load schedules.</p>";
+      schedList.innerHTML = `<p class='bad'>${escapeHtml(T["schedules.load_failed"])}</p>`;
     }
   }
 }
@@ -258,23 +269,23 @@ function setupTabs() {
     fetch("/api/mcp").then(r => r.json()).then(data => {
       const servers = data.servers || [];
       if (!servers.length) {
-        mcpContainer.innerHTML = "<p class='muted'>No MCP servers configured.</p>";
+        mcpContainer.innerHTML = `<p class='muted'>${escapeHtml(T["mcp.none"])}</p>`;
       } else {
         mcpContainer.innerHTML = servers.map(s => `
           <div class="card-item">
-            <div><strong>${escapeHtml(s.name)}</strong> (${escapeHtml(s.type || "local")}) <span class="pill">${s.enabled ? "enabled" : "disabled"}</span></div>
+            <div><strong>${escapeHtml(s.name)}</strong> (${escapeHtml(s.type || "local")}) <span class="pill">${escapeHtml(s.enabled ? T["mcp.enabled"] : T["mcp.disabled"])}</span></div>
             <small class="muted">${escapeHtml(s.command || s.url || "")}</small>
           </div>
         `).join("");
       }
-    }).catch(() => { mcpContainer.innerHTML = "<p class='muted'>MCP service offline.</p>"; });
+    }).catch(() => { mcpContainer.innerHTML = `<p class='muted'>${escapeHtml(T["mcp.offline"])}</p>`; });
   }
 
   if (skillsContainer) {
     fetch("/api/skills").then(r => r.json()).then(data => {
       const skills = data.skills || [];
       if (!skills.length) {
-        skillsContainer.innerHTML = "<p class='muted'>No skills in catalog.</p>";
+        skillsContainer.innerHTML = `<p class='muted'>${escapeHtml(T["skills.none"])}</p>`;
       } else {
         skillsContainer.innerHTML = skills.slice(0, 30).map(sk => `
           <div class="card-item">
@@ -283,7 +294,7 @@ function setupTabs() {
           </div>
         `).join("");
       }
-    }).catch(() => { skillsContainer.innerHTML = "<p class='muted'>Skills catalog offline.</p>"; });
+    }).catch(() => { skillsContainer.innerHTML = `<p class='muted'>${escapeHtml(T["skills.offline"])}</p>`; });
   }
 }
 
@@ -306,7 +317,7 @@ if (form) {
     }
     const resEl = document.querySelector("#result");
     if (!Object.keys(patch).length) {
-      if (resEl) resEl.textContent = "Nothing changed; nothing written.";
+      if (resEl) resEl.textContent = T["settings.client.nothing_changed"];
       return;
     }
     try {
@@ -318,14 +329,23 @@ if (form) {
       });
       const result = await response.json();
       if (response.ok) {
-        if (resEl) resEl.textContent = "Saved. Reloading to show the stored values.";
-        setTimeout(() => location.reload(), 400);
+        if (resEl) resEl.textContent = T["settings.client.saved"];
+        // The address may carry an older ?lang=; a plain reload would keep it and the
+        // page would stay in the language the owner just changed away from.
+        const language = patch["ui.language"];
+        setTimeout(() => {
+          if (language) {
+            location.href = location.pathname + "?lang=" + encodeURIComponent(language);
+          } else {
+            location.reload();
+          }
+        }, 400);
       } else {
         const why = (result.reasons || []).join("\n");
         if (resEl) resEl.textContent = [result.error, why].filter(Boolean).join("\n");
       }
     } catch (_) {
-      if (resEl) resEl.textContent = "Server unavailable. No successful save confirmed.";
+      if (resEl) resEl.textContent = T["settings.client.unavailable"];
     }
   });
 }

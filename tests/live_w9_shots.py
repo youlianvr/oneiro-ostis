@@ -10,6 +10,16 @@ Pictures taken (22):
 * the console served from an **installed copy outside this checkout**, both languages,
   so § 6 row 1 has a picture of the product and not only a log line
 
+Every frame is checked against the catalog before the shutter: a `ru` frame must carry
+`oneiro.i18n`'s Russian text for that screen as element text and must not carry the
+English value of those same keys. A file whose name claims a language its picture does
+not show fails the run.
+
+After the five screens are shot, their **rendered** text is measured in both languages:
+the two must share no English sentence. This is the check that would have caught the
+settings screen being a Russian page rendering an English form, and it runs on what the
+browser actually shows, not only on the markup the server sent.
+
 Every frame is a real render: the attributes in the document (`lang`, `data-theme`)
 are asserted before the shutter, and a picture below the size floor fails the run.
 Settings and data go to a temporary root, and the owner's own files are
@@ -20,6 +30,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -56,6 +67,22 @@ THEMES = ("night", "paper", "editorial", "cosmic", "agentic")
 #: A frame smaller than this is a blank page or a broken stylesheet, not a screen.
 MIN_BYTES = 5000
 
+#: Catalog keys each screen must show in the language of its frame. A frame whose
+#: name says `ru` and whose markup carries the English value fails before the shutter.
+SCREEN_KEYS = {
+    "conversation": ("app.tagline", "heading.prerequisites", "heading.chat",
+                     "btn.send", "btn.attach", "btn.new_conversation", "btn.find",
+                     "placeholder.message"),
+    "tasks": ("app.tagline", "heading.prerequisites", "heading.tasks",
+              "heading.active_tasks", "btn.queue_task", "heading.schedules"),
+    "tools": ("app.tagline", "heading.prerequisites", "heading.tools", "tab.mcp",
+              "tab.local", "heading.available_skills"),
+    "settings": ("app.tagline", "heading.prerequisites", "heading.settings",
+                 "btn.save_settings", "setting.web.port.label", "group.Interface"),
+    "memory": ("app.tagline", "heading.prerequisites", "heading.memory",
+               "heading.curated_memory", "btn.add_fact"),
+}
+
 
 def say(text: str = "") -> None:
     print(text, flush=True)
@@ -77,6 +104,54 @@ def free_port() -> int:
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         return int(probe.getsockname()[1])
+
+
+#: Words per line, and characters per line, that make a line look like a sentence.
+_SENTENCE = re.compile(r"[ -~]{20,}")
+_CYRILLIC = re.compile("[\u0400-\u04ff]")
+
+
+def english_sentences(text: str) -> set[str]:
+    """Lines that read as English prose: several words, all printable ASCII."""
+    lines = (line.strip() for line in text.splitlines())
+    return {line for line in lines
+            if len(line.split()) >= 4 and _SENTENCE.fullmatch(line) and not _CYRILLIC.search(line)}
+
+
+def assert_no_shared_sentence(ru_text: str, en_text: str, screen: str) -> int:
+    """RU and EN must not say the same English sentence. Returns what was measured."""
+    ru = english_sentences(ru_text)
+    en = english_sentences(en_text)
+    shared = ru & en
+    assert not shared, (
+        f"the {screen} screen shows the same English sentence in both languages: "
+        f"{sorted(shared)[:4]}")
+    return len(en)
+
+
+def assert_the_frame_speaks(markup: str, lang: str, keys) -> None:
+    """Before the shutter: the frame's own language is in the markup, the other is not.
+
+    The name of a file is a claim about the picture inside it, so `ru-settings.png`
+    must not be a screenshot of an English form. Both directions are checked: the
+    catalog's value for this language is present as element text, and the value for
+    the other language is not.
+    """
+    from html import escape
+    from oneiro import i18n
+
+    def present(value: str) -> bool:
+        """Element text or an attribute value: a placeholder is text a person reads too."""
+        wrapped = escape(value, quote=True)
+        return f">{escape(value)}<" in markup or f'"{wrapped}"' in markup
+
+    other = "en" if lang == "ru" else "ru"
+    for key in keys:
+        expected = i18n.t(key, lang)
+        wrong = i18n.t(key, other)
+        assert present(expected), f"{key} is not rendered in {lang}"
+        if expected != wrong:
+            assert not present(wrong), f"{key} is still {other} on a {lang} page"
 
 
 def isolate(port: int) -> None:
@@ -169,6 +244,7 @@ def shots_from_installed(page, installed: Path, port: int, shots_dir: Path,
                 page.wait_for_timeout(300)
                 page.wait_for_function("document.fonts.status === 'loaded'", timeout=5000)
                 assert page.get_attribute("html", "lang") == lang, f"{url}: wrong language"
+                assert_the_frame_speaks(page.content(), lang, SCREEN_KEYS["conversation"])
                 target = shots_dir / f"installed-conversation-{lang}.png"
                 page.screenshot(path=str(target), full_page=True)
                 frames.append(target)
@@ -233,6 +309,7 @@ def main() -> int:
             page = browser.new_page(viewport={"width": 1440, "height": 900})
 
             say("\n== 1. Five screens in both languages ==")
+            rendered: dict[str, dict[str, str]] = {lang: {} for lang in LANGUAGES}
             for lang in LANGUAGES:
                 for name, route in SCREENS:
                     url = f"{base_url}{route}?lang={lang}"
@@ -243,10 +320,23 @@ def main() -> int:
                     page.wait_for_function("document.fonts.status === 'loaded'", timeout=5000)
                     document_lang = page.get_attribute("html", "lang")
                     assert document_lang == lang, f"{url}: rendered lang={document_lang}"
+                    assert_the_frame_speaks(page.content(), lang, SCREEN_KEYS[name])
                     target = SHOTS / f"{lang}-{name}.png"
                     page.screenshot(path=str(target), full_page=True)
                     written.append(target)
+                    # What the browser shows, after the shutter: the readiness panel is
+                    # dropped because its reason lines are backend diagnostics, which
+                    # are data about the machine (see docs/ACCEPTANCE-REPORT.md).
+                    rendered[lang][name] = page.evaluate(
+                        "document.querySelector('#status')?.remove(); document.body.innerText")
                     say(f"  {target.name:<26} <- {url}  ({target.stat().st_size} bytes)")
+
+            say("\n== 1b. The rendered text of each screen, measured in both languages ==")
+            for name, _route in SCREENS:
+                sentences = assert_no_shared_sentence(rendered["ru"][name],
+                                                      rendered["en"][name], name)
+                say(f"  {name:<14} no shared English sentence ({sentences} English sentences "
+                    f"on the en side, {len(rendered['ru'][name])} chars on the ru side)")
 
             say("\n== 2. Five themes, both languages (Conversation screen) ==")
             for theme in THEMES:
@@ -258,6 +348,7 @@ def main() -> int:
                     page.wait_for_function("document.fonts.status === 'loaded'", timeout=5000)
                     document_theme = page.get_attribute("html", "data-theme")
                     assert document_theme == theme, f"{url}: theme={document_theme}, asked {theme}"
+                    assert_the_frame_speaks(page.content(), lang, SCREEN_KEYS["conversation"])
                     target = SHOTS / f"theme-{theme}-{lang}.png"
                     page.screenshot(path=str(target), full_page=True)
                     written.append(target)
