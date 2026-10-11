@@ -463,6 +463,34 @@ def test_every_rendered_field_survives_a_form_round_trip():
     assert config.value("llm.manager_model") == "main"
 
 
+def test_a_settings_post_without_scripts_gets_a_page_and_not_json():
+    """§ 6 row 15 on the one path that could still show JSON.
+
+    Measured 2026-10-11 in Chromium with scripting disabled: the settings form's own
+    Save button posted to `/api/settings` and the tab rendered
+    `{"error": "Cross-origin request refused"}` — raw JSON on a screen, reachable
+    without touching the address bar. A refusal is still something a person reads, so a
+    browser that accepts HTML gets a page in the active language, while an API client
+    that asks for JSON keeps exactly the body it parsed before.
+    """
+    with TestClient(create_app()) as client:
+        as_browser = client.post("/api/settings", data={"ui.language": "en"},
+                                 headers={"Accept": "text/html,application/xhtml+xml",
+                                          "Origin": "null"})
+        assert as_browser.status_code == 403
+        assert as_browser.headers["content-type"].startswith("text/html")
+        assert 'lang="ru"' in as_browser.text          # the settings' own language
+        assert i18n.t("error.refused_title", "ru") in as_browser.text
+        assert i18n.t("error.cross_origin", "ru") in as_browser.text
+        assert not as_browser.text.lstrip().startswith("{"), as_browser.text[:120]
+
+        as_api = client.post("/api/settings", json={},
+                             headers={"Accept": "application/json"})
+        assert as_api.status_code == 403
+        assert as_api.headers["content-type"].startswith("application/json")
+        assert as_api.json() == {"error": "Invalid owner request token"}
+
+
 def test_adding_a_setting_needs_no_html_edit(monkeypatch):
     probe = config.Setting("audit.probe", "ONEIRO_AUDIT_PROBE", "probe", "Audit probe",
                            "Declared by a test, rendered by the registry.", "Audit")

@@ -49,7 +49,10 @@ class GraphFacts:
     checked_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat(timespec="seconds"))
     elapsed_ms: int = 0
-    blocked: tuple[str, ...] = ()
+    #: Why the graph could not be read, as `{"code": ..., "data": {...}}` rather than as
+    #: sentences: the sentence belongs to `i18n`'s catalog, in the language of the page
+    #: that shows it. A reason written here was English on the Russian graph page.
+    blocked: tuple[dict[str, Any], ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -62,7 +65,7 @@ class GraphFacts:
             "identifiers": list(self.identifiers),
             "checked_at": self.checked_at,
             "elapsed_ms": self.elapsed_ms,
-            "blocked": list(self.blocked),
+            "blocked": [dict(item) for item in self.blocked],
         }
 
 
@@ -81,30 +84,34 @@ def probe(host: str, port: int, *, timeout: float = PROBE_TIMEOUT) -> GraphFacts
     for the page that displays it.
     """
     started = datetime.now(timezone.utc)
-    blocked: list[str] = []
+    blocked: list[dict[str, Any]] = []
 
     if importlib.util.find_spec("sc_client") is None:
-        blocked.append("sc_client is not installed; the memory backend cannot be reached")
+        blocked.append({"code": "blocked.client_absent"})
         return _finished(started, GraphFacts(reachable=False, blocked=tuple(blocked)))
 
     if not _tcp_reachable(host, port, timeout):
-        blocked.append(f"OSTIS server is unreachable at {host}:{port}")
+        blocked.append({"code": "blocked.graph_unreachable",
+                        "data": {"host": host, "port": port}})
         return _finished(started, GraphFacts(reachable=False, blocked=tuple(blocked)))
 
     try:
         return _finished(started, _read_graph(host, port))
     except Exception as exc:                       # noqa: BLE001 - reported, never hidden
-        blocked.append(f"{type(exc).__name__}: {exc}")
+        # The exception's own prose is data, not a sentence to translate: it is
+        # interpolated into the catalog's wording for this code.
+        blocked.append({"code": "blocked.probe_failed",
+                        "data": {"exception": f"{type(exc).__name__}: {exc}"}})
         return _finished(started, GraphFacts(reachable=True, verified=False,
                                              blocked=tuple(blocked)))
 
 
 def _read_graph(host: str, port: int) -> GraphFacts:
     """Traverse the live graph and collect real identifiers."""
-    from sc_client.client import connect, disconnect, search_by_template  # type: ignore[import-not-found]
-    from sc_client.constants import sc_type  # type: ignore[import-not-found]
-    from sc_client.models import ScTemplate  # type: ignore[import-not-found]
-    from sc_kpm.sc_keynodes import ScKeynodes  # type: ignore[import-not-found]
+    from sc_client.client import connect, disconnect, search_by_template
+    from sc_client.constants import sc_type
+    from sc_client.models import ScTemplate
+    from sc_kpm.sc_keynodes import ScKeynodes
 
     connect(f"ws://{host}:{port}")
     try:
@@ -138,25 +145,19 @@ def _read_graph(host: str, port: int) -> GraphFacts:
             if identifier:
                 identifiers.append(identifier)
         verified = bool(concrete) and bool(identifiers)
-        blocked: list[str] = []
+        blocked: list[dict[str, Any]] = []
         if found and not concrete:
             # A match with wildcard endpoints is sc-memory echoing the relation
             # itself back, not content hanging off it. Reporting that as a
             # populated graph is exactly the false confidence this module exists
             # to prevent.
-            blocked.append(
-                f"the {len(found)} arc(s) matching {ANCHOR_RELATION} all have unresolved "
-                "wildcard endpoints, so no content hangs off them: the graph answers "
-                "the protocol but holds no traversable knowledge base"
-            )
+            blocked.append({"code": "blocked.arcs_unresolved",
+                            "data": {"arcs": len(found), "anchor": ANCHOR_RELATION}})
         elif not found:
-            blocked.append(
-                f"no arc in the graph uses {ANCHOR_RELATION}; the knowledge base appears empty"
-            )
+            blocked.append({"code": "blocked.graph_empty",
+                            "data": {"anchor": ANCHOR_RELATION}})
         elif not identifiers:
-            blocked.append(
-                "identifier arcs exist but their content could not be read back"
-            )
+            blocked.append({"code": "blocked.identifiers_unreadable"})
         return GraphFacts(reachable=True, verified=verified, anchor=ANCHOR_RELATION,
                           arcs_found=len(found), identifiers=tuple(identifiers),
                           blocked=tuple(blocked))

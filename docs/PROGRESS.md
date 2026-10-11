@@ -1657,6 +1657,47 @@ listing only the two that were already closed.
 Checks: `python -m pytest -q` 580 passed; `python -m mypy python/oneiro` clean in 33 files;
 `tests/live_w1_check.py` … `live_w9_shots.py` all exit 0; `_scripts/validate_doc_routes.py` OK.
 
+## 2026-10-11 — The passed audit's four findings are closed
+
+An independent read-only audit of the commit above reproduced the RU/EN core claim and then
+found concrete defects behind green checks. All four are closed here.
+
+1. **The readiness panel printed the backend's English.** `/api/status` carried `reason: "run
+   `oneiro verify-model` to check the configured model with a real call"` and three English
+   `blocked` reasons; the panel printed them inside Russian sentences, so four of its eight
+   lines were English on every Russian screen. `memory.probe` did the same to the graph page. No
+   check could see it: the markup rule reads a placeholder (the browser fills the panel), and the
+   live DOM rule *deleted* `#status` before comparing. Now the backends report codes with their
+   data (`i18n.REASON_KEYS`: `reason.verify_model`, `blocked.adapter_absent`,
+   `blocked.graph_unreachable` with `{host}/{port}`, `blocked.model_unverified`, the probe's four
+   other branches, `blocked.probe_failed` carrying the exception as data) and both the panel and
+   the graph page render them from the catalog. `live_w9_shots.py` measures the panel instead of
+   removing it, and `test_the_readiness_panel_says_nothing_a_backend_composed` mirrors the panel
+   in both languages and fails on any sentence in the payload.
+2. **The report's numbers were not reproducible.** § 2 quoted a shell measurement with its own
+   rules (and a label that said "lines" while counting unique ones). The table is now the output
+   of `tests/i18n_measure.py`, which states the rule: distinct visible lines with `<script>`,
+   `<style>` and `<textarea>` removed; prose = four or more ASCII words with no Cyrillic. That
+   rule is the sterner one: a filter excusing anything containing `:` or `/` — the earlier
+   draft's — would have missed 24 of the 80 English lines on `/settings`.
+3. **Raw JSON could reach a screen.** With JavaScript disabled, the settings form's Save button
+   posted to `/api/settings` and the tab showed `{"error": "Cross-origin request refused"}`
+   (the browser sent `Origin: null`, and the CSRF branch answers with JSON too). The middleware
+   now refuses a request that accepts HTML with `pages.render_error(...)` — the shell, in the
+   active language — while an API client keeps the JSON it parses.
+4. **`live_w6_check.py` matched either marker form.** It asserts one now: the escaped form,
+   which is what a page that escapes its text must send.
+
+Touching `memory.py` also exposed that mypy had been green on a stale cache: it re-checked and
+reported 18 errors, because the graph extra is installed here and ships no stubs, so the inline
+`# type: ignore[import-not-found]` comments were both unused and wrong for the code that fired.
+The suppression is scoped to the two modules that reach the graph and covers both codes, so the
+result no longer depends on which extras a machine has.
+
+Measured after: 582 tests pass, mypy is clean with a fresh cache (`--cache-dir`), no Russian
+screen shows English prose with `#status` included, the deployed frames were re-shot (22 files,
+20 distinct) and `docs/ACCEPTANCE-REPORT.md` carries the new table and the new defect records.
+
 
 
 

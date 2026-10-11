@@ -100,10 +100,10 @@ class Runtime:
             # rest of the document is cached for a few seconds.
             model["calls"] = models.registry().report()["totals"]
             if self.model_verified:
-                model.pop("reason", None)
+                model.pop("reason_code", None)
             blocked = list(self._cached["blocked"])
             if not self.model_verified:
-                blocked.append("the configured model is not verified")
+                blocked.append({"code": "blocked.model_unverified"})
             return {**self._cached, "model": model, "blocked": blocked,
                     "instance_id": self.instance_id,
                     "running": self._lease is not None, "version": __version__}
@@ -237,14 +237,16 @@ class Runtime:
                       "fallback": facts["fallback"], "discovered": facts["discovered"],
                       "probed": facts["probes"], "accounting": facts["accounting"],
                       "problem": facts.get("problem", ""),
-                      "reason": ("run `oneiro verify-model` to check the configured model "
-                                 "with a real call")},
+                      # A code, not a sentence: the panel prints it in the reader's
+                      # language, and `i18n.REASON_KEYS` is what makes that possible.
+                      "reason_code": "reason.verify_model"},
             "dependencies": dependencies,
             "docker_cli": bool(shutil.which("docker")),
             "runtime_connected": False,
-            "blocked": (["the typed OSTIS adapter is not integrated, so memory is not "
-                         "verified"]
-                        + ([] if reachable else ["OSTIS server is unreachable"])),
+            "blocked": ([{"code": "blocked.adapter_absent"}]
+                        + ([] if reachable else
+                           [{"code": "blocked.graph_unreachable",
+                             "data": {"host": host, "port": port}}])),
             "settings_error": config.describe()["error"],
             "autostart": False,
             "pid": os.getpid(),

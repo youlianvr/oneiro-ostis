@@ -401,7 +401,7 @@ def json_record_reader(bridge: Any, payload_relation: str) -> Callable[[int], di
     Raises `ValueError` for anything that is not a record, which is what puts the
     record in `skipped` with a reason instead of vanishing.
     """
-    from sc_client.models import ScAddr                 # type: ignore[import-not-found]
+    from sc_client.models import ScAddr
 
     def read(address: int) -> dict[str, Any]:
         payload = bridge.json_payload(ScAddr(int(address)), payload_relation)
@@ -446,9 +446,9 @@ class BridgeBackend:
         return cls(bridge, concept=concept, **kwargs)
 
     def member_addresses(self, concept: str) -> list[int]:
-        from sc_client.client import search_by_template      # type: ignore[import-not-found]
-        from sc_client.constants import sc_type              # type: ignore[import-not-found]
-        from sc_client.constants.exceptions import InvalidValueError  # type: ignore[import-not-found]
+        from sc_client.client import search_by_template
+        from sc_client.constants import sc_type
+        from sc_client.constants.exceptions import InvalidValueError
         from sc_client.models import ScTemplate
 
         try:
@@ -514,7 +514,7 @@ class BridgeBackend:
         `InvalidValueError` instead of appearing.
         """
         from sc_client.constants.exceptions import InvalidValueError
-        from sc_kpm.sc_keynodes import ScKeynodes                     # type: ignore[import-not-found]
+        from sc_kpm.sc_keynodes import ScKeynodes
 
         try:
             address = ScKeynodes[identifier]

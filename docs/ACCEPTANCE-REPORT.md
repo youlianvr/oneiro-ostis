@@ -39,40 +39,41 @@ Twenty-two frames, written by `python tests/live_w9_shots.py` against the web co
 free loopback port (never the owner's preview on 9899), with the document's `lang` and
 `data-theme` asserted before the shutter.
 
-The hashes below are the run of 2026-10-11 recorded with this file. **They are not stable
-between runs**, and the file does not pretend otherwise: an earlier run over identical code
-produced 22 different hashes (`ru-settings.png` 900,562 bytes then, 901,253 now) because
-Chromium's rasterizer is not bit-reproducible. What *is* stable is the set's structure: 22
-files, 20 distinct hashes, because `theme-night-*` always equals its `*-conversation.png`
-counterpart *within the same run* (checked: identical hash, not just identical size) —
-`night` is the default theme, so re-theming to it redraws the same pixels. So the hashes are
-manifest evidence for the frames that were actually committed, and a caller re-running the
-check must expect its own hashes, not these.
+The hashes below are the run of 2026-10-11 recorded with this file, after the readiness
+panel was rewritten. **They are not stable between runs**, and the file does not pretend
+otherwise: earlier runs over identical code produced different hashes each time
+(`ru-settings.png` 901,253 bytes before this pass, 900,150 in it, 898,836 in the re-run
+recorded below) because Chromium's rasterizer is not bit-reproducible. What *is* stable is the set's structure: 22 files, 20
+distinct hashes, because `theme-night-*` always equals its `*-conversation.png` counterpart
+*within the same run* (checked: identical hash, not just identical size) — `night` is the
+default theme, so re-theming to it redraws the same pixels. So the hashes are manifest
+evidence for the frames that were actually committed, and a caller re-running the check
+must expect its own hashes, not these.
 
 | Frame | Bytes | SHA-256 |
 | --- | --- | --- |
-| `ru-conversation.png` | 82,900 | `eda5a2284baa95861ce00c9461b5dbb2d25881726872c65220143cc6163bac9f` |
-| `ru-tasks.png` | 78,503 | `b1e3a6982b7d2c30721679dab1a3f70e7a5daa7c6fc9cb3ab99dd541f1fb84ca` |
-| `ru-tools.png` | 70,413 | `be8677fd35980fd2a48ae071fa90b791c1545591ed74ac879af8e3ca4c0d06f7` |
-| `ru-settings.png` | 901,253 | `9499d15ba9d86439e1bd91d801f96f41a75336998ddd0b57bb457aa758f3c9e4` |
-| `ru-memory.png` | 78,447 | `496dfba42210a69bef8b6af00402bebcfc1e5ec2f70d3f9172cfc5818eb29497` |
-| `en-conversation.png` | 81,023 | `f4839d40b8bebc57adc59541fd2e3b961b7552326d7c748ea58ddaef0d6e93a9` |
-| `en-tasks.png` | 77,772 | `bca8e49571cdcf0979f67ec7c92e17287fdc86fb72bf1790434d567282055fe0` |
-| `en-tools.png` | 69,654 | `89bc2c959ffc399727b88a9763706907e043e724e244d4b2c6454b9c21e86241` |
-| `en-settings.png` | 791,957 | `ecaed178911cae576c8ea37b786f03079b844cf2bb5f83f50bf0a2dfa317334d` |
-| `en-memory.png` | 77,608 | `f37dbba786be3b712d4b624c6a9e2f6c13c7343e30d6e844bbbe467a4ce24b66` |
-| `theme-night-ru.png` | 82,900 | `eda5a2284baa95861ce00c9461b5dbb2d25881726872c65220143cc6163bac9f` |
-| `theme-night-en.png` | 81,023 | `f4839d40b8bebc57adc59541fd2e3b961b7552326d7c748ea58ddaef0d6e93a9` |
-| `theme-paper-ru.png` | 83,173 | `df5c9902be118e1c4965e63e15d68b1b3c0fde024a6cb83d00e7685b38509c35` |
-| `theme-paper-en.png` | 81,338 | `8f46cf8e9002ec57158213c0c7f1f5318d7c89113f92bd216ea612c50860950f` |
-| `theme-editorial-ru.png` | 73,339 | `50cc3c91f508dc5382bb44839b6fde5fe261003451b7e2f3fbf089a9daf9c871` |
-| `theme-editorial-en.png` | 69,781 | `e587f9bcba4b0c70d2e7375e93613529582cf8e6443ebfc39762ebb505ca2c4f` |
-| `theme-cosmic-ru.png` | 80,522 | `26d8df92da738c3122a773dfa06685b775e2066cf100156e262f9318ee324c9e` |
-| `theme-cosmic-en.png` | 79,632 | `003af1d3a98dd0e59f0bc1aeafe6ca4e684e0c1fc8c879e2b5786dca7f55dea0` |
-| `theme-agentic-ru.png` | 85,538 | `ddc47ff91071334acc5ae41e79552c9ce6c6e94b0bf9b97885c34dc0e1592fa8` |
-| `theme-agentic-en.png` | 83,237 | `c21b80fec22be7e574088027fd4344456d1f0961af35d83b83b8d5caf4bd37f7` |
-| `installed-conversation-ru.png` | 83,145 | `47724d89fdf3bfdf96b23b0bdc48dc175054ef87b0b7c74352ff05cdab7f628d` |
-| `installed-conversation-en.png` | 81,393 | `e25666f28fbe2112c9e7d91cf5132ca90840de73eef187a26e39823782b5dfc0` |
+| `ru-conversation.png` | 81,808 | `c17b30f41183490eb0d2a3ce998734fdc8366899cc5dbe9fa9c82a52b00d1dfc` |
+| `ru-tasks.png` | 77,332 | `30088df0796e70d8fa4105243e7cbf5c2eba0f518bb125b0b99a43b93ea59311` |
+| `ru-tools.png` | 69,256 | `b00f8aab7bafacc1275b208b39602010ab20c75eecf2e61df18234b2b433b02b` |
+| `ru-settings.png` | 898,836 | `c183d085d591f45ac4569d06e235ff1e26305e82e6aedf33516140909b39e4ae` |
+| `ru-memory.png` | 77,339 | `9f43dec1e920438f78f0222522d0377e3dee5faab4a3c5d301782d3aee682d4b` |
+| `en-conversation.png` | 81,008 | `36b353bb71e7f1518885e4fa86cc744e1c7a018ef4226594bf417f7a374ba7bb` |
+| `en-tasks.png` | 77,725 | `b212fffccd639184a865e6810f58eaab25530ff601e467d2780ab92dfd109a99` |
+| `en-tools.png` | 69,613 | `4d2712d70e47962da1e1bb65f23e42104a1ca664ecdd004a50ef991b0f19b455` |
+| `en-settings.png` | 791,379 | `cafa89c3ff10ec3a38ecec899cb77b1fa60eb36043d873193122096f6369408b` |
+| `en-memory.png` | 77,564 | `8966ccc0ce4c8db5a3318afe8616d8be29c5f12e591955a8210ee6b1aae80f42` |
+| `theme-night-ru.png` | 81,808 | `c17b30f41183490eb0d2a3ce998734fdc8366899cc5dbe9fa9c82a52b00d1dfc` |
+| `theme-night-en.png` | 81,008 | `36b353bb71e7f1518885e4fa86cc744e1c7a018ef4226594bf417f7a374ba7bb` |
+| `theme-paper-ru.png` | 82,201 | `e705c385ac1d21489d2cb8fd00a5903325a0940f8d59d54358ad111f26123fa3` |
+| `theme-paper-en.png` | 81,438 | `ce1960f833ac767226b4856e9a69a975df16ebf5bb2174f7819a850296c2100c` |
+| `theme-editorial-ru.png` | 72,277 | `7d0ff1cbe32ec0f8fdc74fb7c19163c23db5a5a8608139bdc34417179f9ce6a9` |
+| `theme-editorial-en.png` | 69,986 | `5c30f8c8cf7ba25a35485b48cac4b1d3b45ec28d3386e610b198a40c743c4d8e` |
+| `theme-cosmic-ru.png` | 79,539 | `860207c0cf69bbc11719dc50d985e9e6903d6dda3da2b6f4f7c770198604488f` |
+| `theme-cosmic-en.png` | 79,721 | `034825b828b1bb753b0f9239a34db20bc49d6eee8880845ca52f8e593b30b8a3` |
+| `theme-agentic-ru.png` | 84,515 | `718d9e321cf46effce9e13c7a7170ccc80727d7e73a8850bf2e0218ffe28749f` |
+| `theme-agentic-en.png` | 83,341 | `766002509094bd0a4fb9ccc8b17e59babe639c2b53d36ce9f6531b6745a26a03` |
+| `installed-conversation-ru.png` | 82,062 | `08d8abbe45c25ef3939217346dc464da4936c107d62086b00ce72b27a787074a` |
+| `installed-conversation-en.png` | 81,342 | `8f71a129de73b704979c3931d0231c93ecb9d777f563fa95d1da3bd024a2a388` |
 
 Every frame is checked against the catalog **before** the shutter: a `ru` frame must carry
 `oneiro.i18n`'s Russian text for that screen as element text or attribute value, and must not
@@ -88,42 +89,82 @@ only as a log line.
 
 ### The language, measured
 
-The measurement is the point of this section, because the previous version of this file
-asserted row 14 from evidence that could not support it. Two measurements, on two different
-objects, both kept because they disagree and the difference matters:
+Two measurements on two objects, each one the output of a command in § 7 rather than of a
+shell history. The earlier draft of this file quoted numbers from an ad-hoc script with its
+own rules; these are reproducible, and the differences between them are stated instead of
+averaged away.
 
-**Rendered DOM, five screens** — `tests/live_w9_shots.py`, after the five screens are shot,
-reads `document.body.innerText` in each language and asserts RU and EN share no English
-sentence. English sentences on the EN side / Russian-side characters: conversation 4 / 562,
-tasks 6 / 567, tools 4 / 481, settings 77 / 14,992, memory 5 / 627; **shared: 0 on all five**.
-The settings screen is where the defect lived: before the repair its Russian rendering carried
-48 English sentences, all of them the registry's English `label`/`help` strings that the
-English page also shows, so every one was shared.
+**Rendered text, the five screens, the readiness panel included** — `tests/live_w9_shots.py`
+reads `document.body.innerText` in both languages on every screen and asserts, per screen,
+both that the Russian side holds no English sentence and that the two languages share none:
 
-**Served HTML, `/settings`** — the same rule applied to what the server sends, measured
-with `tests/test_i18n_themes.py`'s extractor on this run:
+| screen | EN sentences | RU characters | English prose on ru | shared |
+| --- | --- | --- | --- | --- |
+| conversation | 9 | 909 | **0** | **0** |
+| tasks | 11 | 914 | **0** | **0** |
+| tools | 9 | 828 | **0** | **0** |
+| settings | 82 | 15,339 | **0** | **0** |
+| memory | 10 | 974 | **0** | **0** |
 
-| `/settings` served HTML, 2026-10-11 | RU | EN |
-| --- | --- | --- |
-| visible text lines | 212 | 212 |
-| lines containing Cyrillic | 168 | 0 |
-| Latin-only lines | 44 | 212 |
-| lines that read as English prose (≥ 4 ASCII words, no Cyrillic) | **0** | 80 |
+The panel is included because it used to be *removed* before that comparison, and the removal
+is what hid the defect this pass fixed: `/api/status` served `run \`oneiro verify-model\` to
+check the configured model with a real call` plus three English blocked reasons, and a Russian
+page printed all four inside Russian sentences — four of the panel's eight lines carried
+English, and neither rule could see it. The payload now carries codes with their data, and
+both the panel and the graph page render them from the catalog, so the same facts read as
+sentences in either language:
 
-English prose shared between the two: **0** (the EN column's 80 sentences all have their
-Russian counterpart, or none at all, on the RU page).
+```
+Не готов — см. ниже.
+Фаза: agent.
+Память (OSTIS) недоступна. Она обязательна и не имеет заменителей.
+проверьте настроенную модель реальным вызовом: `oneiro verify-model`
+Пока заблокировано:
+  - типовой адаптер OSTIS не подключён, поэтому память не проверена
+  - сервер OSTIS недоступен по адресу 127.0.0.1:8090
+  - настроенная модель не проверена
+```
 
-The 44 Latin-only lines on the Russian page are paths and machine values a settings form has
-to show as-is — `C:\Users\pc\.oneiro\settings.json`, `"base_url": "http://127.0.0.1:20128/v1",`,
-`"discover_models": true`, `MCP`, `JSON_LINES` — not product prose. That is the whole
-remaining gap between "a Latin-only line" and "an English sentence", and the prose column is
-the one that measures the interface.
+That text is the Russian panel from this run, and the English page carries the same eight
+lines with `blocked.graph_unreachable` interpolating the same host and port.
 
-This is also why the table above counts 212 lines where an earlier draft of this file claimed
-308: the DOM measurement counts rendered nodes, the HTML one counts text lines in the markup,
-and quoting one as the other was part of the same mistake. `tests/test_i18n_themes.py` adds a
-test of the measurement itself (`test_the_measurement_can_see_a_shared_sentence`) so the rule
-cannot pass by finding nothing.
+**Served markup** — `python tests/i18n_measure.py`, whose own output is this table (unique
+visible lines; the script prints the same rows):
+
+| screen | lang | lines | with Cyrillic | Latin-only | English prose |
+| --- | --- | --- | --- | --- | --- |
+| `/` | ru | 24 | 22 | 2 | **0** |
+| `/` | en | 25 | 0 | 25 | 4 |
+| `/tasks` | ru | 24 | 22 | 2 | **0** |
+| `/tasks` | en | 24 | 0 | 24 | 4 |
+| `/tools` | ru | 34 | 27 | 7 | **0** |
+| `/tools` | en | 34 | 0 | 34 | 3 |
+| `/settings` | ru | 201 | 167 | 34 | **0** |
+| `/settings` | en | 201 | 0 | 201 | 80 |
+| `/memory` | ru | 22 | 20 | 2 | **0** |
+| `/memory` | en | 22 | 0 | 22 | 5 |
+| `/setup` | ru | 196 | 162 | 34 | **0** |
+| `/setup` | en | 196 | 0 | 196 | 80 |
+| every screen | — | — | — | — | **0 shared** |
+
+The method, so a reviewer can disagree with it precisely: a *visible line* is a **distinct**
+line of the document once `<script>`, `<style>` and `<textarea>` content is removed, tags
+become newlines and entities are unescaped; *English prose* is a visible line of four or more
+whitespace-separated words, every character printable ASCII, no Cyrillic in it. A *Latin-only*
+line is not prose — the Russian settings page must show 34 of them: two temporary paths and 32
+machine values (`night`, `paper`, `editorial`, `cosmic`, `agentic`, `comfortable`, `compact`,
+`allow`, `deny`, `ask`, `auto`, `manual`, `true`, `false`, `ru`, `en`, `strict`, `trusted`,
+`on_command`, `proactive`, `scheduled`, `off`, `debug`, `info`, `warning`, `error`, `window`,
+`browser`, `both`, `workspace`, `MCP`, `Oneiro`). `tests/i18n_measure.py` prints that list and
+exits non-zero if a Russian screen shows English prose or if the languages share a sentence.
+
+The rule is deliberately the sterner one. A filter that excused any line containing a colon or
+a slash — the one this file's earlier draft used — would have missed 24 of the 80 English lines
+on `/settings`, because real help text reads `How much Oneiro writes to its own log: debug,
+info, warning or error.` and `Fixed to loopback: Oneiro is not reachable from the network.`
+Counting those is what makes the rule worth trusting. `tests/test_i18n_themes.py` also tests
+the measurement itself (`test_the_measurement_can_see_a_shared_sentence`) so it cannot pass by
+finding nothing.
 
 ## 3. Live checks, with exit statuses
 
@@ -150,17 +191,18 @@ model key and no graph, and `ready=False` with a named phase is the honest answe
 | Command | Result |
 | --- | --- |
 | `python -m mypy python/oneiro` | Success: no issues found in 33 source files (exit 0) |
-| `python -m pytest -q` | 580 passed, 2 warnings, 0 failed (exit 0) |
+| `python -m pytest -q` | 582 passed, 2 warnings, 0 failed (exit 0) |
 
-580 tests across 35 `tests/test_*.py` files. The translation rule lives in
-`tests/test_i18n_themes.py` (21 tests, parametrised over the five canonical screens, `/setup`
-and the legacy graph route) and in the live check above. The W9 note in `docs/PROGRESS.md`
-said "35/35 test suites"; 35 is the file count, and this report uses the measured test count.
+582 tests across 35 `tests/test_*.py` files. The translation rule lives in
+`tests/test_i18n_themes.py` (parametrised over the five canonical screens, `/setup` and the
+legacy graph route, plus a mirror of the readiness panel and a test of the measurement
+itself) and in the live check above. The W9 note in `docs/PROGRESS.md` said "35/35 test
+suites"; 35 is the file count, and this report uses the measured test count.
 
 ## 5. Defects found while writing this evidence, and their repair
 
-Writing the evidence out is what surfaced all three; none was visible from the W9 notes,
-which claimed the matrix was fully verified.
+Writing the evidence out surfaced the first three, and auditing what it claimed surfaced the
+last three. None was visible from the W9 notes, which said the matrix was fully verified.
 
 1. **`tests/live_w3_check.py` could not run at all.** Its parity block still did
    `import skills_index`, a module W9 retired, so the check died with `ModuleNotFoundError`
@@ -188,6 +230,38 @@ which claimed the matrix was fully verified.
    The registry's promise survived: a setting declared a minute ago renders its own wording
    until the catalog carries a translation (`i18n.setting_text`), so `test_adding_a_setting_needs_no_html_edit`
    still holds, and the parity test is what forces the translation to exist in a shipped build.
+4. **The readiness panel and the graph page printed the backend's own English, and no check
+   could see it.** `/api/status` served the sentence `run \`oneiro verify-model\` to check the
+   configured model with a real call` and three English `blocked` reasons; the panel printed
+   them inside Russian sentences, so four of its eight lines were English on every Russian
+   screen, and `memory.probe` did the same to the graph page. Both rules were blind by
+   construction: the markup rule reads the panel's placeholder because the panel is filled in
+   the browser, and the DOM rule *deleted* `#status` before comparing. Repaired by moving the
+   prose into the catalog as `REASON_KEYS` and making both surfaces report and render codes
+   with their data (`reason.verify_model`, `blocked.adapter_absent`,
+   `blocked.graph_unreachable` with `{host}`/`{port}`, `blocked.model_unverified`, and the
+   probe's four other branches). Raw exception prose stays data: it is interpolated into the
+   catalog's sentence for `blocked.probe_failed`. Three tests hold it now — the panel is
+   measured on the real DOM with `#status` included, `test_the_readiness_panel_says_nothing_a_backend_composed`
+   mirrors the panel in both languages and fails on a sentence anywhere in the payload, and the
+   graph test no longer subtracts the probe's own strings, which was a subtraction that could
+   not fail on a translation regression.
+5. **Raw JSON could reach a screen without JavaScript, and row 15 did not say so.** Measured
+   2026-10-11 in Chromium with scripting disabled: the settings form's own Save button posted
+   to `/api/settings` and the tab rendered `{"error": "Cross-origin request refused"}`. The
+   gate is the `Origin` check — the browser sent `Origin: null` — and the CSRF branch answers
+   with JSON too, so whichever fires the person sees JSON. Repaired in the middleware: a
+   request that accepts HTML is refused with `pages.render_error(...)`, the same shell and
+   stylesheets in the active language, while a client that asks for `application/json` keeps
+   the exact body it parsed before. `test_a_settings_post_without_scripts_gets_a_page_and_not_json`
+   asserts both shapes, and all five screens already rendered without scripts.
+6. **mypy was green because its cache was stale.** Touching `memory.py` made it re-check and
+   report 18 errors in `memory.py` and `query.py`: the graph extra is installed here but ships
+   no stubs, so the inline `# type: ignore[import-not-found]` comments were both unused and
+   wrong for the firing code. Repaired by scoping the suppression to the two modules that reach
+   the graph (`import-untyped` *and* `import-not-found`, so the result does not depend on which
+   extras a machine has) and deleting the inline ignores. The earlier "Success: no issues" in
+   this very report was that stale cache talking.
 
 ## 6. What was not verified, and why
 
@@ -209,20 +283,17 @@ Named gaps, not silent ones.
 - **Keyboard and contrast behaviour** in the frames: the pictures show rendering, not tab
   order or focus rings. Those are covered by `tests/test_console_tokens.py` and
   `tests/test_i18n_themes.py`.
-- **Backend diagnostics are still English.** The readiness panel's `blocked` lines and the
-  legacy graph page's reason list come from `memory.probe`/`Runtime.status`, and one branch
-  embeds raw exception prose (`ConnectionAbortedError: ...`). A reason is data about a
-  machine, not a sentence about the product, so it is not in the catalog: turning those
-  reasons into codes with data is a separate change. They are the one place a Russian screen
-  still shows English text, they are excluded from the measurement in § 2 by subtracting the
-  probe's own strings, and `tests/test_i18n_themes.py` fails if the diagnosis ever moves into
-  a template.
-- **The settings save path is JSON-only, and dies without JavaScript.** The form posts to
-  `/api/settings`, which parses JSON only (`python/oneiro/web.py`) and requires the
-  `X-Oneiro-CSRF` header, so a native submit returns a raw-JSON error page — a reachable
-  violation of the "no JSON on screen" rule for a browser without JavaScript. The "an empty
-  field leaves the current key unchanged" promise is kept by the client script skipping an
-  empty key field; the server's `empty_means_unset` would otherwise clear it.
+- **Exception prose is interpolated, not translated.** A probe that fails carries
+  `blocked.probe_failed` with the library's own text as data (`ConnectionAbortedError: ...`),
+  so a Russian sentence can contain an English clause. That is a deliberate boundary — the
+  alternative is swallowing the exception's message — and it is the only English left in the
+  Russian panel, since the reason *sentences* are catalog text now.
+- **The settings save path is JSON-only on the wire.** The form posts to `/api/settings`, which
+  parses JSON only and requires the `X-Oneiro-CSRF` header. A browser that accepts HTML is now
+  refused with a page rather than a JSON body (defect 5 in § 5), but a script-less submit still
+  *cannot save* — it can only be refused legibly. The "an empty field leaves the current key
+  unchanged" promise is kept by the client script skipping an empty key field; the server's
+  `empty_means_unset` would otherwise clear it.
 - **The scheduler retries the missing graph without visible backoff.** With no
   `sc-server` the console stays up and reports memory as unreachable, but the scheduler logs
   `a scheduler tick failed (GraphQueryError: server_unreachable …)` once per tick.
@@ -244,6 +315,7 @@ Named gaps, not silent ones.
 cd projects/ostis/oneiro-ostis
 python -m mypy python/oneiro
 python -m pytest -q                    # includes the RU/EN measurement
+python tests/i18n_measure.py           # the § 2 table, and it fails on English on ru
 python tests/live_w1_check.py          # … w2 … w8, then:
 python tests/live_w9_shots.py          # rewrites docs/shots/oneiro-v1/ (22 frames)
 python ../../../_scripts/validate_doc_routes.py   # workspace-root validator; three levels up from here

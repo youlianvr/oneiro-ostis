@@ -119,7 +119,13 @@ def english_sentences(text: str) -> set[str]:
 
 
 def assert_no_shared_sentence(ru_text: str, en_text: str, screen: str) -> int:
-    """RU and EN must not say the same English sentence. Returns what was measured."""
+    """RU and EN must not say the same English sentence. Returns what was measured.
+
+    Both directions matter: `english_sentences(ru)` being empty is asserted by the
+    caller, so a screen that is English on both sides is caught there, and this one
+    catches a Russian screen that still prints an English sentence the other language
+    also prints.
+    """
     ru = english_sentences(ru_text)
     en = english_sentences(en_text)
     shared = ru & en
@@ -324,19 +330,25 @@ def main() -> int:
                     target = SHOTS / f"{lang}-{name}.png"
                     page.screenshot(path=str(target), full_page=True)
                     written.append(target)
-                    # What the browser shows, after the shutter: the readiness panel is
-                    # dropped because its reason lines are backend diagnostics, which
-                    # are data about the machine (see docs/ACCEPTANCE-REPORT.md).
-                    rendered[lang][name] = page.evaluate(
-                        "document.querySelector('#status')?.remove(); document.body.innerText")
+                    # What the browser shows, after the shutter - the readiness panel
+                    # included. It used to be removed here, and that removal is exactly
+                    # what hid an English instruction and three English reasons on Russian
+                    # screens: the panel is client-filled, so the served-markup rule could
+                    # not see it either.
+                    rendered[lang][name] = page.evaluate("document.body.innerText")
                     say(f"  {target.name:<26} <- {url}  ({target.stat().st_size} bytes)")
 
             say("\n== 1b. The rendered text of each screen, measured in both languages ==")
             for name, _route in SCREENS:
+                said = sorted(english_sentences(rendered["ru"][name]))
+                assert not said, (
+                    f"the {name} screen shows English prose on a Russian page, so a "
+                    f"sentence reached the screen that the catalog does not own: {said[:3]}")
                 sentences = assert_no_shared_sentence(rendered["ru"][name],
                                                       rendered["en"][name], name)
-                say(f"  {name:<14} no shared English sentence ({sentences} English sentences "
-                    f"on the en side, {len(rendered['ru'][name])} chars on the ru side)")
+                say(f"  {name:<14} no English prose on the ru side, no shared sentence "
+                    f"({sentences} English sentences on the en side, "
+                    f"{len(rendered['ru'][name])} chars on the ru side)")
 
             say("\n== 2. Five themes, both languages (Conversation screen) ==")
             for theme in THEMES:

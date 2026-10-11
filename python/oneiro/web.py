@@ -166,16 +166,29 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
     app.state.runtime = owner
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
 
+    # A refusal is read by a person as well as by a parser. A browser that never ran
+    # JavaScript posts the settings form straight at `/api/settings`, and a JSON body
+    # would be what the tab shows; it gets the shell, in the active language, instead.
+    # The two shapes refuse the same thing, so an API client keeps the JSON it parses.
+    refusals = {"error.cross_origin": "Cross-origin request refused",
+                "error.bad_token": "Invalid owner request token"}
+
+    def refuse(request: Request, key: str) -> Any:
+        accept = request.headers.get("accept", "")
+        if "text/html" in accept and "application/json" not in accept:
+            return HTMLResponse(pages.render_error(key), status_code=403)
+        return JSONResponse({"error": refusals[key]}, status_code=403)
+
     @app.middleware("http")
     async def same_origin(request: Request, call_next: Any) -> Any:
         origin = request.headers.get("origin")
         if origin:
             parsed = urlsplit(origin)
             if parsed.scheme not in ("http", "https") or parsed.netloc != request.headers.get("host"):
-                return JSONResponse({"error": "Cross-origin request refused"}, status_code=403)
+                return refuse(request, "error.cross_origin")
         if request.method not in ("GET", "HEAD", "OPTIONS"):
             if not secrets.compare_digest(request.headers.get("x-oneiro-csrf", ""), csrf):
-                return JSONResponse({"error": "Invalid owner request token"}, status_code=403)
+                return refuse(request, "error.bad_token")
         response = await call_next(request)
         response.headers.update({
             "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",

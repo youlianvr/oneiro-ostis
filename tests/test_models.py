@@ -19,7 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from oneiro import config, models
+from oneiro import config, i18n, models
 from oneiro.runtime import Runtime
 
 PROBE_REPLY = {"role": "assistant", "content": "",
@@ -738,7 +738,12 @@ def test_status_reports_providers_probes_and_the_ledger(provider):
     status = asyncio.run(Runtime().status())
     assert status["model"]["verified"] is False            # a new process probed nothing
     assert status["model"]["providers"][0]["name"] == "stub"
-    assert "verify-model" in status["model"]["reason"]
+    # The payload carries a code, not the sentence: the panel prints it in the language
+    # of the page, and this is the command that sentence names.
+    code = status["model"]["reason_code"]
+    assert code == "reason.verify_model"
+    assert "verify-model" in i18n.t(code, "en")
+    assert code not in i18n.t(code, "en"), "the code itself must not be what the panel shows"
 
 
 def test_verify_model_says_when_the_model_answers_without_a_tool(provider):

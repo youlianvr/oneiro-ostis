@@ -9,6 +9,19 @@ const T = i18nBlock ? JSON.parse(i18nBlock.textContent) : {};
 const form = document.querySelector("#settings");
 let csrf = "";
 
+// A reason arrives as a code plus data, never as a sentence: the sentence is the
+// catalog's, so it is written in the language of the page. A code the catalog does not
+// know is printed as it came, which is visible and testable rather than silently
+// English (the readiness panel used to print the backend's own English sentences).
+function sayReason(item) {
+  const code = typeof item === "string" ? item : String((item && item.code) || "");
+  const text = T[code];
+  if (!text) return code;
+  const data = (item && typeof item === "object" && item.data) || {};
+  return Object.keys(data).reduce(
+    (said, key) => said.split("{" + key + "}").join(String(data[key])), text);
+}
+
 // The state of the machine, said in plain human sentences (never raw JSON blobs).
 function statusLines(status) {
   const lines = [status.ready ? T["status.ready"] : T["status.not_ready"]];
@@ -19,10 +32,10 @@ function statusLines(status) {
   else lines.push(T["status.memory_unreachable"]);
   const model = status.model || {};
   if (model.verified) lines.push(model.used_tools ? T["status.model_ok_tools"] : T["status.model_ok"]);
-  else if (model.reason) lines.push(T["status.model_unverified_reason"].replace("{reason}", model.reason));
+  else if (model.reason_code) lines.push(sayReason(model.reason_code));
   else lines.push(T["status.model_unverified"]);
   const blocked = status.blocked || [];
-  if (blocked.length) lines.push(T["status.blocked_title"], ...blocked.map(item => `  - ${item}`));
+  if (blocked.length) lines.push(T["status.blocked_title"], ...blocked.map(item => `  - ${sayReason(item)}`));
   return lines.join("\n");
 }
 

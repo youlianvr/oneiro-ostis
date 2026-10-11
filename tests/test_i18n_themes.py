@@ -110,6 +110,57 @@ def _shared_english_sentences(ru_markup: str, en_markup: str) -> set[str]:
         _visible_lines(en_markup))
 
 
+def _strings(payload, path: str = "") -> list[tuple[str, str]]:
+    """Every string in a JSON payload, with where it came from."""
+    found: list[tuple[str, str]] = []
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            found.extend(_strings(value, f"{path}.{key}" if path else str(key)))
+    elif isinstance(payload, list):
+        for index, value in enumerate(payload):
+            found.extend(_strings(value, f"{path}[{index}]"))
+    elif isinstance(payload, str):
+        found.append((path, payload))
+    return found
+
+
+def _reads_as_english_prose(text: str) -> bool:
+    """The screens' shape rule, applied to a single value."""
+    return bool(len(text.split()) >= 4 and re.fullmatch(r"[ -~]+", text)
+                and not _CYRILLIC.search(text))
+
+
+def _panel(status: dict, lang: str) -> str:
+    """The readiness panel as `app.js` builds it, for this payload and language.
+
+    The panel is written in the browser, so no rule over the served markup can see it;
+    that asymmetry is how an English instruction lived on Russian screens under two
+    green checks. This mirrors `statusLines`/`sayReason`, and
+    `test_the_client_script_reads_only_keys_the_page_ships` asserts that the script
+    still renders reasons through `sayReason`, so the mirror cannot drift unnoticed.
+    """
+    lines = [i18n.t("status.ready" if status.get("ready") else "status.not_ready", lang)]
+    if status.get("phase"):
+        lines.append(i18n.t("status.phase", lang, phase=str(status["phase"])))
+    memory = status.get("memory") or {}
+    lines.append(i18n.t("status.memory_ok" if memory.get("verified") else
+                        "status.memory_readback" if memory.get("tcp_reachable") else
+                        "status.memory_unreachable", lang))
+    model = status.get("model") or {}
+    if model.get("verified"):
+        lines.append(i18n.t("status.model_ok_tools" if model.get("used_tools")
+                            else "status.model_ok", lang))
+    elif model.get("reason_code"):
+        lines.append(i18n.reason(model["reason_code"], lang))
+    else:
+        lines.append(i18n.t("status.model_unverified", lang))
+    blocked = status.get("blocked") or []
+    if blocked:
+        lines.append(i18n.t("status.blocked_title", lang))
+        lines.extend(f"  - {i18n.reason(item, lang)}" for item in blocked)
+    return "\n".join(lines)
+
+
 def test_the_measurement_can_see_a_shared_sentence():
     """A test of the measurement: the rule must not pass by matching nothing.
 
@@ -186,17 +237,29 @@ def test_the_client_script_reads_only_keys_the_page_ships():
     assert _CYRILLIC.search(russian["status.not_ready"]), \
         "the Russian client catalog is not Russian"
     assert not _CYRILLIC.search(i18n.client_catalog("en")["status.not_ready"])
+    # The panel renders reason *codes* it is handed at runtime, which a literal scan of
+    # the script cannot see. Every code a backend can report must therefore be shipped
+    # to the client by name, or the panel would print a bare code on a finished screen.
+    missing = set(i18n.REASON_KEYS) - set(i18n.CLIENT_KEYS)
+    assert missing == set(), f"the client cannot render these reason codes: {sorted(missing)}"
+    for lang in i18n.SUPPORTED_LANGUAGES:
+        shipped = i18n.client_catalog(lang)
+        assert set(i18n.REASON_KEYS) <= set(shipped), \
+            f"the {lang} client catalog ships no text for {sorted(set(i18n.REASON_KEYS) - set(shipped))}"
+        assert all(shipped[code] != code for code in i18n.REASON_KEYS), \
+            f"a reason code has no {lang} sentence and would print as itself"
+    assert "sayReason(model.reason_code)" in script and "sayReason(item)" in script, \
+        "app.js no longer renders reasons through the catalog; the panel test above is stale"
 
 
-def test_the_graph_screen_is_translated_apart_from_backend_diagnostics():
-    """The legacy graph route: its chrome is catalog text, its reasons are not.
+def test_the_graph_screen_names_its_reasons_as_codes_the_catalog_translates():
+    """The legacy graph route: its chrome and its reasons are both catalog text.
 
-    `/oneiro/` shows the reasons `memory.probe` returned, and one probe branch embeds
-    raw library exception prose (`ConnectionAbortedError: ...`) that no catalog can
-    translate: a reason is data about a machine, not a sentence about the product.
-    Turning them into codes is a separate change, so they are subtracted here — read
-    from the probe itself, so this test still fails on a *template* regression — and
-    named in `docs/ACCEPTANCE-REPORT.md` instead of being excused silently.
+    `/oneiro/` renders what `memory.probe` reported. It used to render the probe's own
+    English sentences and the test excused them by subtracting exactly the strings the
+    probe returned — a subtraction that cannot fail on a *translation* regression, only
+    on the probe's wording changing. The probe now reports codes with their data, so
+    nothing is subtracted: an English line on the Russian graph page is a failure.
     """
     from oneiro import memory
     with TestClient(make_app(Path("/tmp"), MemoryLinks())) as client:
@@ -204,13 +267,66 @@ def test_the_graph_screen_is_translated_apart_from_backend_diagnostics():
         en = client.get("/oneiro/?lang=en").text
         for key in ("heading.graph", "nav.graph", "graph.heading", "footer.note"):
             assert i18n.t(key, "ru") in ru, f"{key} is not rendered on the Russian graph page"
+    assert _shared_english_sentences(ru, en) == set(), (
+        f"the graph page shows the same English sentences in both languages: "
+        f"{sorted(_shared_english_sentences(ru, en))[:6]}")
+    assert _english_sentences(_visible_lines(ru)) == set(), (
+        f"the Russian graph page shows English prose: "
+        f"{sorted(_english_sentences(_visible_lines(ru)))[:4]}")
     facts = memory.probe(str(config.value("graph.host")), int(config.value("graph.port")))
-    remaining = _shared_english_sentences(ru, en) - set(facts.blocked)
-    assert remaining == set(), (
-        f"the graph page shows English beyond the probe's own diagnostics: "
-        f"{sorted(remaining)[:6]}")
-    assert all(_CYRILLIC.search(reason) is None for reason in facts.blocked), \
-        "the probe started translating: fold those reasons back into the measurement"
+    assert facts.blocked, "an unreachable graph must still say why"
+    for item in facts.blocked:
+        code, data = i18n.reason_data(item)
+        assert code and code != item, (
+            f"the probe reported a sentence instead of a code, so no page can translate "
+            f"it: {item!r}")
+        for lang in i18n.SUPPORTED_LANGUAGES:
+            said = i18n.reason(item, lang)
+            assert said != code, f"{code} has no {lang} text"
+        if code == "blocked.probe_failed":
+            # The exception's own prose is data: it is carried through verbatim inside
+            # the catalog's sentence, which is the only part a translator can write.
+            assert data.get("exception"), "a failed probe must carry the exception it saw"
+            assert str(data["exception"]) in i18n.reason(item, "ru")
+
+
+def test_the_readiness_panel_says_nothing_a_backend_composed():
+    """§ 6 row 14, the part two green checks could not see.
+
+    The panel is filled by the browser from `/api/status`, so the served-markup rule
+    reads a placeholder there, and the live DOM rule removed `#status` before
+    comparing. Measured 2026-10-11, that left four English lines on every Russian
+    screen: `run `oneiro verify-model` to check the configured model with a real call`
+    and three blocked reasons. The payload now carries codes with their data, and this
+    test fails the moment a sentence comes back.
+    """
+    with TestClient(make_app(Path("/tmp"), MemoryLinks())) as client:
+        status = client.get("/api/status").json()
+
+    for where, value in _strings(status):
+        assert not _reads_as_english_prose(value), (
+            f"/api/status.{where} is an English sentence, so the panel can only print it "
+            f"in one language: {value!r}")
+
+    blocked = status.get("blocked") or []
+    assert blocked, "nothing is blocked in this environment, so the panel test measures nothing"
+    for item in blocked:
+        assert isinstance(item, dict) and item.get("code"), (
+            f"a reason reached the panel as a bare sentence: {item!r}")
+        for lang in i18n.SUPPORTED_LANGUAGES:
+            assert i18n.reason(item, lang) != item["code"], \
+                f"{item['code']} has no {lang} text, so the panel would print the code"
+
+    ru = _panel(status, "ru")
+    assert _english_sentences(ru.splitlines()) == set(), (
+        f"the Russian panel shows English prose: "
+        f"{sorted(_english_sentences(ru.splitlines()))[:3]}")
+    en = _panel(status, "en")
+    shared = _english_sentences(ru.splitlines()) & _english_sentences(en.splitlines())
+    assert shared == set(), (
+        f"the panel says the same English sentence in both languages: {sorted(shared)[:3]}")
+    assert _CYRILLIC.search(ru) and not _CYRILLIC.search(en), \
+        "the two panels are not in the two languages"
 
 
 def test_wcag_aa_contrast_for_all_five_themes():

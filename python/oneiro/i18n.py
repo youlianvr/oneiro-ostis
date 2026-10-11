@@ -29,13 +29,29 @@ from oneiro import config
 DEFAULT_LANGUAGE = "ru"
 SUPPORTED_LANGUAGES = ("ru", "en")
 
+#: Reasons a backend reports, as codes. A backend hands over *data*, never a sentence:
+#: prose composed on the server is prose in the server's language on every screen, which
+#: is how the readiness panel came to print `run \`oneiro verify-model\` ...` inside a
+#: Russian sentence while two checks compared that screen and called it translated
+#: (measured 2026-10-11). Each code below is a sentence in both catalogs, and the data a
+#: reason needs is interpolated into it.
+REASON_KEYS: tuple[str, ...] = (
+    "reason.verify_model",
+    "blocked.client_absent", "blocked.graph_unreachable", "blocked.arcs_unresolved",
+    "blocked.graph_empty", "blocked.identifiers_unreadable", "blocked.probe_failed",
+    "blocked.adapter_absent", "blocked.model_unverified",
+)
+
 #: Keys the client script renders. `app.js` reads text only through these, and the
-#: i18n test asserts that every key it asks for is in this list.
+#: i18n test asserts that every key it asks for is in this list — including the reason
+#: codes it renders from `/api/status`, which is why they are listed here by name.
 CLIENT_KEYS: tuple[str, ...] = (
+    *REASON_KEYS,
     "status.ready", "status.not_ready", "status.phase", "status.memory_ok",
     "status.memory_readback", "status.memory_unreachable", "status.model_ok",
-    "status.model_ok_tools", "status.model_unverified", "status.model_unverified_reason",
+    "status.model_ok_tools", "status.model_unverified",
     "status.blocked_title", "status.unavailable",
+    "error.refused_title", "error.cross_origin", "error.bad_token", "error.back",
     "action.tool", "action.executed", "action.refused", "action.args", "action.result",
     "action.unnamed",
     "inspector.heading", "inspector.role", "inspector.text", "inspector.steps",
@@ -48,6 +64,51 @@ CLIENT_KEYS: tuple[str, ...] = (
     "settings.client.nothing_changed", "settings.client.saved",
     "settings.client.unavailable",
 )
+
+#: A reason's sentence, per language. `REASON_KEYS` names them; this is where they are
+#: written. A code with no entry here renders as the code itself, which the parity test
+#: turns into a failure rather than a silent English line.
+_REASONS: dict[str, tuple[str, str]] = {
+    "reason.verify_model": (
+        "проверьте настроенную модель реальным вызовом: `oneiro verify-model`",
+        "run `oneiro verify-model` to check the configured model with a real call",
+    ),
+    "blocked.client_absent": (
+        "sc_client не установлен, поэтому до памяти не добраться",
+        "sc_client is not installed; the memory backend cannot be reached",
+    ),
+    "blocked.graph_unreachable": (
+        "сервер OSTIS недоступен по адресу {host}:{port}",
+        "OSTIS server is unreachable at {host}:{port}",
+    ),
+    "blocked.arcs_unresolved": (
+        "все дуги шаблона {anchor} ({arcs}) имеют неразрешённые концы, поэтому за ними нет "
+        "содержимого: граф отвечает по протоколу, но обходимой базы знаний в нём нет",
+        "the {arcs} arc(s) matching {anchor} all have unresolved wildcard endpoints, so no "
+        "content hangs off them: the graph answers the protocol but holds no traversable "
+        "knowledge base",
+    ),
+    "blocked.graph_empty": (
+        "ни одна дуга в графе не использует {anchor}; база знаний выглядит пустой",
+        "no arc in the graph uses {anchor}; the knowledge base appears empty",
+    ),
+    "blocked.identifiers_unreadable": (
+        "дуги-идентификаторы есть, но их содержимое не читается обратно",
+        "identifier arcs exist but their content could not be read back",
+    ),
+    "blocked.probe_failed": (
+        "чтение графа прервано: {exception}",
+        "reading the graph stopped: {exception}",
+    ),
+    "blocked.adapter_absent": (
+        "типовой адаптер OSTIS не подключён, поэтому память не проверена",
+        "the typed OSTIS adapter is not integrated, so memory is not verified",
+    ),
+    "blocked.model_unverified": (
+        "настроенная модель не проверена",
+        "the configured model is not verified",
+    ),
+}
 
 _RU: dict[str, str] = {
     # ---- shell ----
@@ -152,9 +213,13 @@ _RU: dict[str, str] = {
     "status.model_ok": "Настроенная модель ответила на реальный запрос.",
     "status.model_ok_tools": "Настроенная модель ответила на реальный запрос, включая вызов инструмента.",
     "status.model_unverified": "Модель ещё не верифицирована.",
-    "status.model_unverified_reason": "Модель ещё не верифицирована: {reason}.",
     "status.blocked_title": "Пока заблокировано:",
     "status.unavailable": "Сервер недоступен. Готовность не подтверждена.",
+    # ---- the refusal page a request without JavaScript lands on ----
+    "error.refused_title": "Запрос отклонён",
+    "error.cross_origin": "Запрос пришёл не с адреса Oneiro, поэтому ничего не сохранено.",
+    "error.bad_token": "Форма отправлена без токена этой страницы, поэтому ничего не сохранено. Обновите страницу и попробуйте снова.",
+    "error.back": "Вернуться в Oneiro",
     "action.tool": "Инструмент",
     "action.unnamed": "действие без имени",
     "action.executed": "Выполнен успешно",
@@ -307,9 +372,13 @@ _EN: dict[str, str] = {
     "status.model_ok": "The configured model answered a real call.",
     "status.model_ok_tools": "The configured model answered a real call, including a tool call.",
     "status.model_unverified": "The model is not verified yet.",
-    "status.model_unverified_reason": "The model is not verified yet: {reason}.",
     "status.blocked_title": "Still blocked:",
     "status.unavailable": "Server unavailable. No readiness confirmed.",
+    # ---- the refusal page a request without JavaScript lands on ----
+    "error.refused_title": "Request refused",
+    "error.cross_origin": "The request did not come from Oneiro's own address, so nothing was saved.",
+    "error.bad_token": "The form was sent without this page's token, so nothing was saved. Reload the page and try again.",
+    "error.back": "Back to Oneiro",
     "action.tool": "Tool",
     "action.unnamed": "unnamed action",
     "action.executed": "Executed successfully",
@@ -686,6 +755,9 @@ def _assemble() -> dict[str, dict[str, str]]:
     """The catalog: the chrome above, plus every declared setting in both languages."""
     ru = dict(_RU)
     en = dict(_EN)
+    for code, (text_ru, text_en) in _REASONS.items():
+        ru[code] = text_ru
+        en[code] = text_en
     for group, group_ru in _GROUPS_RU.items():
         ru[f"group.{group}"] = group_ru
         en[f"group.{group}"] = group
@@ -758,6 +830,32 @@ def group_text(group: str, lang: str | None = None) -> str:
     """
     full = f"group.{group}"
     return t(full, lang) if full in CATALOG.get(_supported(lang), {}) else group
+
+
+def reason_data(item: Any) -> tuple[str, dict[str, Any]]:
+    """Read a reported reason as (code, data).
+
+    A plain string is accepted as its own code with no data, so a surface that still
+    reports a sentence is rendered — visibly untranslated, and named by the parity test —
+    instead of crashing the page that shows it.
+    """
+    if isinstance(item, str):
+        return item, {}
+    if isinstance(item, dict):
+        data = item.get("data")
+        return str(item.get("code") or ""), dict(data) if isinstance(data, dict) else {}
+    return str(item), {}
+
+
+def reason(item: Any, lang: str | None = None) -> str:
+    """One reported reason as a sentence in `lang`, with its data interpolated."""
+    code, data = reason_data(item)
+    return t(code, lang, **data)
+
+
+def reasons(items: Any, lang: str | None = None) -> list[str]:
+    """Reported reasons as sentences in `lang`, in the order they were reported."""
+    return [reason(item, lang) for item in (items or ())]
 
 
 def client_catalog(lang: str | None = None) -> dict[str, str]:

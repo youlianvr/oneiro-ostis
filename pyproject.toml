@@ -44,3 +44,16 @@ warn_unused_ignores = true
 [[tool.mypy.overrides]]
 module = "oneiro.config"
 disallow_untyped_defs = false
+
+# `sc_client` and `sc_kpm` are an optional extra that ships no stubs and no `py.typed`,
+# and the import is guarded at runtime by `importlib.util.find_spec`. mypy reports the
+# untyped import against the *importing* module, and which of `import-untyped` /
+# `import-not-found` fires depends on whether this machine has the extra installed — so
+# the annotation is scoped to the two modules that reach the graph, and the check means
+# the same thing on a machine that has the extra and one that does not. The inline
+# `# type: ignore[import-not-found]` this replaces was green only while mypy's cache held
+# a result from a run where the extra was absent (found 2026-10-11, 18 errors).
+[[tool.mypy.overrides]]
+module = ["oneiro.memory", "oneiro.query"]
+disable_error_code = ["import-untyped", "import-not-found"]
+

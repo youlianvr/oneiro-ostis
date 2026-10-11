@@ -11,6 +11,7 @@ for § 5 W6 and acceptance matrix § 6:
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import os
 import socket
@@ -104,8 +105,9 @@ def main() -> int:
     try:
         # Asked in English so the words being pinned are the catalog's English values;
         # the Russian side is measured by tests/test_i18n_themes.py and live_w9_shots.py.
-        # A marker is matched in both plain and escaped form, because the page escapes
-        # what it renders (`&` becomes `&amp;`) and the screen is still the right one.
+        # Each marker is asserted in exactly one form: the escaped form, because that is
+        # what a page that escapes its text must send (`&` becomes `&amp;`). Accepting
+        # either form would pass on a page that stopped escaping.
         screens = [
             ("/?lang=en", "Conversation", "screen-grid conversation-layout"),
             ("/tasks?lang=en", "Tasks", "Active & Queued Tasks"),
@@ -122,7 +124,9 @@ def main() -> int:
                 say(f"  GET {route:<12} -> HTTP {status}, length={len(body)}")
                 assert status == 200
                 assert heading_sub in body
-                assert marker in body or marker.replace("&", "&amp;") in body
+                assert html.escape(marker) in body, (
+                    f"{route} does not carry {html.escape(marker)!r}: the screen is not the "
+                    f"one this check names, or it stopped escaping what it renders")
                 # § 6 Row 15: No raw JSON on screen
                 assert '{"schema_version":' not in body
                 assert '{"ready":' not in body

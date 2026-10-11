@@ -174,13 +174,15 @@ def _graph_section(facts: Any, lang: str) -> str:
             f'{html.escape(i18n.t("graph.not_probed", lang))}</p></section>'
         )
     if not facts.reachable:
-        reasons = "".join(f"<li>{html.escape(reason)}</li>" for reason in facts.blocked)
+        reasons = "".join(f"<li>{html.escape(said)}</li>"
+                          for said in i18n.reasons(facts.blocked, lang))
         return (
             f'<section>{heading}<p class="bad">'
             f'{html.escape(i18n.t("graph.unreachable", lang))}</p><ul>{reasons}</ul></section>'
         )
     if not facts.verified:
-        reasons = "".join(f"<li>{html.escape(reason)}</li>" for reason in facts.blocked)
+        reasons = "".join(f"<li>{html.escape(said)}</li>"
+                          for said in i18n.reasons(facts.blocked, lang))
         return (
             f'<section>{heading}<p class="bad">'
             f'{html.escape(i18n.t("graph.unverified", lang))}</p><ul>{reasons}</ul></section>'
@@ -333,6 +335,36 @@ def _client_i18n(lang: str) -> str:
     payload = json.dumps(i18n.client_catalog(lang), ensure_ascii=False, sort_keys=True)
     return ('<script id="i18n" type="application/json">'
             + payload.replace("<", "\\u003c") + "</script>")
+
+
+def render_error(message_key: str, lang: str | None = None) -> str:
+    """A refusal a person can read, in the active language.
+
+    A JSON body handed to a browser is JSON rendered on screen. Measured 2026-10-11:
+    with JavaScript disabled, the settings form's own Save button posted to
+    `/api/settings` and the tab showed `{"error": "Cross-origin request refused"}` —
+    a reachable raw-JSON screen on a product whose row 15 promises none. A refusal is
+    still a page a person reads, so it gets the shell.
+    """
+    lang = lang or i18n.current_language()
+    title = html.escape(i18n.t("error.refused_title", lang))
+    theme = html.escape(str(config.value("ui.theme")), quote=True)
+    return (
+        "<!doctype html>\n"
+        f'<html lang="{html.escape(str(lang), quote=True)}" data-theme="{theme}">\n'
+        '<head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        f"<title>{title}</title>"
+        '<link rel="stylesheet" href="/console.css">'
+        '<link rel="stylesheet" href="/style.css"></head>\n'
+        "<body><main><header><h1>"
+        f'{html.escape(i18n.t("app.name", lang))}</h1>'
+        f'<p>{html.escape(i18n.t("app.tagline", lang))}</p></header>'
+        f'<section class="notice"><h2>{title}</h2>'
+        f'<p class="bad">{html.escape(i18n.t(message_key, lang))}</p>'
+        f'<p><a href="/settings">{html.escape(i18n.t("error.back", lang))}</a></p>'
+        "</section></main></body></html>\n"
+    )
 
 
 def render(page: str, description: dict, error: str = "", facts: Any = None,
