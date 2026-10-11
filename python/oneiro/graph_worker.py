@@ -8,11 +8,14 @@ next worker. An interrupted write is uncertain, never reported as absent.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import importlib
 import json
 import multiprocessing
-import time
 import threading
+import time
+from collections.abc import Iterator
+from contextvars import ContextVar
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -21,6 +24,36 @@ from oneiro.query import GraphQueryError
 from oneiro.records import decode
 from oneiro.store import MAX_LINK_BYTES
 from oneiro.checkpoints import SnapshotBinding, DurabilityGate, snapshot, verify_binding
+
+#: Operations the lane only reads with. A page read may be walked away from without
+#: stopping the worker; a write may not, because then its outcome would be uncertain.
+READ_OPERATIONS = frozenset({"page", "entity"})
+
+#: Codes that mean the target itself did not come up, as opposed to a call that failed.
+#: Only these are remembered as the target's state.
+DOWN_CODES = ("graph_worker_failed", "server_unreachable", "client_missing",
+              "worker_stop_failed")
+
+#: A page read's own deadline, set by the route that serves the page. The lane reads it
+#: and gives up by itself, deliberately without cancelling the call: a cancellation lands
+#: in the stop path, so a page view would kill the worker and close the durability gate
+#: (measured 2026-10-11: every view of a silent graph respawned the worker and closed
+#: `external_effects_allowed`).
+_PAGE_DEADLINE: ContextVar[float | None] = ContextVar("oneiro_page_deadline", default=None)
+
+#: How long a target that did not come up is remembered. A page read inside this window
+#: answers from that reading instead of starting one process per view.
+DOWN_SECONDS = 5.0
+
+
+@contextlib.contextmanager
+def page_budget(seconds: float) -> Iterator[None]:
+    """Bound the graph reads inside the block, on the lane rather than by cancelling."""
+    token = _PAGE_DEADLINE.set(asyncio.get_running_loop().time() + seconds)
+    try:
+        yield
+    finally:
+        _PAGE_DEADLINE.reset(token)
 
 
 def _serve(connection: Any, url: str, stream: str, lease: str, scan_limit: int) -> None:
@@ -97,15 +130,32 @@ class GraphWorker:
         self._lane = asyncio.Lock()
         self._admitted = 0
         self._closing = False
+        #: Set when this worker was given at least one request. Only such a worker can
+        #: have changed the store without reporting it, so only its stop is uncertain.
+        self._dispatched = False
+        #: The last failure that meant this target did not come up, and until when.
+        self._down: GraphQueryError | None = None
+        self._down_until = 0.0
+        #: Answers owed by reads this lane walked away from, consumed before the next
+        #: dispatch so a later request cannot read an abandoned answer as its own.
+        self._owed = 0
 
     @property
     def pid(self) -> int | None:
         return self._process.pid if self._process is not None else None
 
-    def _stop(self) -> None:
+    def _stop(self, *, uncertain: bool = True) -> None:
+        """Stop the owned worker; `uncertain` says whether it had been given a request.
+
+        A worker that never came up wrote nothing, so a page that meets a dead graph must
+        not close the durability gate (measured 2026-10-11: every view did).
+        """
         process, connection = self._process, self._connection
         self._process = self._connection = None
-        self.durability.fail("graph_worker_restarted")
+        self._dispatched = False
+        self._owed = 0
+        if uncertain:
+            self.durability.fail("graph_worker_restarted")
         if connection is not None:
             connection.close()
         if process is not None:
@@ -155,6 +205,29 @@ class GraphWorker:
             raise GraphQueryError(response["error"], response["reason"])
         return response.get("result")
 
+    async def _drain(self, deadline: float) -> None:
+        """Consume the answers of reads this lane walked away from, oldest first."""
+        owed, self._owed = self._owed, 0
+        for _ in range(owed):
+            await self._receive(deadline)
+
+    async def _fail_lane(self, exc: BaseException, *, worked: bool, read_only: bool) -> None:
+        """What a failed call leaves behind: a worker kept, or a worker stopped.
+
+        A read that ran out of its page budget is a read this lane walked away from: the
+        worker still owes one answer, which the next call drains, and nothing was written,
+        so the worker stays and a page view never kills a worker that would have answered.
+        Anything else stops it, and only a worker that had been given a request can have
+        touched the store - so a target that never came up leaves the gate as it was.
+        """
+        if read_only and worked and isinstance(exc, GraphQueryError) and exc.code == "graph_timeout":
+            self._owed += 1
+            return
+        await asyncio.to_thread(self._stop, uncertain=worked)
+        if not worked and isinstance(exc, GraphQueryError) and exc.code in DOWN_CODES:
+            self._down = exc
+            self._down_until = asyncio.get_running_loop().time() + DOWN_SECONDS
+
     async def call(self, operation: str, **arguments: Any) -> Any:
         if operation == "checkpoint":
             return await self.checkpoint()
@@ -176,16 +249,25 @@ class GraphWorker:
             raise GraphQueryError("record_too_large", "graph IPC request exceeds its bound")
         self._admitted += 1
         loop = asyncio.get_running_loop()
+        page_deadline = _PAGE_DEADLINE.get()
         deadline = loop.time() + self.timeout
+        if page_deadline is not None:
+            deadline = min(deadline, page_deadline)
+        #: A read inside a page budget is one this lane may walk away from.
+        read_only = page_deadline is not None and operation in READ_OPERATIONS
         acquired = False
+        worked = False
         try:
             try:
-                await asyncio.wait_for(self._lane.acquire(), timeout=self.timeout)
+                await asyncio.wait_for(self._lane.acquire(),
+                                       timeout=max(0.001, deadline - loop.time()))
                 acquired = True
             except TimeoutError:
                 raise GraphQueryError("graph_busy", "graph lane queue deadline exceeded") from None
             if self._closing:
                 raise GraphQueryError("store_closed", "graph lane is closed")
+            if read_only and self._down is not None and loop.time() < self._down_until:
+                raise self._down
             if binding is not None:
                 await asyncio.to_thread(verify_binding, binding, self.url)
             if self._process is None:
@@ -194,6 +276,8 @@ class GraphWorker:
                 self._result(startup)
                 if startup.get("ready") is not True:
                     raise GraphQueryError("graph_worker_failed", "worker did not become ready")
+            if self._owed:
+                await self._drain(deadline)
             # Writes may contain up to one bounded record; callers validate HTTP
             # buffering. Pipe send runs off the event loop too.
             remaining = deadline - loop.time()
@@ -204,8 +288,12 @@ class GraphWorker:
                     asyncio.to_thread(self._connection.send, (operation, arguments)), timeout=remaining)
             except TimeoutError:
                 raise GraphQueryError("graph_timeout", "graph dispatch timed out; write outcome unknown") from None
+            worked = True
+            self._dispatched = True
             response = await self._receive(deadline)
             result = self._result(response)
+            # The target answered, so nothing it did moments ago still stands as its state.
+            self._down, self._down_until = None, 0.0
             if binding is not None:
                 # Host-side copy subprocess is owned here, never orphaned if
                 # the graph worker is terminated. Keep the writer lane held.
@@ -227,11 +315,11 @@ class GraphWorker:
             if acquired:
                 await asyncio.to_thread(self._stop)
             raise GraphQueryError("server_unreachable", "graph worker IPC interrupted; write outcome unknown") from None
-        except (GraphQueryError, TimeoutError, asyncio.CancelledError):
+        except (GraphQueryError, TimeoutError, asyncio.CancelledError) as exc:
             # Only the request holding the lane may stop its process. Never stop
             # another call's worker just because a queued request expired.
             if acquired:
-                await asyncio.to_thread(self._stop)
+                await self._fail_lane(exc, worked=worked, read_only=read_only)
             raise
         finally:
             if acquired:

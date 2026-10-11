@@ -134,7 +134,7 @@ def test_a_silent_graph_is_reported_not_raised(tmp_path, monkeypatch):
     """
     release = threading.Event()
     monkeypatch.setattr(memory, "probe", lambda *a, **k: release.wait(30) or LIVE)
-    monkeypatch.setattr(memory, "_STUCK", None)
+    monkeypatch.setattr(memory, "_SILENT", {})
 
     started = time.monotonic()
     facts = memory.probe_within("127.0.0.1", 8090, timeout=0.5, budget=0.4)
@@ -150,6 +150,47 @@ def test_a_silent_graph_is_reported_not_raised(tmp_path, monkeypatch):
     assert time.monotonic() - started < 1.0, "a stuck worker must not be joined again"
     assert [item["code"] for item in again.blocked] == [memory.TIMEOUT_CODE]
     release.set()
+
+
+def test_a_verdict_names_the_target_it_was_derived_from(tmp_path, monkeypatch):
+    """A silent read of one graph is not another target's verdict.
+
+    Measured 2026-10-11: after one read of a silent-but-accepting port, a probe for a
+    merely closed port answered `blocked.probe_timeout` instead of
+    `blocked.graph_unreachable`, and the panel rendered an address-less "unreadable"
+    verdict for a port that was not even listening.
+    """
+    with socket.socket() as spare:
+        spare.bind(("127.0.0.1", 0))
+        closed_port = int(spare.getsockname()[1])
+    silent_port = 1          # never dialled: the probe is held open for it below
+    released = threading.Event()
+    real_probe = memory.probe
+
+    def fake_probe(host: str, port: int, *, timeout: float = memory.PROBE_TIMEOUT) -> memory.GraphFacts:
+        if port == silent_port:
+            released.wait(30)                # the read that never comes back
+            return LIVE
+        return real_probe(host, port, timeout=timeout)
+
+    monkeypatch.setattr(memory, "probe", fake_probe)
+    monkeypatch.setattr(memory, "_SILENT", {})
+    try:
+        silent = memory.probe_within("127.0.0.1", silent_port, timeout=0.5, budget=0.4)
+        assert [item["code"] for item in silent.blocked] == [memory.TIMEOUT_CODE]
+
+        # A budget roomy enough for the first real probe of this process (the import of
+        # the client is the slow part); what matters is which verdict comes back.
+        facts = memory.probe_within("127.0.0.1", closed_port, timeout=0.5, budget=3.0)
+        codes = [item["code"] for item in facts.blocked]
+        assert codes == ["blocked.graph_unreachable"], (
+            f"a silent read of {silent_port} became the verdict for {closed_port}: {codes}")
+        assert facts.blocked[0]["data"] == {"host": "127.0.0.1", "port": closed_port}
+        assert memory.panel_reasons(facts) == [
+            {"code": "blocked.graph_unreachable",
+             "data": {"host": "127.0.0.1", "port": closed_port}}]
+    finally:
+        released.set()
 
 
 def test_the_panel_payload_never_carries_the_library_prose(tmp_path, monkeypatch):
@@ -202,7 +243,7 @@ def test_a_silent_port_does_not_put_500_on_screen(tmp_path, monkeypatch):
     (tmp_path / "settings.json").write_text(json.dumps({"graph.port": port}),
                                             encoding="utf-8")
     monkeypatch.setenv("ONEIRO_SETTINGS_FILE", str(tmp_path / "settings.json"))
-    monkeypatch.setattr(memory, "_STUCK", None)
+    monkeypatch.setattr(memory, "_SILENT", {})
     try:
         assert config.value("graph.port") == port
         with TestClient(make_app(tmp_path, MemoryLinks())) as client:

@@ -131,7 +131,8 @@ def graph_states(work: Path, configured_port: int) -> int:
             settings = work / f"settings-graph-{label}.json"
             settings.write_text(json.dumps({"graph.port": port}), encoding="utf-8")
             os.environ["ONEIRO_SETTINGS_FILE"] = str(settings)
-            with TestClient(create_app(Runtime(), scheduler=False)) as client:
+            runtime = Runtime()
+            with TestClient(create_app(runtime, scheduler=False)) as client:
                 say(f"  -- {label}: graph.port={port}")
                 for route in screens:
                     started = time.monotonic()
@@ -155,7 +156,9 @@ def graph_states(work: Path, configured_port: int) -> int:
                     problems.extend(f"{label} {route}: {item}" for item in bad)
 
                 status = client.get("/api/status").json()
+                graph_started = time.monotonic()
                 graph = client.get("/api/graph")
+                graph_elapsed = time.monotonic() - graph_started
                 panel = _panel(status, "ru")
                 library_prose = [(where, value) for where, value in _strings(status)
                                  if _reads_as_english_prose(value)]
@@ -163,7 +166,7 @@ def graph_states(work: Path, configured_port: int) -> int:
                 page = client.get("/oneiro/?lang=ru").text
                 page_readable = i18n.t("graph.readable", "ru", arcs=1, anchor="",
                                        elapsed=0)[:24] in page
-                say(f"     /api/graph -> {graph.status_code} "
+                say(f"     /api/graph  {graph.status_code} {graph_elapsed:5.2f}s "
                     f"codes={[item['code'] for item in graph.json()['blocked']]}")
                 say(f"     memory: verified={status['memory']['verified']} "
                     f"reachable={status['memory']['tcp_reachable']}")
@@ -177,6 +180,50 @@ def graph_states(work: Path, configured_port: int) -> int:
                 if library_prose:
                     problems.append(f"{label}: the panel payload carries the library's prose: "
                                     f"{library_prose[:1]}")
+                if graph_elapsed >= limit:
+                    problems.append(f"{label} /api/graph: took {graph_elapsed:.1f}s")
+
+                if label == "closed":
+                    # A silent read of a *different* port happened moments before this
+                    # verdict. It must not become this port's reading, and the address it
+                    # is about must survive: measured 2026-10-11, a process-wide verdict
+                    # did both wrong.
+                    memory.probe_within("127.0.0.1", silent_port, timeout=0.5, budget=0.5)
+                    after = client.get("/api/status").json()
+                    reasons = [item for item in after["blocked"]]
+                    codes = [item["code"] for item in reasons]
+                    named = [item.get("data", {}).get("port") for item in reasons]
+                    say(f"     after a silent read of port {silent_port}: {codes} ports={named}")
+                    if memory.TIMEOUT_CODE in codes:
+                        problems.append("closed: a silent read of another port became this "
+                                        "port's verdict")
+                    if port not in named:
+                        problems.append("closed: the verdict does not name the port it measured")
+
+                if label == "silent":
+                    # A page view is a read. Repeated views must not restart the worker or
+                    # close the durability gate (measured 2026-10-11: every view did both).
+                    lane = runtime._graph
+                    if lane is None:
+                        problems.append("silent: the runtime has no graph lane to watch")
+                    else:
+                        pid_before = lane.pid
+                        failure_before = lane.durability.status()["failure"]
+                        say(f"     worker pid={pid_before} durability failure={failure_before!r}")
+                        views_started = time.monotonic()
+                        for _ in range(3):
+                            client.get("/tasks?lang=ru")
+                            client.get("/oneiro/?lang=ru")
+                        failure_after = lane.durability.status()["failure"]
+                        say(f"     3 more views of /tasks and /oneiro/ in "
+                            f"{time.monotonic() - views_started:.2f}s: pid={lane.pid} "
+                            f"durability failure={failure_after!r}")
+                        if lane.pid != pid_before:
+                            problems.append(f"silent: a page view restarted the worker "
+                                            f"({pid_before} -> {lane.pid})")
+                        if failure_after != failure_before:
+                            problems.append(f"silent: a page view changed the durability gate "
+                                            f"({failure_before!r} -> {failure_after!r})")
 
         # A screen's own reads, with the graph down: chained reads must not each hold the
         # graph lane's 10 s deadline (measured 2026-10-11: /api/tasks 10.04 s before).

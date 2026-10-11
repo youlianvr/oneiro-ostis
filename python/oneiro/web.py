@@ -16,6 +16,7 @@ import sys
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
+from collections.abc import Awaitable, Callable
 from typing import Any, AsyncIterator
 from urllib.parse import urlsplit
 
@@ -27,6 +28,7 @@ from oneiro import agent, config, mcp, memory, pages, recall, schedule, skills, 
 from oneiro import mcp_surface
 from oneiro.agent import TurnConflict
 from oneiro.chat import ChatError
+from oneiro.graph_worker import page_budget
 from oneiro.records import State
 from oneiro.runtime import Runtime
 from oneiro.query import GraphQueryError, _check_limit
@@ -37,6 +39,15 @@ STATIC = Path(__file__).parent / "static"
 CHAT_CONVERSATION = "main"
 CHAT_MAX_CHARS = 4000
 CHAT_BODY_LIMIT = 16000
+
+#: The deadline a *page-facing* read gets, set on the graph lane while the page's own
+#: reads run. A screen issues several of these, and one of them holding the lane's own
+#: 10 s deadline each is how `/tasks` failed to settle for more than 30 s with an
+#: unreachable graph (measured 2026-10-11: /api/tasks 10.04 s, /api/schedules 9.11 s,
+#: /api/conversations 8.98 s). Writes keep the lane's own, longer deadline. The number is
+#: a product decision; what the lane owes either way is a bounded answer that costs no
+#: worker and no durability.
+PAGE_READ_BUDGET = 3.0
 _CLIENT_ID = re.compile(r"[A-Za-z0-9-]{8,64}")
 _FACT_ID = re.compile(r"fact-[A-Za-z0-9-]{8,64}")
 FACT_BODY_LIMIT = 8000
@@ -405,26 +416,28 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
     def refused(status: int, error: str, **extra: Any) -> JSONResponse:
         return JSONResponse({"error": error, **extra}, status_code=status)
 
-    #: The deadline a *page-facing* read gets. A screen issues several of these, and one
-    #: holding the graph lane's own 10 s deadline each is how `/tasks` failed to settle
-    #: for more than 30 s with an unreachable graph (measured 2026-10-11: /api/tasks
-    #: 10.04 s, /api/schedules 9.11 s, /api/conversations 8.98 s). A bounded read answers
-    #: with `unavailable` instead. Writes keep the lane's own, longer deadline: an
-    #: abandoned write is an uncertain write, and that is a different trade.
-    PAGE_READ_BUDGET = 3.0
+    async def page_read(work: Callable[[], Awaitable[Any]], *,
+                        budget: float = PAGE_READ_BUDGET) -> Any:
+        """One bounded graph read for a page, bounded on the lane, not by cancelling it.
 
-    async def page_read(work: Any, *, budget: float = PAGE_READ_BUDGET) -> Any:
-        """One bounded graph read for a page, or the reason it did not answer."""
-        try:
-            return await asyncio.wait_for(work, timeout=budget)
-        except TimeoutError:
-            raise GraphQueryError(
-                "graph_timeout", "the graph lane did not answer the page in time") from None
+        `asyncio.wait_for` here would cancel the call, and a cancellation lands in the
+        worker's stop path: the owned worker dies and the durability gate closes because
+        somebody looked at a page (measured 2026-10-11: every view of a silent graph
+        respawned the worker). The lane gives up by itself within the budget and raises
+        `graph_timeout`, which the routes below answer as `unavailable`.
+
+        `work` is a thunk because the budget has to be set before the coroutines exist:
+        `asyncio.gather` turns what it is given into tasks immediately, and a task made
+        before this block keeps the context it was made in (measured 2026-10-11: the
+        `/api/tasks` reads ran on the lane's own 10 s deadline instead of this one).
+        """
+        with page_budget(budget):
+            return await work()
 
     @app.get("/api/memory/facts")
     async def facts() -> JSONResponse:
         try:
-            found = await page_read(recall.current_facts(owner, limit_chars=_facts_budget()))
+            found = await page_read(lambda: recall.current_facts(owner, limit_chars=_facts_budget()))
         except GraphQueryError as exc:
             return unavailable(exc)
         return JSONResponse(found.to_dict())
@@ -536,7 +549,7 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
     @app.get("/api/conversations")
     async def conversations() -> JSONResponse:
         try:
-            listed = await page_read(recall.conversation_list(owner))
+            listed = await page_read(lambda: recall.conversation_list(owner))
         except GraphQueryError as exc:
             return unavailable(exc)
         return JSONResponse(listed)
@@ -551,8 +564,8 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
         if not _CONVERSATION.fullmatch(conversation_id):
             return refused(400, "conversation_id must be 1..64 letters, digits or hyphens")
         try:
-            found = await page_read(recall.history(owner, conversation_id,
-                                                   limit=_check_limit(limit)))
+            found = await page_read(lambda: recall.history(owner, conversation_id,
+                                                          limit=_check_limit(limit)))
         except GraphQueryError as exc:
             if exc.code == "bad_limit":
                 return refused(400, exc.reason)
@@ -569,7 +582,8 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
                 or any(len(word) > 64 for word in words)):
             return refused(400, f"query must be 1..{SEARCH_CHARS} characters, at most {SEARCH_WORDS} words")
         try:
-            found = await page_read(recall.search_messages(owner, words, limit=SEARCH_LIMIT))
+            found = await page_read(lambda: recall.search_messages(owner, words,
+                                                                  limit=SEARCH_LIMIT))
         except GraphQueryError as exc:
             return unavailable(exc)
         results = [{**_message_out(row), "snippet": recall.snippet(row["text"], words[0])}
@@ -593,7 +607,8 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
     @app.get("/api/memory/records")
     async def memory_records(cursor: str | None = None, limit: str | None = None) -> JSONResponse:
         try:
-            page = await page_read(owner.memory_page(cursor=cursor, limit=_check_limit(limit)))
+            page = await page_read(lambda: owner.memory_page(cursor=cursor,
+                                                             limit=_check_limit(limit)))
         except GraphQueryError as exc:
             invalid = exc.code in ("bad_cursor", "bad_limit", "bad_scan_limit")
             return JSONResponse({"error": exc.code, "reason": exc.reason, "fallback": None},
@@ -604,7 +619,7 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
     @app.get("/api/memory/records/{record_id}")
     async def memory_entity(record_id: str) -> JSONResponse:
         try:
-            record = await page_read(owner.memory_entity(record_id))
+            record = await page_read(lambda: owner.memory_entity(record_id))
         except GraphQueryError as exc:
             return JSONResponse({"error": exc.code, "reason": exc.reason, "fallback": None}, status_code=503)
         return JSONResponse({"record": record}, status_code=200 if record is not None else 404)
@@ -614,7 +629,7 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
         """The owner's tasks, what Oneiro said on its own, and what it may start."""
         level = tasks.level()
         try:
-            found, spoken, offered = await page_read(asyncio.gather(
+            found, spoken, offered = await page_read(lambda: asyncio.gather(
                 tasks.view(owner), tasks.notices(owner), tasks.suggestions(owner)))
         except GraphQueryError as exc:
             return unavailable(exc)
@@ -634,7 +649,7 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
         if not _RECORD_ID.fullmatch(task_id):
             return refused(404, "no such task")
         try:
-            history = await page_read(tasks.history(owner, task_id))
+            history = await page_read(lambda: tasks.history(owner, task_id))
         except TaskError as exc:
             return refused(404, str(exc))
         except GraphQueryError as exc:
@@ -688,7 +703,7 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
     @app.get("/api/schedules")
     async def schedule_list() -> JSONResponse:
         try:
-            listed = await page_read(schedule.listing(owner))
+            listed = await page_read(lambda: schedule.listing(owner))
         except GraphQueryError as exc:
             return unavailable(exc)
         return JSONResponse(listed)

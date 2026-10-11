@@ -45,11 +45,6 @@ PROBE_TIMEOUT = 4.0
 #: within this budget instead of an exception.
 PROBE_BUDGET = 6.0
 
-#: The TCP check a status page can afford. The panel is fetched on every screen, so a
-#: closed port must not hold it; the graph page keeps `PROBE_TIMEOUT` because it is the
-#: page a person opened on purpose.
-STATUS_TIMEOUT = 0.5
-
 #: The codes a probe can finish with when the read does not complete in its budget.
 TIMEOUT_CODE = "blocked.probe_timeout"
 
@@ -94,11 +89,14 @@ def _tcp_reachable(host: str, port: int, timeout: float) -> bool:
         return False
 
 
-#: At most one worker whose read never came back may linger: while it is alive every
-#: further call reports the timeout immediately instead of starting another one. This
-#: is what keeps a silent graph from turning into one stuck thread per page view.
-_STUCK: threading.Thread | None = None
-_STUCK_LOCK = threading.Lock()
+#: At most one worker per target whose read never came back may linger: while it is
+#: alive every further read of *that* host and port reports the timeout immediately
+#: instead of starting another worker, so a silent graph cannot become one thread per
+#: page view. Keyed by target, because a verdict is about one host and port: a
+#: process-wide one restated a silent read of one graph as another port's verdict and
+#: lost the address it was about (measured 2026-10-11).
+_SILENT: dict[tuple[str, int], threading.Thread] = {}
+_SILENT_LOCK = threading.Lock()
 
 
 #: A probe outcome a *panel* may interpolate: machine data only. The library's own
@@ -135,12 +133,13 @@ def probe_within(host: str, port: int, *, timeout: float = PROBE_TIMEOUT,
     """`probe`, with a deadline: it returns facts and never raises or hangs.
 
     The read runs in a daemon worker so a dependency that never returns cannot hold a
-    request open; `budget` bounds it. A graph that is still silent in the next window
-    is reported from the same facts, not by starting a second stuck worker.
+    request open; `budget` bounds it. A target that is still silent in the next window
+    is reported from the same facts, not by starting a second stuck worker for it.
     """
-    global _STUCK
-    with _STUCK_LOCK:
-        if _STUCK is not None and _STUCK.is_alive():
+    target = (host, port)
+    with _SILENT_LOCK:
+        silent = _SILENT.get(target)
+        if silent is not None and silent.is_alive():
             return _timed_out(host, port, timeout, budget)
     box: list[GraphFacts] = []
 
@@ -156,8 +155,8 @@ def probe_within(host: str, port: int, *, timeout: float = PROBE_TIMEOUT,
     worker.start()
     worker.join(budget)
     if worker.is_alive():
-        with _STUCK_LOCK:
-            _STUCK = worker
+        with _SILENT_LOCK:
+            _SILENT[target] = worker
         return _timed_out(host, port, timeout, budget)
     return box[0] if box else _timed_out(host, port, timeout, budget)
 

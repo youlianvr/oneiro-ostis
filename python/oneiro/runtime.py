@@ -91,6 +91,11 @@ class Runtime:
             if self._cached is None or refresh or time.monotonic() - self._cached_at > 5:
                 self._cached = await asyncio.to_thread(self._inspect)
                 self._cached_at = time.monotonic()
+            # The memory verdict is a fresh reading on every call, never cached with the
+            # rest: a cached verdict is how the panel and the graph page could describe
+            # one moment differently (measured 2026-10-11 - the cache held it for 5 s,
+            # and both surfaces asked with different deadlines).
+            facts, memory_block = await asyncio.to_thread(self._inspect_memory)
             model = dict(self._cached["model"])
             model["verified"] = self.model_verified
             model["used_tools"] = self.model_used_tools
@@ -100,10 +105,10 @@ class Runtime:
             model["calls"] = models.registry().report()["totals"]
             if self.model_verified:
                 model.pop("reason_code", None)
-            blocked = list(self._cached["blocked"])
+            blocked = list(self._cached["blocked"]) + memory.panel_reasons(facts)
             if not self.model_verified:
                 blocked.append({"code": "blocked.model_unverified"})
-            return {**self._cached, "model": model, "blocked": blocked,
+            return {**self._cached, "memory": memory_block, "model": model, "blocked": blocked,
                     "instance_id": self.instance_id,
                     "running": self._lease is not None, "version": __version__}
 
@@ -209,18 +214,27 @@ class Runtime:
         self.model_verification = report
 
     @staticmethod
-    def _inspect() -> dict[str, Any]:
-        # The memory verdict comes from reading the graph, not from a TCP connect: a
-        # socket that answers proves reachability and nothing else, and reporting
-        # `verified: False` while the graph page showed a successful read made the
-        # panel contradict the page it links to (measured 2026-10-11 against the
-        # owner's live graph). `probe_within` is bounded, so a graph that never answers
-        # costs the panel a fixed wait instead of hanging it. Provider authorization,
-        # model tools and vision are still not proven here.
+    def _inspect_memory() -> tuple[memory.GraphFacts, dict[str, Any]]:
+        """Read the graph once, bounded, and report only the verdict that reading supports.
+
+        The verdict comes from reading the graph, not from a TCP connect: a socket that
+        answers proves reachability and nothing else, and reporting `verified: False`
+        while the graph page showed a successful read made the panel contradict the page
+        it links to (measured 2026-10-11 against the owner's live graph). `probe_within`
+        is bounded, so a graph that never answers costs a fixed wait instead of a hang.
+        """
         host = str(config.value("graph.host"))
         port = int(config.value("graph.port"))
-        graph = memory.probe_within(host, port, timeout=memory.STATUS_TIMEOUT,
-                                    budget=memory.PROBE_BUDGET)
+        facts = memory.probe_within(host, port)
+        return facts, {"required": "OSTIS", "tcp_reachable": facts.reachable,
+                       "verified": facts.verified, "fallback": None,
+                       "arcs_found": facts.arcs_found, "anchor": facts.anchor,
+                       "checked_at": facts.checked_at, "elapsed_ms": facts.elapsed_ms}
+
+    @staticmethod
+    def _inspect() -> dict[str, Any]:
+        """Everything about the install that is worth caching. Not the memory verdict:
+        that is a fresh reading per call, so two surfaces cannot age apart."""
         dependencies = {name: importlib.util.find_spec(name) is not None
                         for name in ("sc_client", "sc_kpm", "websocket")}
         # The registry knows the providers, the model per role and what was really probed;
@@ -231,10 +245,6 @@ class Runtime:
         return {
             "ready": False,
             "phase": "agent",
-            "memory": {"required": "OSTIS", "tcp_reachable": graph.reachable,
-                       "verified": graph.verified, "fallback": None,
-                       "arcs_found": graph.arcs_found, "anchor": graph.anchor,
-                       "checked_at": graph.checked_at, "elapsed_ms": graph.elapsed_ms},
             "model": {"configured": bool(first.get("key_found")), "verified": False,
                       "providers": facts["providers"], "roles": facts["roles"],
                       "fallback": facts["fallback"], "discovered": facts["discovered"],
@@ -246,11 +256,9 @@ class Runtime:
             "dependencies": dependencies,
             "docker_cli": bool(shutil.which("docker")),
             "runtime_connected": False,
-            # The panel reports the probe's own codes with machine data only, so the
-            # same moment cannot read as "nothing could be read back" here and as a
-            # readable graph on the page this panel links to.
-            "blocked": ([{"code": "blocked.adapter_absent"}]
-                        + memory.panel_reasons(graph)),
+            # The one blocked reason that is a standing declaration, not a reading.
+            # The memory reasons are added per call, from the probe that just ran.
+            "blocked": [{"code": "blocked.adapter_absent"}],
             "settings_error": config.describe()["error"],
             "autostart": False,
             "pid": os.getpid(),

@@ -1739,6 +1739,44 @@ Measured after: the acceptance frames were re-shot after the fix (22 files, 20 d
 rebuilt (43 entries, manifest `5a829efb…`), so `docs/ACCEPTANCE-REPORT.md` carries the new
 §§ 1-5 numbers, the corrected § 6 wording and the two new defect records.
 
+## 2026-10-11 — The budget moves onto the lane, and a verdict names its target
+
+A third read-only audit of `bd87bee14` measured two defects inside the fix above, both grown
+from one root: the read budget was enforced *outside* the graph lane, and the "stuck graph"
+verdict was a single process-wide slot.
+
+1. **A page read killed the worker and closed the durability gate.** The budget arrived as a
+   `CancelledError` inside the call holding the graph lane, and that path stops the owned
+   worker. Measured with a graph that accepted TCP and never answered: every `/api/tasks` view
+   started a new worker (pid 20500, then 1764) and recorded `graph_worker_restarted`, closing
+   `external_effects_allowed` until the next checkpoint because somebody looked at a page. The
+   budget now lives on the lane (`graph_worker.page_budget`); a read that runs out of it is
+   abandoned rather than cancelled, the worker stays, the one answer it still owes is drained
+   before the next dispatch, and a worker that never came up (which wrote nothing) no longer
+   touches the durability gate. A target that did not come up is remembered for 5 s, so a view
+   costs one spawn per window instead of one per view.
+2. **A verdict outlived the target it was about.** One process-wide slot meant that after a
+   read of a silent-but-accepting port, a probe for a merely closed port answered
+   `blocked.probe_timeout` and the panel rendered an address-less "unreadable" verdict for a
+   port that was not listening. The slot is keyed by host and port now, so a verdict names the
+   target it came from.
+3. **The panel and the page measured one fact with different tools** — read in the code, not
+   run: `Runtime.status` cached the memory verdict for 5 s, and the panel asked for its TCP
+   check with 0.5 s against the page's 4.0 s. The verdict is a fresh reading per status call
+   now and both surfaces ask with `PROBE_TIMEOUT`.
+
+Checks: `python -m pytest -q` 595 passed (three tests added: the kept worker with its drained
+answer and the single attempt with an unchanged gate in `tests/test_graph_worker.py`, and the
+per-target verdict in `tests/test_graph_states.py`); `python -m mypy python/oneiro` clean in 33
+files; `live_w1..w8` and `live_w9_shots.py` all exit 0; `_scripts/validate_doc_routes.py` OK.
+
+Measured after, by `tests/live_w6_check.py`: the silent state answers `/oneiro/` in 0.15 s and
+`/api/graph` in 0.13 s, three further views of `/tasks` and `/oneiro/` leave the worker pid and
+the durability reason unchanged, the closed-port verdict measured *after* a silent read of
+another port is `blocked.graph_unreachable` with that port named, and the chained reads settle
+in about 3.0 s each (3.02 s and 3.02 s in the run recorded, within 0.1 s of that across five
+runs).
+
 
 
 

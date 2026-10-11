@@ -7,7 +7,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from oneiro.graph_worker import GraphWorker
+from oneiro.graph_worker import GraphWorker, page_budget
 from oneiro.query import GraphQueryError
 from oneiro.runtime import Runtime
 from oneiro.web import create_app
@@ -141,6 +141,98 @@ def test_request_consumer_uses_bounded_page_seam_and_reports_errors(tmp_path, mo
         lane.failure = "bad_cursor"
         assert browser.get("/api/memory/records?cursor=bad").status_code == 400
     assert lane.closed
+
+
+#: How long the first answer of a page read is held back. It has to outlast both the
+#: spawn of the child and the page budget below: a spawned child imports this module and
+#: its dependencies, which costs a couple of seconds here.
+SLOW_FIRST_DELAY = 6.0
+
+#: The page budget the first read runs out of: longer than a spawn, shorter than the answer.
+SHORT_PAGE_BUDGET = 3.0
+
+
+def slow_first_child(connection):
+    connection.send({"ready": True})
+    connection.recv()
+    time.sleep(SLOW_FIRST_DELAY)
+    connection.send({"result": {"which": 1}})
+    connection.recv()
+    connection.send({"result": {"which": 2}})
+
+
+class SlowFirstWorker(GraphWorker):
+    """A worker whose first answer arrives after the page's own budget has run out."""
+
+    def _start(self):
+        parent, child = self._context.Pipe()
+        process = self._context.Process(target=slow_first_child, args=(child,), daemon=True)
+        self._connection, self._process = parent, process
+        process.start()
+        self.last_pid = process.pid
+        child.close()
+
+
+def dead_child(connection):
+    connection.send({"error": "graph_worker_failed", "reason": "the graph did not come up"})
+    time.sleep(10)          # keep the pipe open: the parent reads the error, not EOF
+
+
+class DeadWorker(GraphWorker):
+    """A worker whose child never reaches the graph and says so."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.attempts = 0
+
+    def _start(self):
+        self.attempts += 1
+        parent, child = self._context.Pipe()
+        process = self._context.Process(target=dead_child, args=(child,), daemon=True)
+        self._connection, self._process = parent, process
+        process.start()
+        child.close()
+
+
+def test_a_page_read_that_runs_out_of_budget_keeps_the_worker(tmp_path):
+    """A page's deadline must not kill a worker that would have answered.
+
+    Measured 2026-10-11 with a silent graph: cancelling the page read reached the worker's
+    stop path, so every page view respawned the worker and closed the durability gate.
+    """
+    async def scenario():
+        worker = SlowFirstWorker("unused", "test", tmp_path / "writer.lock", timeout=15)
+        with page_budget(SHORT_PAGE_BUDGET):
+            with pytest.raises(GraphQueryError, match="graph_timeout"):
+                await worker.call("page")
+        assert worker.pid is not None, "a page read killed a worker that would have answered"
+        # The abandoned answer is still owed, so the next request must consume it instead
+        # of reading it as its own result.
+        assert await worker.call("page") == {"which": 2}
+        assert worker.pid is not None
+        await worker.close()
+    asyncio.run(scenario())
+
+
+def test_a_target_that_never_came_up_is_remembered_and_costs_no_gate(tmp_path):
+    """A graph that never comes up is one attempt, not one process per page view.
+
+    Measured 2026-10-11: every /api/tasks view of a silent graph started a worker and
+    closed the durability gate, though nothing had been written by it.
+    """
+    async def scenario():
+        worker = DeadWorker("unused", "test", tmp_path / "writer.lock", timeout=10)
+        before = worker.durability.status()
+        for _ in range(3):
+            with page_budget(10.0):
+                with pytest.raises(GraphQueryError, match="graph_worker_failed"):
+                    await worker.call("page")
+        assert worker.attempts == 1, "a page view started a worker per view"
+        assert worker.pid is None
+        assert worker.durability.status()["failure"] == before["failure"], (
+            "a page view closed the durability gate for a graph that never came up")
+        await worker.close()
+    asyncio.run(scenario())
 
 
 def test_request_modules_do_not_import_legacy_full_log_loaders():
