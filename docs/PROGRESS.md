@@ -1777,6 +1777,64 @@ another port is `blocked.graph_unreachable` with that port named, and the chaine
 in about 3.0 s each (3.02 s and 3.02 s in the run recorded, within 0.1 s of that across five
 runs).
 
+## 2026-10-11 — The down target that was never remembered, and a note that never expired
+
+A fourth read-only audit of `316039673` confirmed the previous pass's good properties — no
+cross-delivery of a lagging answer, the debt drained, a worker that never came up never touching
+the durability gate, a verdict naming the port it is about, one `PROBE_TIMEOUT`, no status cache
+— and measured three defects, all in the ordinary "graph is down" state. Two are repaired here;
+the third is a cost that is now stated instead of hidden.
+
+1. **A target that never answered *at all* was not remembered.** The memo armed only for failures
+   carrying a `DOWN_CODES` code, and a merely closed port does not fail that way: its read runs
+   out of the page budget and reports `graph_timeout`, so the per-target memo stayed `None` and
+   stood for nothing — the churn this pass was meant to remove was still there for the common
+   case. Measured before, by the audit that found it: four consecutive reads spawned four workers
+   (3.02 s each), three routes produced three spawns, and the durability gate recorded
+   `graph_worker_restarted` because somebody looked at pages. The pinning test fed the worker a
+   synthetic `graph_worker_failed`, so it never saw this. Now `graph_timeout` counts while this
+   worker has never dispatched anything; a read that *was* dispatched and then timed out keeps
+   its deferred-answer path, because that worker is alive and owes an answer.
+2. **The probe's note never expired.** `memory._SILENT` remembered a read that never came back
+   with no deadline, so a stale unreachable verdict outlived the graph coming back: with a shim
+   proving the graph answers, a later probe returned the old `blocked.probe_timeout` in 0.018 s
+   without dialling at all, while the graph page read the graph successfully. Now
+   `SILENT_SECONDS = 5.0`, and a note is removed when the read it stands for finishes, so the
+   first read of the next window is a real one and the reading that comes back is believed.
+3. **The cost of a partly-down target is named, not bounded.** In the closed state a read that
+   reaches the graph lane settles in about 2.1 s, because the first touch of a down target pays
+   one probe timeout before the memo stands for it; `/tasks` answers in 0.06 s and a repeated
+   view in 0.01 s. A third cache keyed by the panel's own status call would cut that latency and
+   would add a new staleness class in the pass whose second defect was exactly that, so it is
+   refused on purpose: a slow read is slow once per window, not once per view.
+
+Checks: `python -m mypy python/oneiro` — Success: no issues found in 33 source files, exit 0;
+`python -m pytest -q` — 598 passed, exit 0; `tests/live_w1_check.py` … `tests/live_w8_check.py`,
+`tests/live_w9_shots.py` and `tests/i18n_measure.py` — exit 0 each, run as plain commands with
+their exit statuses preserved. The one mypy failure this pass left was its own: hoisting the
+`isinstance` check into `never_answered` moved the narrowing out of the branch that assigns
+`self._down`, so `graph_worker.py:241` reported an incompatible assignment; repaired by
+re-narrowing in the branch — no `cast`, no `# type: ignore` — which is what "mypy clean" means
+here.
+
+Measured after, by `tests/live_w6_check.py` (its own output): closed state — three `/api/tasks`
+views spawn one worker (3.01 s, then 0.01 s and 0.01 s) and the durability reason stays
+`no verified checkpoint in this process`; `/oneiro/` 2.08 s, `/api/graph` 503 in 2.04 s, `/tasks`
+200 in 0.06 s. Silent state — `/oneiro/` 0.16 s, `/api/graph` 200 with `blocked.probe_failed` in
+0.12 s, one worker over three views (0.77 s, then 0.01 s and 0.01 s). Section 4 — the note ages
+out and a recovered graph reads again (`the graph answers again: reads=3 panel verified=True`).
+Live state, on the owner's own graph on 8096 — panel and page agree, `/api/status` reports
+`verified=True reachable=True` in 0.25 s, and the owner's files are unchanged (settings.json,
+keys.env, .env, knowledge-base/repo.path).
+
+Artifacts: the 22 acceptance frames were re-shot after a killed run had left the set
+half-written (20 distinct hashes, `theme-night-*` identical to its conversation counterpart
+within the run), and the payload was rebuilt from this tree (43 entries, manifest
+`f2f164d21b6e9601b30197b9e3663d68a199349c7d24bc3f8285be49fdacd613`) — so
+`docs/ACCEPTANCE-REPORT.md` § 1, § 2, § 3, § 4 and § 5 carry this run's numbers, and § 6's claim
+that "no `sc-server` was running" was corrected, because one was. `_scripts/validate_doc_routes.py`
+OK after the last doc edit.
+
 
 
 

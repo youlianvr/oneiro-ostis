@@ -235,6 +235,55 @@ def test_a_target_that_never_came_up_is_remembered_and_costs_no_gate(tmp_path):
     asyncio.run(scenario())
 
 
+def silent_child(connection):
+    time.sleep(60)          # says nothing at all: neither ready nor an error
+
+
+class SilentWorker(GraphWorker):
+    """A worker whose child never speaks, which is the shape a closed port has."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.attempts = 0
+
+    def _start(self):
+        self.attempts += 1
+        parent, child = self._context.Pipe()
+        process = self._context.Process(target=silent_child, args=(child,), daemon=True)
+        self._connection, self._process = parent, process
+        process.start()
+        child.close()
+
+
+def test_a_closed_port_costs_one_attempt_for_the_window(tmp_path):
+    """A target that never answers at all is remembered, however the failure arrives.
+
+    Measured 2026-10-11 with a merely closed port: every page read ended in
+    `graph_timeout` on the page budget, the per-target memo never armed (the code was not
+    in `DOWN_CODES`), and four reads spawned four workers at 3.0 s each. A closed port
+    fails as a timeout, which is the shape this child has.
+    """
+    async def scenario():
+        worker = SilentWorker("unused", "test", tmp_path / "writer.lock", timeout=15)
+        before = worker.durability.status()
+        waits = []
+        for _ in range(3):
+            started = time.monotonic()
+            with page_budget(SHORT_PAGE_BUDGET):
+                with pytest.raises(GraphQueryError, match="graph_timeout"):
+                    await worker.call("page")
+            waits.append(time.monotonic() - started)
+        assert worker.attempts == 1, f"a page view started a worker per view: {worker.attempts}"
+        assert waits[0] >= SHORT_PAGE_BUDGET * 0.5, (
+            f"the first read did not wait for its own budget: {waits[0]:.1f}s")
+        assert max(waits[1:]) < 1.0, (
+            f"a remembered target waited the budget again: {[round(w, 2) for w in waits]}")
+        assert worker.durability.status()["failure"] == before["failure"], (
+            "a page view closed the durability gate for a graph that never came up")
+        await worker.close()
+    asyncio.run(scenario())
+
+
 def test_request_modules_do_not_import_legacy_full_log_loaders():
     import ast
     from pathlib import Path

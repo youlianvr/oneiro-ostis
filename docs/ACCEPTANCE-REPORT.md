@@ -22,7 +22,7 @@ fingerprinting the owner's own files before and after.
 | `NOTICE` | 4,618 | `8b348dd92cbd1989428a89c05cc062452fc93c6afee48815420e0dfafa40c6c1` |
 | `LICENSE` | 1,061 | `6367df4033615b0c0626662c15a562afba3e061d72b2c2e4d37c230abdd4882c` |
 | `python/oneiro/assets/skills-catalog.json` (shipped catalog) | 409,403 | `f5ddd9d025563ab96f9fbf5de6d62a3d71e66cd010f99e57fe9dcd1760ca0245` |
-| payload `manifest.json` (43 entries) | 4,383 | `7d24f8e9d239059f1bd20ce7f448c220568b81bc20b1e8507fc0f46ff6c354c3` |
+| payload `manifest.json` (43 entries) | 4,383 | `f2f164d21b6e9601b30197b9e3663d68a199349c7d24bc3f8285be49fdacd613` |
 | `console/vendor/cowagent-2.1.9.zip` (named by `NOTICE`) | 4,394,330 | `cc92ae3e8dbffdc52154e3b5199e44543a20eca10220edcaf0d38c5fac534f73` |
 
 The payload hash is of the manifest `scripts/build_installer_payload.py` writes at the end of
@@ -33,6 +33,9 @@ manifest. The W8 note in `docs/PROGRESS.md` records 41 entries; the two added si
 `NOTICE` and `LICENSE`. The manifest hash changed with the language fix and again in each
 later pass, as it must: it covers every shipped file, and the last two passes edited
 `python/oneiro/graph_worker.py`, `memory.py`, `web.py`, `runtime.py` and `i18n.py` among them.
+The build this table's hash comes from was made after the pass that made a down target
+remembered and gave the probe's memo an age, which changed `graph_worker.py` and `memory.py`
+again — so the hash moved, as it must.
 
 ## 2. Acceptance screenshots (`docs/shots/oneiro-v1/`)
 
@@ -40,13 +43,14 @@ Twenty-two frames, written by `python tests/live_w9_shots.py` against the web co
 free loopback port (never the owner's preview on 9899), with the document's `lang` and
 `data-theme` asserted before the shutter.
 
-The hashes below are the last run of 2026-10-11 recorded with this file — the re-shoot taken
-after the read budget moved onto the graph lane, so the frames show the console this report
-describes. **They are not stable between runs**, and the file does not pretend
-otherwise: runs over identical code produce different hashes each time (`ru-settings.png`
-901,253 bytes before the first of these passes, 900,150 in it, 898,836 in the second,
-899,728 in the third, 901,464 in the run recorded below) because Chromium's rasterizer is not
-bit-reproducible. What *is* stable is the set's structure: 22 files, 20
+The hashes below are the run of 2026-10-11 recorded with this file — the re-shoot taken after
+the pass that made a down target remembered and gave the probe's memo an age, so the frames
+show the console this report describes. It replaced a set a killed run had left half-written,
+which is why all 22 files are new here. **They are not stable between runs**, and the file does
+not pretend otherwise: runs over identical code produce different hashes each time
+(`ru-settings.png` 901,253 bytes before the first of these passes, 900,150 in it, 898,836 in
+the second, 899,728 in the third, 901,464 in the fourth, 901,446 in the run recorded below)
+because Chromium's rasterizer is not bit-reproducible. What *is* stable is the set's structure: 22 files, 20
 distinct hashes, because `theme-night-*` always equals its `*-conversation.png` counterpart
 *within the same run* (checked: identical hash, not just identical size) — `night` is the
 default theme, so re-theming to it redraws the same pixels. So the hashes are manifest
@@ -55,28 +59,28 @@ must expect its own hashes, not these.
 
 | Frame | Bytes | SHA-256 |
 | --- | --- | --- |
-| `ru-conversation.png` | 83,051 | `aecdb78a86bf8817fc643dc666b6f9b2aa25332147b76c240e11d2cd5bd5708d` |
-| `ru-tasks.png` | 78,654 | `e65a3d7fed1c75ca01c3f794ae1c92a4f7cfffc835a480727af51f8a2f7f2a3f` |
-| `ru-tools.png` | 70,575 | `2e5d189e524d465de40014244d7043860dc59ee8d93b7d9a585d628eb503d845` |
-| `ru-settings.png` | 901,464 | `a2ca9f1f486e60e44d19a9e48c6a1cc5cdce6eb932746da77f780a5d9da9cd83` |
-| `ru-memory.png` | 78,576 | `20df991987f06bc528e986d7bded064359e864baa4ee1a13e3ac619ce373008e` |
-| `en-conversation.png` | 82,130 | `3711515331b51ea8a3af93af264922465d8c6ee02258cc2a0d64e8b99f2300f5` |
-| `en-tasks.png` | 78,953 | `0f2c96abdf91546ec91eddb149e1c64753f23534a98636589e2ad901e0929ed4` |
-| `en-tools.png` | 70,845 | `def0d1b204cc2d354e196f0e9ab9f56edc1a354005f13b718cd84e556eb761b5` |
-| `en-settings.png` | 793,484 | `5dcad9eaee8a6ec7db049e1916b47a06531fa7fe98110448db52a7312ee66f69` |
-| `en-memory.png` | 78,739 | `4585dff71fc6833439775a2d4de6591ac77424822539af9ee5bc926507693c27` |
-| `theme-night-ru.png` | 83,051 | `aecdb78a86bf8817fc643dc666b6f9b2aa25332147b76c240e11d2cd5bd5708d` |
-| `theme-night-en.png` | 82,130 | `3711515331b51ea8a3af93af264922465d8c6ee02258cc2a0d64e8b99f2300f5` |
-| `theme-paper-ru.png` | 83,385 | `98454626459f1845845de84ebf340b008a14f3e87ce77b7666ebd89e0612c814` |
-| `theme-paper-en.png` | 82,540 | `86b3235ae4786a238f43f6ab92a481a87d61a487e9ead2c06e461deb5807b2e5` |
-| `theme-editorial-ru.png` | 73,248 | `ca9361bfd3fb8a0a5d624996ef90e3f943fb56bbc2018e883b985f3b8ccf1aef` |
-| `theme-editorial-en.png` | 70,733 | `078eef84fe486f3b14f6b8f82a0a4e222b856c1775804d2d3c3ec4ce4299fb22` |
-| `theme-cosmic-ru.png` | 80,764 | `50c4a932025d794231cb0b430e50ff0d09671e2013e9fbd4330e907d697d87d8` |
-| `theme-cosmic-en.png` | 80,865 | `ee2d82abdc88f2ed53791bb9f837d09e2f1ed75b42061f4efb02d9147ee33c58` |
-| `theme-agentic-ru.png` | 85,795 | `3f0257937a5140d5805052faf9a2bdd60f3cd35819c13febbc5b79a88b3a932a` |
-| `theme-agentic-en.png` | 84,435 | `26d3b6f2546a8294de873eebf1065481ccf92e628f5ffc1a3a72bfe0b1684f44` |
-| `installed-conversation-ru.png` | 83,248 | `6ccb10b090ae9685b383285daf9c3caf317ce411f962f430592996bb62f28ec9` |
-| `installed-conversation-en.png` | 82,459 | `1eeb9035c4aab6135a8e44ee5f741b1765780753290c6f1d62a33bdf56c9076f` |
+| `ru-conversation.png` | 82,912 | `5e90c6ecd7f6df86b06a2ae08b432298d7f54aee0e4c679823d74f411548368e` |
+| `ru-tasks.png` | 78,507 | `fdafbd208cdda7667fd753f02cd57633302081d7f724d5afabdf18c53c4ff922` |
+| `ru-tools.png` | 70,426 | `7e7eae2d8c45e6e85ec2014eaa878e953494fe333dd5a08b64d49d013ab6945f` |
+| `ru-settings.png` | 901,446 | `1c1369bb7dd11a5f9d26e0dd8a4e86bea2fa6f0d8b45a6467ee9fbf2db070e2a` |
+| `ru-memory.png` | 78,438 | `25113f24f3727a81d9fca66d99ea1e348365293bfe62c002d6bdbc3f54eb5d2b` |
+| `en-conversation.png` | 82,298 | `6c145bb72f380e6cc0cff39afb0eec0f667a37143f2043b5cc00df649d551da6` |
+| `en-tasks.png` | 79,119 | `68a254b189aaceddba462d82851c9d7298d77300103e15e5aa11a5b027020c72` |
+| `en-tools.png` | 71,013 | `97fcd7991c7c75ab380083f0f8bccfb21a99ec5ce982d9b55f90ae5f740af876` |
+| `en-settings.png` | 794,139 | `b3ff6496fc2e26eda243bfc79db9133676e6a457382447c73c0e5e60b74fbae3` |
+| `en-memory.png` | 78,898 | `b7fe429385985c212e2ec26433fb8c4cdfb36783da3102ebbb25667bb51fb251` |
+| `theme-night-ru.png` | 82,912 | `5e90c6ecd7f6df86b06a2ae08b432298d7f54aee0e4c679823d74f411548368e` |
+| `theme-night-en.png` | 82,298 | `6c145bb72f380e6cc0cff39afb0eec0f667a37143f2043b5cc00df649d551da6` |
+| `theme-paper-ru.png` | 83,237 | `ef92ddc88d76ef447460a9687692d2f2cd301c67d5e6ead6f7f6ee350d157a4e` |
+| `theme-paper-en.png` | 82,697 | `7c4e80ae3837f06a0b5e0f404e5eda72a979a70cf2ac47d760eb9403e9b13a41` |
+| `theme-editorial-ru.png` | 73,093 | `65d4602860554f5f63cdb7723bf4b7f18866332c7f1e0077907208b2ab22317d` |
+| `theme-editorial-en.png` | 70,892 | `1d6d2ce5f3b4fd47be7e942a008e5e15fc12592eeeacbebc05689602dee44bbd` |
+| `theme-cosmic-ru.png` | 80,620 | `b23db18656b4f47e98d38d5a8d993df65b1b84daa0982c3cdabbaa2b3ddf64be` |
+| `theme-cosmic-en.png` | 81,012 | `e614b342532c6c0a7d6907c05a25beb63a8e0bcf65f60e60d120e6ea360dc045` |
+| `theme-agentic-ru.png` | 85,649 | `5ed5ac6508b72da07a50dd72f2b903d713746aa0e71d9f8cf54927e59160dcd5` |
+| `theme-agentic-en.png` | 84,598 | `bdc3e0c6b8620f4282473adb637b932ffcceefa6c6ad403c5313d2680ac5bd58` |
+| `installed-conversation-ru.png` | 83,276 | `2887c8e7df1f8a56d547f09d9502e79e22427270d08155c90047d9c37a34a6f6` |
+| `installed-conversation-en.png` | 82,535 | `a6155623e6759f97a47cbb17e5e7db1bb2ae9d00b26b280341afa59d14776717` |
 
 Every frame is checked against the catalog **before** the shutter: a `ru` frame must carry
 `oneiro.i18n`'s Russian text for that screen as element text or attribute value, and must not
@@ -108,6 +112,10 @@ both that the Russian side holds no English sentence and that the two languages 
 | tools | 9 | 841 | **0** | **0** |
 | settings | 82 | 15,352 | **0** | **0** |
 | memory | 10 | 987 | **0** | **0** |
+
+Both this table and the served-markup one below were re-measured in the run that re-shot the
+frames (§ 3) and are unchanged by these repairs: what changed in that pass is when the graph
+lane remembers a target, and how long the probe's note stands for it — not a string.
 
 The panel is included because it used to be *removed* before that comparison, and the removal
 is what hid the defect a first pass fixed: `/api/status` served `run \`oneiro verify-model\` to
@@ -196,7 +204,7 @@ Each was run as a plain command in this checkout; the exit status is the process
 | `python tests/live_w3_check.py` | skills: shipped catalog, folders, CLI, HTTP, a full turn | 0 |
 | `python tests/live_w4_check.py` | conversation with tools, probes, memory writes | 0 |
 | `python tests/live_w5_check.py` | research with sources, attachments | 0 |
-| `python tests/live_w6_check.py` | five screens in EN, no JSON on screen, the three memory states, a page view that restarts no worker and closes no gate, owner files unchanged | 0 |
+| `python tests/live_w6_check.py` | five screens in EN, no JSON on screen, the three memory states with the closed-port memo measured (three `/api/tasks` views spawn one worker and the durability reason stays `no verified checkpoint`, the probe's note ages out so a recovered graph reads again), a page view that restarts no worker and closes no gate, owner files unchanged | 0 |
 | `python tests/live_w7_check.py` | RU/EN language attributes and the five themes, contrast | 0 |
 | `python tests/live_w8_check.py` | payload, out-of-tree install, upgrade preserves data | 0 |
 | `python tests/live_w9_shots.py` | the 22 frames above, each checked against the catalog | 0 |
@@ -210,9 +218,10 @@ model key and no graph, and `ready=False` with a named phase is the honest answe
 | Command | Result |
 | --- | --- |
 | `python -m mypy python/oneiro` | Success: no issues found in 33 source files (exit 0) |
-| `python -m pytest -q` | 595 passed, 2 warnings, 0 failed (exit 0) |
+| `python -m pytest -q` | 598 passed, 2 warnings, 0 failed (exit 0) |
 
-595 tests passed across 36 `tests/test_*.py` files. The translation rule lives in
+598 tests passed across 36 `tests/test_*.py` files (three added by the pass § 5 items 12
+and 13 record). The translation rule lives in
 `tests/test_i18n_themes.py` (parametrised over the five canonical screens, `/setup` and the
 legacy graph route, plus a mirror of the readiness panel and a test of the measurement
 itself) and in the live check above; the agreement between the panel and the graph page in
@@ -223,8 +232,9 @@ said "35/35 test suites"; 35 was the `tests/test_*.py` count at W9 (36 now, afte
 
 ## 5. Defects found while writing this evidence, and their repair
 
-Writing the evidence out surfaced the first three, and auditing what it claimed surfaced the
-last three. None was visible from the W9 notes, which said the matrix was fully verified.
+The first three surfaced while the evidence was being written out; the rest came from audits of
+the accepted deliverable, each named with the run that found it. None was visible from the W9
+notes, which said the matrix was fully verified.
 
 1. **`tests/live_w3_check.py` could not run at all.** Its parity block still did
    `import skills_index`, a module W9 retired, so the check died with `ModuleNotFoundError`
@@ -350,14 +360,71 @@ last three. None was visible from the W9 notes, which said the matrix was fully 
     `PROBE_TIMEOUT`: one fact, one reading, and no cached verdict to age. That gap was found by
     reading the code, not by a run — said plainly because § 6 promises the difference between
     the two.
+12. **A target that never answered *at all* was never remembered, so the churn came back.** The
+    pass before this one remembered a target only when its failure carried a `DOWN_CODES` code.
+    A merely *closed* port does not fail that way: its read runs out of the page budget and
+    reports `graph_timeout`, so the per-target memo stayed `None` and stood for nothing.
+    Measured by the audit that found it, with a port that was simply not listening: four
+    consecutive reads started four workers (3.02 s each) and three routes produced three spawns,
+    while the durability gate recorded `graph_worker_restarted` — closed because somebody looked
+    at pages. The silent-but-accepting port, whose read *does* end in a code, was the only state
+    that behaved as claimed, and the test that pinned the rule fed the worker a synthetic
+    `graph_worker_failed`, so it could not see the difference. Repaired by remembering the
+    target also when the failure is `graph_timeout` and this worker has never dispatched
+    anything; a read that *was* dispatched and then timed out is not that case, because the
+    worker is alive and owes its answer, and that path keeps the deferred-answer handling.
+    Measured after, in the run § 3 records: in the closed state three consecutive `/api/tasks`
+    views spawn **one** worker (3.01 s, then 0.01 s and 0.01 s) and the durability reason stays
+    `no verified checkpoint in this process`; in the silent state the same, one worker over
+    three views (0.77 s, then 0.01 s and 0.01 s). `tests/test_graph_worker.py::test_a_closed_port_costs_one_attempt_for_the_window`
+    pins it with a child that never speaks, which is the shape a closed port has.
+13. **The probe's note had no age, so a verdict outlived the graph it was about.**
+    `memory._SILENT` remembered the target of a read that never came back and never expired:
+    with a shim proving the graph answers, a later probe returned the old `blocked.probe_timeout`
+    in 0.018 s *without dialling at all*, while the graph page read the graph successfully — two
+    surfaces describing one moment differently, which is what row 14 of § 6 forbids, and this
+    one was a *stale* verdict that no test could see. Repaired by giving the note a deadline
+    (`SILENT_SECONDS = 5.0`) and removing it when the read it stands for finishes: inside the
+    window it still stands for its target, so a silent graph cannot become one thread per page
+    view; past it the next read is a real one and the reading that comes back is believed.
+    `tests/live_w6_check.py` measures both halves in one run — `the read did not come back:
+    ['blocked.probe_timeout'] over 1 read(s)` with the panel at `blocked.graph_unreadable`, then
+    `the graph answers again: reads=3 panel verified=True` — and
+    `tests/test_graph_states.py` holds the unit half (`test_a_note_does_not_outlive_its_window`,
+    `test_a_recovered_graph_is_reported_readable_again`).
+14. **The cost of a partly-down target is stated, not bounded.** Closing the two defects above
+    leaves one number a person can feel, and this file names it instead of hiding it: in the
+    closed state a read that reaches the graph lane settles in about 2.1 s (`/oneiro/` 2.08 s and
+    `/api/graph` 2.04 s in the run § 3 records), because the first touch of a down target pays
+    one probe timeout before the memo stands for it; `/tasks` answers in 0.06 s and a repeated
+    `/api/tasks` view in 0.01 s. A third cache keyed by the panel's own status call would cut
+    that latency, and would add a new staleness class in the very pass whose second defect was a
+    memo that outlived its evidence — so it is a deliberate refusal, not an oversight. The route
+    cost is already bounded by the lane's memo: a slow read is slow once per window, not once
+    per view.
+15. **This pass left one mypy failure, and the repair is the narrowing rather than a
+    suppression.** Hoisting the `isinstance` check into the `never_answered` variable moved the
+    narrowing out of the branch that assigns `self._down`, so `python -m mypy python/oneiro`
+    reported `Incompatible types in assignment (expression has type "BaseException", variable
+    has type "GraphQueryError | None")` at `python/oneiro/graph_worker.py:241` — `_fail_lane`
+    takes `exc: BaseException`, while what is remembered as the target's state is a
+    `GraphQueryError`. Repaired by re-narrowing in the branch (`if never_answered and
+    isinstance(exc, GraphQueryError):`), which tells the type system exactly what the check
+    already proved: no `cast`, no `# type: ignore`, and `mypy` is clean over 33 files in § 4. It
+    is recorded here because a pass that shipped a type error and then said "mypy clean" would be
+    the kind of claim this report exists to prevent.
 
 ## 6. What was not verified, and why
 
 Named gaps, not silent ones.
 
-- **A real graph.** No `sc-server` on 8090 was running for this work, so the OSTIS-backed
-  paths are exercised only against the fake and in-memory link graphs the live checks and
-  tests build.
+- **A real graph — and only the owner's.** Nothing in this repository starts an `sc-server`, so
+  no check here can *produce* a live graph on demand: the OSTIS-backed paths are exercised
+  against the fake and in-memory link graphs the checks and tests build. One was running on
+  8096 during the run § 3 records, and `tests/live_w6_check.py` measured it end to end in its
+  live state — `/oneiro/` answered `graph.readable`, the panel `Память (OSTIS) проверена
+  чтением графа.`, and `/api/status` reported `verified=True reachable=True` in 0.25 s — but
+  that reading belongs to the owner's running instance, not to a graph this report created.
 - **The real model.** Every live check drives a stub provider on loopback. No live provider
   call was made here, so the shipped defaults are unproven against a real endpoint with the
   owner's key; the owner's key files were deliberately left untouched.

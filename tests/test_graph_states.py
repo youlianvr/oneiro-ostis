@@ -152,6 +152,82 @@ def test_a_silent_graph_is_reported_not_raised(tmp_path, monkeypatch):
     release.set()
 
 
+def test_a_note_does_not_outlive_its_window(tmp_path, monkeypatch):
+    """A verdict must not outlive its evidence.
+
+    Measured 2026-10-11 against a shim client that had started answering again: the note
+    left by one stuck read kept returning `blocked.probe_timeout` in 0.018 s and never
+    dialled, so the panel and the graph page called a recovered graph unreadable. The
+    window is what makes the next reading a real one.
+    """
+    monkeypatch.setattr(memory, "_SILENT", {})
+    monkeypatch.setattr(memory, "SILENT_SECONDS", 0.5)
+    monkeypatch.setattr(memory, "_tcp_reachable", lambda host, port, timeout: True)
+    stuck = threading.Event()
+    reads: list[float] = []
+
+    def probe(host: str, port: int, *, timeout: float = memory.PROBE_TIMEOUT) -> memory.GraphFacts:
+        reads.append(time.monotonic())
+        if len(reads) == 1:
+            # The first read never comes back and stays stuck: a wedged socket does not
+            # heal. A graph that answers again is a graph that answers *new* reads.
+            stuck.wait(30)
+        return LIVE
+
+    monkeypatch.setattr(memory, "probe", probe)
+    try:
+        first = memory.probe_within("127.0.0.1", 8090, budget=0.1)
+        assert [item["code"] for item in first.blocked] == [memory.TIMEOUT_CODE]
+        inside = memory.probe_within("127.0.0.1", 8090, budget=5.0)
+        assert [item["code"] for item in inside.blocked] == [memory.TIMEOUT_CODE]
+        assert len(reads) == 1, "a fresh note must not start a second read"
+
+        time.sleep(0.6)                         # the window passes
+        recovered = memory.probe_within("127.0.0.1", 8090, budget=0.5)
+        assert len(reads) == 2, "a note outlived its window and stood in for a real reading"
+        assert recovered.verified is True and recovered.blocked == ()
+    finally:
+        stuck.set()
+
+
+def test_a_recovered_graph_is_reported_readable_again(tmp_path, monkeypatch):
+    """Both surfaces have to believe a graph that answers again.
+
+    The same window, measured through the routes: a panel that stands by a verdict after
+    the graph came back is the defect, not the caution that produced it.
+    """
+    monkeypatch.setattr(memory, "_SILENT", {})
+    monkeypatch.setattr(memory, "SILENT_SECONDS", 0.5)
+    monkeypatch.setattr(memory, "_tcp_reachable", lambda host, port, timeout: True)
+    wedged = threading.Event()
+    reads: list[float] = []
+
+    def probe(host: str, port: int, *, timeout: float = memory.PROBE_TIMEOUT) -> memory.GraphFacts:
+        reads.append(time.monotonic())
+        if len(reads) == 1:
+            wedged.wait(30)                     # the read that never comes back
+        return LIVE
+
+    monkeypatch.setattr(memory, "probe", probe)
+    try:
+        with TestClient(make_app(tmp_path, MemoryLinks())) as client:
+            stuck = memory.probe_within("127.0.0.1", 8090, budget=0.1)
+            assert [item["code"] for item in stuck.blocked] == [memory.TIMEOUT_CODE]
+            down = client.get("/api/status").json()
+            assert down["memory"]["verified"] is False
+            assert "blocked.graph_unreadable" in [item["code"] for item in down["blocked"]]
+            assert len(reads) == 1, "a fresh note must stand for the reading, not a second read"
+
+            time.sleep(0.6)                     # the window passes
+            after = client.get("/api/status").json()
+            page = client.get("/oneiro/?lang=ru").text
+        assert len(reads) >= 2, "a note outlived its window and stood in for a reading"
+        assert after["memory"]["verified"] is True, "a recovered graph is still called unreadable"
+        assert i18n.t("graph.readable", "ru", arcs=1, anchor="", elapsed=0)[:24] in page
+    finally:
+        wedged.set()
+
+
 def test_a_verdict_names_the_target_it_was_derived_from(tmp_path, monkeypatch):
     """A silent read of one graph is not another target's verdict.
 

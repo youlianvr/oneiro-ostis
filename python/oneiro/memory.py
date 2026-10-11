@@ -21,6 +21,7 @@ from __future__ import annotations
 import importlib.util
 import socket
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -89,14 +90,32 @@ def _tcp_reachable(host: str, port: int, timeout: float) -> bool:
         return False
 
 
-#: At most one worker per target whose read never came back may linger: while it is
-#: alive every further read of *that* host and port reports the timeout immediately
-#: instead of starting another worker, so a silent graph cannot become one thread per
-#: page view. Keyed by target, because a verdict is about one host and port: a
-#: process-wide one restated a silent read of one graph as another port's verdict and
-#: lost the address it was about (measured 2026-10-11).
-_SILENT: dict[tuple[str, int], threading.Thread] = {}
+#: How long a read that never came back stands for its target's next reading. A verdict
+#: must not outlive its evidence: measured 2026-10-11, an unbounded note kept answering
+#: `blocked.probe_timeout` for a target that had started answering again - with the graph
+#: reading fine, the note answered in 0.018 s and never dialled - so the panel and the
+#: graph page called a recovered graph unreadable. Past this window the target is read
+#: again, and the reading that comes back is believed.
+SILENT_SECONDS = 5.0
+
+#: At most one *current* note per target whose read never came back: while it is fresh
+#: every further read of *that* host and port reports the timeout immediately instead of
+#: starting another worker, so a silent graph does not become one thread per page view.
+#: Keyed by target, because a verdict is about one host and port: a process-wide one
+#: restated a silent read of one graph as another port's verdict and lost the address it
+#: was about (measured 2026-10-11). The value is that read and when it was parked, because
+#: a read the note gives up on cannot be stopped - a target that never answers therefore
+#: costs one new attempt per window, not one per view.
+_SILENT: dict[tuple[str, int], tuple[threading.Thread, float]] = {}
 _SILENT_LOCK = threading.Lock()
+
+
+def _noted(target: tuple[str, int]) -> bool:
+    """Whether a *fresh* note stands for this target's reading."""
+    with _SILENT_LOCK:
+        noted = _SILENT.get(target)
+    return bool(noted and noted[0].is_alive()
+                and time.monotonic() - noted[1] < SILENT_SECONDS)
 
 
 #: A probe outcome a *panel* may interpolate: machine data only. The library's own
@@ -133,14 +152,14 @@ def probe_within(host: str, port: int, *, timeout: float = PROBE_TIMEOUT,
     """`probe`, with a deadline: it returns facts and never raises or hangs.
 
     The read runs in a daemon worker so a dependency that never returns cannot hold a
-    request open; `budget` bounds it. A target that is still silent in the next window
-    is reported from the same facts, not by starting a second stuck worker for it.
+    request open; `budget` bounds it. A target that is still silent in the next window is
+    reported from the same facts, not by starting a second stuck worker for it - but only
+    for `SILENT_SECONDS`, because a note is evidence and evidence ages: the first read of
+    the next window is a real one, so a graph that came back is read and believed again.
     """
     target = (host, port)
-    with _SILENT_LOCK:
-        silent = _SILENT.get(target)
-        if silent is not None and silent.is_alive():
-            return _timed_out(host, port, timeout, budget)
+    if _noted(target):
+        return _timed_out(host, port, timeout, budget)
     box: list[GraphFacts] = []
 
     def read() -> None:
@@ -156,8 +175,10 @@ def probe_within(host: str, port: int, *, timeout: float = PROBE_TIMEOUT,
     worker.join(budget)
     if worker.is_alive():
         with _SILENT_LOCK:
-            _SILENT[target] = worker
+            _SILENT[target] = (worker, time.monotonic())
         return _timed_out(host, port, timeout, budget)
+    with _SILENT_LOCK:
+        _SILENT.pop(target, None)       # the read finished, so nothing stands for it now
     return box[0] if box else _timed_out(host, port, timeout, budget)
 
 

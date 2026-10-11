@@ -8,6 +8,12 @@ for § 5 W6 and acceptance matrix § 6:
   the memory substrate can be in (see `graph_states` below).
 * Row 15: No JSON on screen across all 5 canonical routes.
 * Row 16: Accessibility and keyboard focus elements present.
+* § 5 item 12: repeated views of the route that reads the graph lane cost one worker,
+  in the closed and the silent state alike (`lane_views`), with the durability gate
+  unchanged.
+* § 5 item 13: a verdict does not outlive its window - the panel and the graph page
+  report a graph readable again once it answers (`recovered_verdict`).
+* § 5 item 14: the panel's own text in a real browser, per state (`dom_states`).
 * Ensures zero-leak: user's settings and files remain completely unchanged.
 """
 from __future__ import annotations
@@ -22,6 +28,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -102,6 +109,60 @@ class SilentPort:
         self._keeper.join(timeout=2)
 
 
+def owner_graph_port() -> int | None:
+    """The port the owner's own settings name, read only, if something answers there.
+
+    The live state has to be the owner's real graph, not a port this check invents: that
+    is where the panel and the page were measured disagreeing. Nothing is written and
+    nothing is changed - the settings file is read, a socket is tried, and only the
+    probe's own routes are driven against it (a lane route opens the store, which takes a
+    writer's lease and can finish a pending publication).
+    """
+    try:
+        settings = json.loads((Path.home() / ".oneiro" / "settings.json").read_text(encoding="utf-8"))
+        port = int(settings.get("graph.port"))
+    except (OSError, ValueError, TypeError):
+        return None
+    with socket.socket() as probe:
+        probe.settimeout(0.5)
+        return port if probe.connect_ex(("127.0.0.1", port)) == 0 else None
+
+
+def lane_views(client, runtime, label: str, *, views: int = 3) -> dict:
+    """Repeated views of the route that actually reads the graph lane.
+
+    The witness this replaces drove `/tasks` and `/oneiro/`, and neither touches the lane
+    - `/tasks` is the page shell and `/oneiro/` asks the probe - so its pid comparison
+    could not fail however the lane behaved (measured 2026-10-11). `/api/tasks` is the
+    route the churn was measured on, and the number of worker starts is what has to stay
+    at one: measured before this pass, a merely closed port started a worker per view
+    (four reads, four workers, 3.02 s each) because the failure arrived as a timeout the
+    per-target memo did not cover.
+    """
+    lane = runtime._graph
+    if lane is None:
+        return {"rows": [], "spawns": 0, "lane": None}
+    counted = {"spawns": 0}
+    original = lane._start
+
+    def counting_start(*args, **kwargs):
+        counted["spawns"] += 1
+        return original(*args, **kwargs)
+
+    lane._start = counting_start
+    gate_before = lane.durability.status()["failure"]
+    rows = []
+    for view in range(1, views + 1):
+        started = time.monotonic()
+        response = client.get("/api/tasks?lang=ru")
+        rows.append({"view": view, "status": response.status_code,
+                     "seconds": round(time.monotonic() - started, 2),
+                     "spawns": counted["spawns"], "pid": lane.pid})
+    return {"rows": rows, "spawns": counted["spawns"], "lane": True,
+            "gate_before": gate_before, "gate_after": lane.durability.status()["failure"],
+            "label": label}
+
+
 def graph_states(work: Path, configured_port: int) -> int:
     """Row 14/15 with the memory substrate in three states, through the real routes.
 
@@ -125,8 +186,11 @@ def graph_states(work: Path, configured_port: int) -> int:
     limit = memory.PROBE_BUDGET + 3.0
     problems: list[str] = []
     with SilentPort() as silent_port:
-        states = (("configured", configured_port), ("closed", free_port()),
-                  ("silent", silent_port))
+        states = [("configured", configured_port), ("closed", free_port()),
+                  ("silent", silent_port)]
+        owner_port = owner_graph_port()
+        if owner_port is not None and owner_port != configured_port:
+            states.insert(0, ("live", owner_port))
         for label, port in states:
             settings = work / f"settings-graph-{label}.json"
             settings.write_text(json.dumps({"graph.port": port}), encoding="utf-8")
@@ -200,30 +264,51 @@ def graph_states(work: Path, configured_port: int) -> int:
                     if port not in named:
                         problems.append("closed: the verdict does not name the port it measured")
 
-                if label == "silent":
-                    # A page view is a read. Repeated views must not restart the worker or
-                    # close the durability gate (measured 2026-10-11: every view did both).
-                    lane = runtime._graph
-                    if lane is None:
-                        problems.append("silent: the runtime has no graph lane to watch")
+                if label in ("closed", "silent"):
+                    # A page view is a read. Repeated views must not restart the worker,
+                    # must not close the durability gate, and must not pay the page budget
+                    # again for a target the lane has already found silent.
+                    witness = lane_views(client, runtime, label)
+                    if witness["lane"] is None:
+                        problems.append(f"{label}: the runtime has no graph lane to watch")
                     else:
-                        pid_before = lane.pid
-                        failure_before = lane.durability.status()["failure"]
-                        say(f"     worker pid={pid_before} durability failure={failure_before!r}")
-                        views_started = time.monotonic()
-                        for _ in range(3):
-                            client.get("/tasks?lang=ru")
-                            client.get("/oneiro/?lang=ru")
-                        failure_after = lane.durability.status()["failure"]
-                        say(f"     3 more views of /tasks and /oneiro/ in "
-                            f"{time.monotonic() - views_started:.2f}s: pid={lane.pid} "
-                            f"durability failure={failure_after!r}")
-                        if lane.pid != pid_before:
-                            problems.append(f"silent: a page view restarted the worker "
-                                            f"({pid_before} -> {lane.pid})")
-                        if failure_after != failure_before:
-                            problems.append(f"silent: a page view changed the durability gate "
-                                            f"({failure_before!r} -> {failure_after!r})")
+                        for row in witness["rows"]:
+                            say(f"     view {row['view']} /api/tasks  {row['status']} "
+                                f"{row['seconds']:5.2f}s spawns={row['spawns']} pid={row['pid']}")
+                        say(f"     {len(witness['rows'])} views started {witness['spawns']} "
+                            f"worker(s); durability {witness['gate_before']!r}")
+                        if witness["rows"][0]["status"] not in (200, 503):
+                            problems.append(f"{label}: /api/tasks answered "
+                                            f"{witness['rows'][0]['status']}")
+                        if witness["spawns"] != 1:
+                            problems.append(f"{label}: {len(witness['rows'])} views of the lane "
+                                            f"started {witness['spawns']} workers")
+                        if witness["gate_after"] != witness["gate_before"]:
+                            problems.append(f"{label}: a page view changed the durability gate "
+                                            f"({witness['gate_before']!r} -> "
+                                            f"{witness['gate_after']!r})")
+                        if any(row["seconds"] > 1.0 for row in witness["rows"][1:]):
+                            problems.append(f"{label}: a remembered target waited the budget "
+                                            f"again: {[r['seconds'] for r in witness['rows'][1:]]}")
+
+                # The lane routes only in the states whose target is this check's own
+                # port: opening the store takes a writer's lease and can finish a pending
+                # publication, and the configured graph may be the owner's live one.
+                routes = ["/oneiro/?lang=ru", "/api/graph", "/tasks?lang=ru"]
+                if label in ("closed", "silent"):
+                    routes.append("/api/tasks")
+                for route in routes:
+                    started = time.monotonic()
+                    response = client.get(route)
+                    elapsed = time.monotonic() - started
+                    codes = ([item["code"] for item in response.json()["blocked"]]
+                             if route == "/api/graph" else None)
+                    say(f"     {route:<22} {response.status_code} {elapsed:5.2f}s"
+                        + (f" codes={codes}" if codes is not None else ""))
+                    if response.status_code == 500:
+                        problems.append(f"{label} {route}: 500")
+                    if elapsed >= limit:
+                        problems.append(f"{label} {route}: took {elapsed:.1f}s")
 
         # A screen's own reads, with the graph down: chained reads must not each hold the
         # graph lane's 10 s deadline (measured 2026-10-11: /api/tasks 10.04 s before).
@@ -243,6 +328,217 @@ def graph_states(work: Path, configured_port: int) -> int:
     return 1 if problems else 0
 
 
+def recovered_verdict(work: Path) -> int:
+    """A verdict must not outlive its window: a graph that answers again is believed.
+
+    Measured 2026-10-11 with the shim that proved the graph answering: the note left by
+    one stuck read kept returning `blocked.probe_timeout` in 0.018 s and never dialled, so
+    the panel and the graph page called a recovered graph unreadable. The installed client
+    gives up fast against a socket that accepts and never answers (0.03-0.26 s), so the
+    read that never comes back is held open here on purpose, and it stays stuck while new
+    reads are answered - everything else is the real path: `probe_within`'s note, its
+    window, the runtime, `/api/status` and the graph page.
+    """
+    from starlette.testclient import TestClient
+
+    from oneiro import i18n, memory
+    from oneiro.runtime import Runtime
+    from oneiro.web import create_app
+
+    say("\n== 4. A verdict does not outlive its window ==")
+    problems: list[str] = []
+    window = 0.4
+    target = free_port()
+    #: The note has to still stand while the panel and the page are read, so the parked
+    #: read starts under the shipped window and the window is shortened to let it pass.
+    standing = memory.SILENT_SECONDS
+    settings = work / "settings-graph-recovered.json"
+    settings.write_text(json.dumps({"graph.port": target}), encoding="utf-8")
+    os.environ["ONEIRO_SETTINGS_FILE"] = str(settings)
+    held = threading.Event()
+    reads: list[float] = []
+    saved_probe, saved_window = memory.probe, memory.SILENT_SECONDS
+
+    def never_returns(host: str, port: int, *, timeout: float = memory.PROBE_TIMEOUT):
+        reads.append(time.monotonic())
+        if len(reads) == 1:
+            # The first read never comes back and stays stuck - a socket that wedged,
+            # not a graph that was slow. New reads are answered, which is the state the
+            # window has to let through.
+            held.wait(120)
+        return memory.GraphFacts(reachable=True, verified=True, arcs_found=1,
+                                 identifiers=("concept_oneiro",),
+                                 anchor=memory.ANCHOR_RELATION)
+
+    memory.probe, memory.SILENT_SECONDS = never_returns, standing
+    memory._SILENT.clear()
+    try:
+        with TestClient(create_app(Runtime(), scheduler=False)) as client:
+            first = memory.probe_within("127.0.0.1", target, budget=0.2)
+            reads_during = len(reads)
+            panel = client.get("/api/status").json()
+            page = client.get("/oneiro/?lang=ru").text
+            say(f"  the read did not come back: "
+                f"{[item['code'] for item in first.blocked]} over {reads_during} read(s)")
+            say(f"     panel verified={panel['memory']['verified']} "
+                f"codes={[item['code'] for item in panel['blocked'] if 'graph' in item['code']]}")
+            if panel["memory"]["verified"]:
+                problems.append("recovered: the panel claimed a read before one happened")
+            if i18n.t("graph.readable", "ru", arcs=1, anchor="", elapsed=0)[:24] in page:
+                problems.append("recovered: the graph page claimed a read before one happened")
+            if len(reads) != reads_during:
+                problems.append(f"recovered: a fresh note did not stand for the reading "
+                                f"({reads_during} -> {len(reads)} reads)")
+
+            # The parked read stays parked (a wedged socket does not heal); the graph
+            # answering again means *new* reads answer, and the window is what lets one
+            # happen. Setting `held` here would move the goalposts: it would make the
+            # first read finish, which is not the state this witness is about.
+            memory.SILENT_SECONDS = window   # the window passes
+            time.sleep(window + 0.4)
+            after = client.get("/api/status").json()
+            page_after = client.get("/oneiro/?lang=ru").text
+            say(f"  the graph answers again: reads={len(reads)} "
+                f"panel verified={after['memory']['verified']}")
+            if len(reads) <= reads_during:
+                problems.append("recovered: the window passed and the target was never read again")
+            if not after["memory"]["verified"]:
+                problems.append("recovered: a graph that answers again is still called unreadable")
+            if i18n.t("graph.readable", "ru", arcs=1, anchor="", elapsed=0)[:24] not in page_after:
+                problems.append("recovered: the graph page does not show the recovered read")
+    finally:
+        held.set()
+        memory.probe, memory.SILENT_SECONDS = saved_probe, saved_window
+        memory._SILENT.clear()
+
+    for problem in problems:
+        say(f"  PROBLEM: {problem}")
+    return 1 if problems else 0
+
+
+def dom_states(work: Path, configured_port: int) -> int:
+    """The panel's own text, in a browser, with each state on the real routes.
+
+    The panel is written by `app.js` after it reads `/api/status`, so no rule over the
+    served markup sees it; this reads `#status` out of Chromium on the graph page, in the
+    same render as the page's own verdict - row 14's agreement, on the DOM. Each state
+    gets its own console on a free loopback port and its own data root. Only the probe's
+    routes are driven in the configured state: a lane route opens the store, and the
+    configured graph may be the owner's live one.
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        say("\n== 5. The panel in a browser ==")
+        say("  PROBLEM: playwright is not installed, so the panel could not be read")
+        return 1
+
+    import uvicorn
+
+    from oneiro import i18n
+    from oneiro.runtime import Runtime
+    from oneiro.web import create_app
+
+    say("\n== 5. The panel's own text, in a browser, per state ==")
+    problems: list[str] = []
+    lines = {key: i18n.t(key, "ru") for key in
+             ("status.memory_ok", "status.memory_readback", "status.memory_unreachable")}
+    with SilentPort() as silent_port:
+        states = [("configured", configured_port), ("closed", free_port()),
+                  ("silent", silent_port)]
+        owner_port = owner_graph_port()
+        if owner_port is not None and owner_port != configured_port:
+            states.insert(0, ("live", owner_port))
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            try:
+                for label, graph_port in states:
+                    settings = work / f"settings-dom-{label}.json"
+                    settings.write_text(json.dumps({"graph.port": graph_port}),
+                                        encoding="utf-8")
+                    os.environ["ONEIRO_SETTINGS_FILE"] = str(settings)
+                    os.environ["ONEIRO_DATA_DIR"] = str(work / f"runtime-dom-{label}")
+                    web_port = free_port()
+                    server = uvicorn.Server(uvicorn.Config(
+                        create_app(Runtime(), scheduler=False), host="127.0.0.1",
+                        port=web_port, log_level="error", access_log=False))
+                    thread = threading.Thread(target=server.run, daemon=True)
+                    thread.start()
+                    base = f"http://127.0.0.1:{web_port}"
+                    for _ in range(60):
+                        try:
+                            with urllib.request.urlopen(f"{base}/api/health", timeout=1) as probe:
+                                if probe.status == 200:
+                                    break
+                        except Exception:
+                            time.sleep(0.1)
+                    try:
+                        page = browser.new_page()
+                        page.goto(f"{base}/oneiro/?lang=ru", wait_until="load")
+                        page.wait_for_function(
+                            "lines => lines.some(line => "
+                            "document.querySelector('#status').textContent.includes(line))",
+                            arg=list(lines.values()), timeout=30000)
+                        panel = page.inner_text("#status")
+                        # `textContent`, not `innerText`: a verdict's sentence can straddle
+                        # two elements, and innerText would put a newline where the markup
+                        # splits it.
+                        body = page.evaluate("document.body.textContent")
+                        routes = []
+                        for route in ("/oneiro/?lang=ru", "/api/graph", "/tasks?lang=ru",
+                                      "/api/status"):
+                            started = time.monotonic()
+                            try:
+                                with urllib.request.urlopen(f"{base}{route}", timeout=30) as response:
+                                    code = response.status
+                                    payload = response.read().decode("utf-8")
+                            except urllib.error.HTTPError as failure:
+                                code, payload = failure.code, failure.read().decode("utf-8")
+                            routes.append((route, code, time.monotonic() - started))
+                            if route == "/api/status":
+                                status = json.loads(payload)
+                        page.close()
+
+                        panel_line = next((line for line in panel.splitlines()
+                                           if line.startswith("Память")), "")
+                        heads = {key: i18n.t(key, "ru", arcs=1, anchor="", elapsed=0).split(".")[0]
+                                 for key in ("graph.readable", "graph.unverified",
+                                             "graph.unreachable")}
+                        verdict = " | ".join(key for key, head in heads.items() if head in body)
+                        page_readable = heads["graph.readable"] in body
+                        say(f"  -- {label}: graph.port={graph_port}, console on {web_port}")
+                        say(f"     panel: {panel_line}")
+                        say(f"     page:  {verdict or 'no verdict on the page'}")
+                        for route, code, seconds in routes:
+                            say(f"     {route:<22} {code} {seconds:5.2f}s")
+                        say(f"     /api/status memory: verified={status['memory']['verified']} "
+                            f"reachable={status['memory']['tcp_reachable']}")
+
+                        if (lines["status.memory_ok"] in panel) != status["memory"]["verified"]:
+                            problems.append(f"{label}: the browser panel disagrees with the probe")
+                        if page_readable != status["memory"]["verified"]:
+                            problems.append(f"{label}: the browser graph page disagrees with the "
+                                            f"probe")
+                        if page_readable and not (lines["status.memory_ok"] in panel):
+                            problems.append(f"{label}: the page shows a read the panel denies")
+                        expected = {"closed": "status.memory_unreachable",
+                                    "silent": "status.memory_readback"}.get(label)
+                        if expected and lines[expected] not in panel:
+                            problems.append(f"{label}: the browser panel says {panel_line!r} "
+                                            f"instead of {lines[expected]!r}")
+                        if any(code == 500 for _, code, _ in routes):
+                            problems.append(f"{label}: a route answered 500 in the browser run")
+                    finally:
+                        server.should_exit = True
+                        thread.join(timeout=10)
+            finally:
+                browser.close()
+
+    for problem in problems:
+        say(f"  PROBLEM: {problem}")
+    return 1 if problems else 0
+
+
 def main() -> int:
     from oneiro import config, window
     from oneiro.runtime import Runtime
@@ -253,6 +549,9 @@ def main() -> int:
     before = fingerprint(WATCHED)
     port = free_port()
     isolate(port)
+    #: The configured target, read once, before any section writes its own settings file:
+    #: the two later sections must describe the same state.
+    configured_port = int(config.value("graph.port"))
     say("== W6 Live Check: Console Screens & Window Lifecycle ==")
     say(f"  working directory: {WORK}")
 
@@ -315,13 +614,20 @@ def main() -> int:
         server.should_exit = True
         server_thread.join(timeout=5)
 
-    # 3. The three memory states, then the zero-leak check.
-    state_exit = graph_states(WORK, int(config.value("graph.port")))
-    if state_exit != 0:
+    # 3. The three memory states, 4. a verdict that ages, 5. the panel in a browser,
+    # then the zero-leak check.
+    states_exit = graph_states(WORK, configured_port)
+    if states_exit != 0:
         say("ERROR: the memory states did not answer as row 14/15 requires.")
-        return state_exit
+        return states_exit
 
-    say("\n== 4. Integrity check: owner files ==")
+    recovered_exit = recovered_verdict(WORK)
+    dom_exit = dom_states(WORK, configured_port)
+    if recovered_exit != 0 or dom_exit != 0:
+        say("ERROR: a memory verdict was not recovered as items 13/14 require.")
+        return 1
+
+    say("\n== 6. Integrity check: owner files ==")
     after = fingerprint(WATCHED)
     problems = []
     for path, seen in before.items():

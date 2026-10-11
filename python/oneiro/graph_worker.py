@@ -131,7 +131,9 @@ class GraphWorker:
         self._admitted = 0
         self._closing = False
         #: Set when this worker was given at least one request. Only such a worker can
-        #: have changed the store without reporting it, so only its stop is uncertain.
+        #: have changed the store without reporting it, so only its stop is uncertain -
+        #: and only such a worker can be one that answered a target which then went quiet,
+        #: so a timeout is remembered as the target's state while this is still false.
         self._dispatched = False
         #: The last failure that meant this target did not come up, and until when.
         self._down: GraphQueryError | None = None
@@ -219,12 +221,26 @@ class GraphWorker:
         so the worker stays and a page view never kills a worker that would have answered.
         Anything else stops it, and only a worker that had been given a request can have
         touched the store - so a target that never came up leaves the gate as it was.
+
+        A target that never answered *at all* is remembered for `DOWN_SECONDS`, whether it
+        failed with a code or ran out of the page budget before it said anything: measured
+        2026-10-11, a merely closed port gave `graph_timeout` on every page read, the memo
+        never armed, and four reads spawned four workers. A read that was dispatched and
+        then timed out is not that case - the worker is alive and owes its answer - so a
+        timeout counts while this worker has never dispatched anything. `_dispatched`
+        survives `_stop`, so it is read before the worker is stopped.
         """
         if read_only and worked and isinstance(exc, GraphQueryError) and exc.code == "graph_timeout":
             self._owed += 1
             return
+        never_answered = (not worked and isinstance(exc, GraphQueryError)
+                          and (exc.code in DOWN_CODES
+                               or (exc.code == "graph_timeout" and not self._dispatched)))
         await asyncio.to_thread(self._stop, uncertain=worked)
-        if not worked and isinstance(exc, GraphQueryError) and exc.code in DOWN_CODES:
+        # The `isinstance` above narrows inside this condition, not inside the body, so
+        # it is repeated here: what is remembered as the target's state is a graph
+        # failure, and the type system is told the same thing the check just proved.
+        if never_answered and isinstance(exc, GraphQueryError):
             self._down = exc
             self._down_until = asyncio.get_running_loop().time() + DOWN_SECONDS
 
