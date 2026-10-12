@@ -1971,3 +1971,70 @@ graph answered every call after that. `graph.host`/`graph.port` is a setting, no
 Not done in this pass: W2 (webhook), W3 (mail, drafts, Telegram), W4 (self-improvement,
 parallel agent), W5 (speech). W1 was the whole of this pass by the plan's ordering:
 capabilities before interface.
+
+## 2026-10-12 — W2 closed: a signed webhook becomes a task (O5)
+
+Plan of record: `docs/READY-2026-10-12.md` (owner-approved). This section records state.
+
+- New `python/oneiro/hooks.py`, the whole of the door: the body is authenticated with
+  HMAC-SHA256 over the exact bytes that arrived, the secret is generated into the data
+  root as `hooks.secret` (64 hex characters, owner-only mode) and never printed —
+  `describe()` reports its path, its length and a fingerprint, which is what a person
+  needs to check *which* key is in use and not the key. Nothing leaves the machine: the
+  route is on the console, the console listens on loopback, and the module opens no
+  outbound connection. Rotating the key is a separate, deliberate act.
+- One new route, `POST /api/hooks/<name>`, and one deliberate exception in the
+  same-origin middleware: a machine caller cannot hold the token minted for the page, so
+  the signature stands in its place — for that one prefix and `POST` only, and every other
+  write still refuses a request without the token (`403`, verified in the live check).
+- Every refusal carries a code and a sentence: `signature_absent` (401),
+  `signature_mismatch` (401, a stranger's key or a signature over other bytes),
+  `body_not_json` (400), `body_not_object` (400), `body_empty` (400), `body_too_large`
+  (413, refused before it is parsed), `unknown_hook` (400), `task_refused` (400, when the
+  task layer itself declines) and the ordinary 503 when the memory cannot be written.
+- The task is the console's own task: delivery goes through `oneiro.tasks.create`, the
+  same call the console makes, so a task that arrived by hook is recorded with
+  `provenance: owner_instruction` and state `queued`, and cannot be a different kind of
+  work. The delivery id is the digest of the body, so the same delivery twice is answered
+  with the task it already has instead of a second one.
+- New command surface: `oneiro hooks key [--rotate] [--json]`, `oneiro hooks sign
+  --body-file <path> [--json]` — the second one prints the signature an integrator sends,
+  so the value of the key never has to be handled to use the door.
+- New `tests/test_hooks.py`, fourteen tests over the real app and the real store.
+- New `tests/live_hooks_check.py` and `tests/live_hooks_serve.py`: the live half. The
+  console is the product's own app and its own server; the one thing the check chooses is
+  the stream the memory is written in (`demo`), because `oneiro serve` always writes as the
+  owner's `product` stream and a check must not add demo records to it.
+
+Evidence, this checkout, 2026-10-12:
+
+- `python -m pytest -q tests/test_hooks.py` — exit 0, 14 passed.
+- `python -m pytest -q` — exit 0, 668 passed.
+- `python -m mypy python/oneiro` — exit 0, 40 files, no issues.
+- `python tests/live_hooks_check.py --marker w2-proof-2026-10-12` — exit 0, 22/22 checks:
+  console pid 27100 on a free port (`http://127.0.0.1:1382`), its own data root, the graph
+  named explicitly (`ONEIRO_PORT=8096`; `/api/graph` answered `verified=True, arcs=1` in
+  322 ms), stopped on request with **exit code 0** and the port free afterwards;
+  a signed POST answered `202` with `task-hook-monitor-7be8b3502ee80579` (written
+  2026-10-12T17:22:00Z, `kind=task`, `state=queued`, `provenance=owner_instruction`),
+  read back three ways: `/api/tasks/<id>`, a worker of the check's own, and the owner's
+  own reader `scripts/office-graph-read.py --stream demo --limit 1` (exit 0);
+  the refusals, each with its own reason: 401 `signature_absent`, 401
+  `signature_mismatch` (a stranger's key and a signature over other bytes), 400
+  `body_not_json` (signed broken body), 400 `unknown_hook`; `POST /api/tasks` without the
+  page token still 403; the listener is `127.0.0.1` only, from this machine's own table.
+- the console's log holds 215 characters and the secret's value is in none of them; the
+  only line about the key names its path and its fingerprint.
+- the owner's data root: 13 files, sha256 list identical before and after the pass.
+- the `product` stream read before and after the delivery: the same newest record, so the
+  demo write did not touch the owner's own stream.
+
+Two real defects were found while proving it, and each was fixed at its cause: this
+machine's connection table is not UTF-8 (0x80 mid-line) and the check's reader died
+decoding it, so the table is read with undecodable bytes replaced; and on Windows the
+check's console died hard on a break event (exit code 3) while POSIX stops it gently, so
+the check's launcher handles the break event the way uvicorn handles its own signals and
+the console now exits 0.
+
+Not done in this pass: W3 (mail, drafts, Telegram — the interface, last by the plan's
+ordering), W4 (self-improvement, parallel agent), W5 (speech), W6 (final checks).

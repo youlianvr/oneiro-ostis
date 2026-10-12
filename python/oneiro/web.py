@@ -1,10 +1,12 @@
 """Same-origin HTTP surface: chat, tasks, memory, settings and conversations.
 
-Every route here is loopback-only and behind the owner's request token. The chat
-and task routes hand the work to `oneiro.agent` and `oneiro.tasks`; this module
-owns transport, not policy. The clock can run here as well, so that the
-standalone process that serves the pages also keeps the schedules: shutting it
-down stops the clock with it.
+Every route here is loopback-only and behind the owner's request token, with one
+deliberate exception: an inbound webhook (`POST /api/hooks/<name>`) authenticates
+its own caller with the body's HMAC signature, because a machine caller cannot hold
+a token minted for the page. The chat and task routes hand the work to
+`oneiro.agent` and `oneiro.tasks`; this module owns transport, not policy. The
+clock can run here as well, so that the standalone process that serves the pages
+also keeps the schedules: shutting it down stops the clock with it.
 """
 from __future__ import annotations
 
@@ -24,7 +26,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from oneiro import agent, config, mcp, memory, pages, recall, schedule, skills, tasks
+from oneiro import agent, config, hooks, mcp, memory, pages, recall, schedule, skills, tasks
 from oneiro import mcp_surface
 from oneiro.agent import TurnConflict
 from oneiro.chat import ChatError
@@ -56,6 +58,13 @@ _RECORD_ID = re.compile(r"[A-Za-z0-9-]{1,96}")
 SEARCH_LIMIT = 50
 SEARCH_CHARS = 200
 SEARCH_WORDS = 6
+
+#: The one prefix that authenticates itself. Its callers are scripts, not a page, so
+#: they cannot carry the token the page is given; the HMAC signature over the exact
+#: body, with a secret that never leaves the data root, is what stands in its place.
+#: The exemption is this prefix and `POST` only, and the route below verifies the
+#: signature before it reads the payload, writes anything or creates a task.
+SIGNED_PREFIX = "/api/hooks/"
 
 
 class _ChatRefused(Exception):
@@ -153,6 +162,13 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await owner.start()
+        # The webhook secret belongs to the process that owns the data root. It is made
+        # once, on the first start, so an integration has a key to be signed with, and
+        # the line names its fingerprint and path and never the value.
+        key = hooks.ensure_secret()
+        if key["created"]:
+            print(f"Oneiro: webhook secret created at {key['path']} "
+                  f"(fingerprint {key['fingerprint']})", flush=True)
         ticker = (asyncio.create_task(schedule.loop(owner, on_error=_report_tick_failure))
                   if scheduler else None)
         # `mcp.autostart` decides whether the enabled servers are started with the
@@ -198,7 +214,10 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
             if parsed.scheme not in ("http", "https") or parsed.netloc != request.headers.get("host"):
                 return refuse(request, "error.cross_origin")
         if request.method not in ("GET", "HEAD", "OPTIONS"):
-            if not secrets.compare_digest(request.headers.get("x-oneiro-csrf", ""), csrf):
+            signed = (request.method == "POST"
+                      and request.url.path.startswith(SIGNED_PREFIX))
+            if not signed and not secrets.compare_digest(
+                    request.headers.get("x-oneiro-csrf", ""), csrf):
                 return refuse(request, "error.bad_token")
         response = await call_next(request)
         response.headers.update({
@@ -699,6 +718,33 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
         except GraphQueryError as exc:
             return unavailable(exc)
         return JSONResponse(result)
+
+    @app.post("/api/hooks/{name}")
+    async def hook_deliver(name: str, request: Request) -> JSONResponse:
+        """One signed delivery from outside the conversation, turned into a task.
+
+        The body is authenticated exactly as it arrived: re-serialising it would check a
+        signature over bytes the caller never sent. Every refusal carries its own code
+        and sentence, because "400 Bad Request" tells an integrator nothing about which
+        half of their script is wrong. The answer is 202: the task is recorded and its
+        work has not run — the same thing `tasks.create` did when the owner typed it.
+        """
+        raw = bytearray()
+        async for chunk in request.stream():
+            raw.extend(chunk)
+            if len(raw) > hooks.MAX_BODY:
+                return refused(413, f"the body exceeds {hooks.MAX_BODY} bytes",
+                               code="body_too_large", hook=name)
+        try:
+            result = await hooks.deliver(owner, bytes(raw),
+                                         request.headers.get(hooks.HEADER), name=name)
+        except hooks.HookError as exc:
+            return refused(exc.status, exc.reason, code=exc.code, hook=name)
+        except GraphQueryError as exc:
+            return unavailable(exc)
+        return JSONResponse({"hook": result["hook"], "client_id": result["client_id"],
+                             "title": result["title"], "task_id": result["task_id"],
+                             "duplicate": result["duplicate"]}, status_code=202)
 
     @app.get("/api/schedules")
     async def schedule_list() -> JSONResponse:

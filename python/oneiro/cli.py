@@ -18,7 +18,7 @@ import threading
 from pathlib import Path
 from typing import Any, Callable, Coroutine
 
-from oneiro import (config, mcp as mcp_module, mcp_surface, office_env,
+from oneiro import (config, hooks, mcp as mcp_module, mcp_surface, office_env,
                     research as research_module, schedule as schedule_module,
                     skills as skills_module, tasks, window)
 from oneiro.ownership import OwnershipError
@@ -291,6 +291,53 @@ def schedules_command(argv: list[str]) -> int:
     return 0
 
 
+def hooks_command(argv: list[str]) -> int:
+    """`oneiro hooks` — the webhook secret, and the signature of one body.
+
+    The secret is never printed. `key` names the file it lives in and its fingerprint,
+    which is enough to check *which* key an integration is using; `sign` prints the
+    signature of a body, which is what a script needs to send. A person who must have
+    the value reads the file that was named, and the reports stay clean.
+    """
+    parser = argparse.ArgumentParser(prog="oneiro hooks",
+                                     description="Inbound webhooks: the secret and the signature")
+    parser.add_argument("action", nargs="?", default="key", choices=("key", "sign"))
+    parser.add_argument("--body-file", default="", help="the exact bytes to sign")
+    parser.add_argument("--rotate", action="store_true",
+                        help="replace the secret; every integration must be told")
+    parser.add_argument("--json", action="store_true", help="machine-readable output")
+    args = parser.parse_args(argv)
+
+    if args.action == "key":
+        described = hooks.rotate_secret() if args.rotate else hooks.ensure_secret()
+        if args.json:
+            print(json.dumps(described, ensure_ascii=False, indent=2))
+            return 0
+        state = "rotated" if args.rotate else (
+            "created" if described["created"] else "already present")
+        print(f"secret: {state}  {described['path']}")
+        print(f"length: {described['length']} bytes  fingerprint: {described['fingerprint']}")
+        print("the value is not printed: the file above is what an integration reads")
+        return 0
+
+    if not args.body_file:
+        print("error: --body-file is required to sign a body")
+        return 2
+    body = Path(args.body_file).read_bytes()
+    try:
+        secret = hooks.load_secret()
+    except hooks.HookError as exc:
+        print(f"error: {exc.code}: {exc.reason}")
+        return 2
+    signature = hooks.sign(secret, body)
+    if args.json:
+        print(json.dumps({"bytes": len(body), "header": hooks.HEADER,
+                          "signature": signature}, ensure_ascii=False, indent=2))
+        return 0
+    print(f"{hooks.HEADER}: {signature}")
+    return 0
+
+
 def office_command(argv: list[str]) -> int:
     """`oneiro office` — office work in the isolated environment.
 
@@ -346,7 +393,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Oneiro standalone rewrite")
     parser.add_argument("command", nargs="?", default="serve",
                         choices=("doctor", "serve", "verify-model", "settings", "tasks",
-                                 "schedules", "mcp", "skills", "research", "office"))
+                                 "schedules", "mcp", "skills", "research", "office", "hooks"))
     parser.add_argument("--no-window", action="store_true", help="run server without window")
     # `settings`, `tasks` and `schedules` have options of their own, and a
     # positional with nargs="*" cannot absorb a token that starts with a dash, so
@@ -394,6 +441,8 @@ def main(argv: list[str] | None = None) -> int:
         return research_module.research_command(rest)
     if args.command == "office":
         return office_command(rest)
+    if args.command == "hooks":
+        return hooks_command(rest)
     if rest:
         parser.error(f"unrecognized arguments: {' '.join(rest)}")
     listener: socket.socket | None = None
