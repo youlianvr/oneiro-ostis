@@ -393,8 +393,15 @@ async def run_turn(owner: Any, text: str, client_id: str, conversation_id: str, 
         messages.append(_assistant_message(reply))
         uncertain = False
         for call_item in reply.tool_calls:
-            step = await _execute(owner, reply_id, index, registry, policy, role, call_item,
-                                  tool_limit)
+            # A step is one call, not one message. Numbering a message's calls with the
+            # message's own index made two calls of one message publish the same
+            # `act-<reply>-<index>` with different content, and the store refused the
+            # second one (`operation_collision`), killing the turn before it could answer
+            # (measured 2026-10-12: seven of the eleven attempts a live measurement made
+            # at the task that returns two calls at once). A turn that returns one call
+            # per message is numbered exactly as before.
+            step = await _execute(owner, reply_id, len(steps) + 1, registry, policy, role,
+                                  call_item, tool_limit)
             steps.append(step)
             messages.append({"role": "tool", "tool_call_id": call_item.id,
                              "content": step.to_message()})

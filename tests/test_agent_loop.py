@@ -92,6 +92,38 @@ def test_an_allowed_tool_call_is_recorded_and_its_result_reaches_the_model(tmp_p
     assert rows[0]["labels"] == ["step:1"]
 
 
+def test_two_calls_in_one_message_are_two_steps_and_both_run(tmp_path, monkeypatch):
+    """A step is one call, not one message: both calls publish their own action ID.
+
+    Measured 2026-10-12: the two calls of one message shared that message's index, so
+    they published the same `act-<reply>-<index>` with different content, the store
+    refused the second with `operation_collision`, and the turn died before it could
+    answer — which is how seven of the eleven attempts a live measurement made at the
+    task that asks for two tools at once were lost.
+    """
+    first = tmp_path / "alpha.txt"
+    first.write_text("a zebra lives here", encoding="utf-8")
+    second = tmp_path / "beta.txt"
+    second.write_text("nothing to see here", encoding="utf-8")
+    model = Model(monkeypatch, replies=[
+        ModelReply("", (ToolCall("call-1", "read_file", {"path": str(first)}),
+                        ToolCall("call-2", "read_file", {"path": str(second)}))),
+        ModelReply("Both files were read."),
+    ])
+    owner = owner_for(tmp_path, MemoryLinks())
+
+    result = run(owner, model, "read both files", "client-0004-dddd")
+
+    assert result["reply"]["text"] == "Both files were read."
+    assert [step["index"] for step in result["steps"]] == [1, 2]
+    rows = sorted(actions_of(owner), key=lambda row: row["id"])
+    assert [row["id"] for row in rows] == ["act-reply-client-0004-dddd-1",
+                                           "act-reply-client-0004-dddd-2"]
+    assert [row["labels"] for row in rows] == [["step:1"], ["step:2"]]
+    tool_messages = [m for m in model.messages[1] if m["role"] == "tool"]
+    assert len(tool_messages) == 2, "each call's result came back as its own message"
+
+
 def test_the_stored_record_is_what_makes_a_replayed_turn_equal(tmp_path, monkeypatch):
     note = tmp_path / "notes.txt"
     note.write_text("keep it small", encoding="utf-8")
