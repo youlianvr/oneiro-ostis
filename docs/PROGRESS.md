@@ -1919,3 +1919,55 @@ override, the settings layer's dependence on a temporary § 2 file, and DOM-only
 
 
 
+
+## 2026-10-12 — W1 closed: office work in the isolated environment
+
+Plan of record: `docs/READY-2026-10-12.md` (owner-approved). This section records state.
+
+- `vm/Dockerfile` now builds `oneiro-office:local`: Debian plus the office suite
+  (writer, calc, impress), no desktop, no port, and `CMD sleep infinity` because every
+  conversion is a `docker exec`. The GUI-desktop draft (Xvfb, xdotool, scrot) is gone:
+  the GUI agent is out of scope by owner decision and is recorded as a development
+  direction, not as a capability.
+- New `python/oneiro/office_env.py`. A document, a spreadsheet and a presentation are
+  written as flat ODF sources, converted inside the container into `.odt`/`.xlsx`/`.pptx`
+  and PDF, and copied out with `docker cp`. No host directory is mounted, so the
+  environment cannot reach the owner's files; the container is removed in a `finally`.
+  Each conversion and the evidence read are published as `Action` records, plus one
+  `Experience`, in the `demo` stream — never the product's own stream.
+- New command surface: `oneiro office image`, `oneiro office run [--topic] [--out]
+  [--stream] [--json] [--no-record]`.
+- New `tests/test_office_env.py`, ten tests, with an injectable command runner so the
+  orchestration is tested without Docker.
+
+Evidence, this checkout, 2026-10-12:
+
+- `python -m pytest -q tests/test_office_env.py` — exit 0, 10 passed.
+- `python -m mypy python/oneiro` — exit 0, 34 files, no issues.
+- real job from an isolated root:
+  `ONEIRO_DATA_DIR=<temp> python -m oneiro office run --topic "Отчёт о приёме в десятый класс" --json`
+  — exit 0; container `oneiro-office-83c358dcd187` on image `oneiro-office:local`; the
+  container's own `ls -1 /work/out` listed six files; artifacts `note.odt` 12573 B,
+  `note.pdf` 22848 B (1 page), `table.xlsx` 4956 B, `table.pdf` 13628 B (1 page),
+  `slides.pptx` 25446 B, `slides.pdf` 18967 B (2 pages); 7 steps, 8 records.
+- independent read-back: `python scripts/office-graph-read.py --stream demo` returns the
+  eight records; `--stream product` returns only the owner's own records from 2026-10-08.
+- the owner's data root: 13 files, sha256 list identical before and after the pass.
+- no `oneiro-office` container left behind; the preview on 9899 was never touched.
+
+Three real defects were found while proving it, and each was fixed at its cause: the
+environment's `/work/in` was created with backslashes (a Windows `Path` join under
+`str()`), so `docker cp` never found it; `docker cp` read `C:\...` as a
+`source:destination` pair because of the drive-letter colon, so host paths go to docker in
+POSIX form; and the first image build ran past the conversion timeout and was reported as
+a failure although the image had been built — builds now have their own bound and the
+image, not the build client's exit status, is the evidence.
+
+Met, not a defect: with an isolated data root the graph port falls back to the default
+8090 while the running machine is published on 8096. The isolated root names the graph
+(`python -m oneiro settings --set graph.host=127.0.0.1 graph.port=8096`), and the live
+graph answered every call after that. `graph.host`/`graph.port` is a setting, not a bug.
+
+Not done in this pass: W2 (webhook), W3 (mail, drafts, Telegram), W4 (self-improvement,
+parallel agent), W5 (speech). W1 was the whole of this pass by the plan's ordering:
+capabilities before interface.

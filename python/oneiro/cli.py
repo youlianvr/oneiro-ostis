@@ -15,10 +15,12 @@ import asyncio
 import json
 import socket
 import threading
+from pathlib import Path
 from typing import Any, Callable, Coroutine
 
-from oneiro import (config, mcp as mcp_module, mcp_surface, research as research_module,
-                    schedule as schedule_module, skills as skills_module, tasks, window)
+from oneiro import (config, mcp as mcp_module, mcp_surface, office_env,
+                    research as research_module, schedule as schedule_module,
+                    skills as skills_module, tasks, window)
 from oneiro.ownership import OwnershipError
 from oneiro.query import GraphQueryError
 from oneiro.runtime import Runtime
@@ -289,11 +291,62 @@ def schedules_command(argv: list[str]) -> int:
     return 0
 
 
+def office_command(argv: list[str]) -> int:
+    """`oneiro office` — office work in the isolated environment.
+
+    The heavy work happens in a container, never on the owner's desktop, and the
+    job is recorded: a run whose records the graph refuses is reported as a
+    failure, because a job nobody can trace is not a job that happened.
+    """
+    parser = argparse.ArgumentParser(prog="oneiro office",
+                                     description="Office work in the isolated environment: "
+                                                 "document, spreadsheet, presentation and PDF")
+    parser.add_argument("action", nargs="?", default="run", choices=("run", "image"))
+    parser.add_argument("--topic", default="Oneiro: работа в изолированной среде",
+                        help="what the document, sheet and slides are about")
+    parser.add_argument("--out", default="", help="where the job folder is written")
+    parser.add_argument("--stream", default=office_env.DEMO_STREAM,
+                        help="the stream the job is recorded in (never the product's)")
+    parser.add_argument("--no-record", action="store_true",
+                        help="do the work without writing records (not for a demo)")
+    parser.add_argument("--json", action="store_true", help="machine-readable output")
+    args = parser.parse_args(argv)
+
+    try:
+        if args.action == "image":
+            built = office_env.Sandbox().build()
+            print(f"image: {built}")
+            return 0
+        job = office_env.run_job(args.topic, out_dir=Path(args.out) if args.out else None,
+                                 stream=args.stream, record=not args.no_record)
+    except office_env.OfficeError as exc:
+        print(f"error: {exc.code}: {exc.reason}")
+        return 2
+
+    if args.json:
+        print(json.dumps(office_env.report(job), ensure_ascii=False, indent=2, default=str))
+        return 0
+    print(f"job: {job.id}  environment: {job.image}  container: {job.container}")
+    print(f"topic: {job.topic}")
+    print(f"work: {job.workdir}")
+    print(f"sources: {', '.join(sorted(job.sources))}")
+    print(f"the environment listed {len(job.listing_files)} file(s):")
+    for line in job.listing.splitlines():
+        print(f"    {line.strip()}")
+    for item in job.artifacts:
+        pages = f", {item.pages} page(s)" if item.pages is not None else (
+            f", pages not measured: {item.pages_reason}" if item.pages_reason else "")
+        print(f"  {item.name:<12} {item.bytes:>8} bytes  sha256 {item.sha256[:12]}{pages}")
+    print(f"container stopped: {'yes' if job.stopped else 'NO'}")
+    print(f"records: {len(job.records)} in stream {args.stream}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Oneiro standalone rewrite")
     parser.add_argument("command", nargs="?", default="serve",
                         choices=("doctor", "serve", "verify-model", "settings", "tasks",
-                                 "schedules", "mcp", "skills", "research"))
+                                 "schedules", "mcp", "skills", "research", "office"))
     parser.add_argument("--no-window", action="store_true", help="run server without window")
     # `settings`, `tasks` and `schedules` have options of their own, and a
     # positional with nargs="*" cannot absorb a token that starts with a dash, so
@@ -339,6 +392,8 @@ def main(argv: list[str] | None = None) -> int:
         return skills_module.skills_command(rest)
     if args.command == "research":
         return research_module.research_command(rest)
+    if args.command == "office":
+        return office_command(rest)
     if rest:
         parser.error(f"unrecognized arguments: {' '.join(rest)}")
     listener: socket.socket | None = None

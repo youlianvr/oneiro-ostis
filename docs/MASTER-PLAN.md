@@ -15,6 +15,12 @@ stages S1–S9 and matrix rows 1–21 fed this scope) and, through it,
 State, checks, blockers and the next step live in `docs/PROGRESS.md`; the v1 decisions
 and the borrowing audit in `docs/DECISIONS-v1.md`.
 
+> **Banner, 2026-10-12:** `docs/READY-2026-10-12.md` (owner-approved, in Russian) is now the
+> main plan. Its §5 readiness table O1–O10, works W1–W6 with owners and acceptance, milestones
+> M1/M2 and the parallel-agent prompt own the current scope. This file stays as history and as
+> the evidence list those rows point at: stages S1–S9, the §6 acceptance matrix and the v1
+> decisions are not withdrawn. Where the two disagree about scope, the readiness plan decides.
+
 ## 0. Stopping criterion
 
 v1 is done when a person, without me, can install Oneiro on Windows, open its own
