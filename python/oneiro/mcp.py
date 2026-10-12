@@ -193,6 +193,14 @@ def _entry_to_server(name: str, raw: Any) -> Server:
         raise McpError("a remote server needs a url")
     if kind == LOCAL and not argv:
         raise McpError("a local server needs a command")
+    if not kind:
+        # Neither a command nor a url, which is the one shape that used to slip
+        # through both guards above: it became a server with an empty command, was
+        # offered for adoption, and then raised a bare `ValueError` out of the start
+        # path - an unhandled exception on a route, for a foreign file's typo
+        # (measured 2026-10-12: `[mcp_servers.half] args = ["-y", "nothing"]` gave
+        # HTTP 500 on `GET /api/mcp/half/tools`). Nothing about it is guessed here.
+        raise McpError("a server entry needs a command or a url, and this one has neither")
     environment = next((value for value in (raw.get("environment"), raw.get("env"),
                                             nested.get("env"))
                         if isinstance(value, dict)), {})
@@ -538,6 +546,12 @@ def _read_client(client: Client, path: Path, files: tuple[Path, ...]) -> Found:
     """One client file: what it declares, or the shape of what could not be read."""
     document, error = _read_config(path, client.kind)
     looked = tuple(str(item) for item in files)
+    if not error and not isinstance(document, dict):
+        # A file that parses but is not an object used to declare nothing, silently:
+        # `["not", "an", "object"]` and `123` reported `found=True, error=''` and an
+        # empty server list, which is exactly what a file with no servers reports. The
+        # shape is named now, the same way a parse failure is (measured 2026-10-12).
+        error = f"unreadable (the file holds a {type(document).__name__}, not an object)"
     if error:
         return Found(client=client.label, path=str(path), found=True, error=error,
                      paths=looked)
@@ -1004,6 +1018,15 @@ class Hub:
             return {"opened": False, "name": name,
                     "reason": (f"the server {name} is turned off in {document.path}; "
                                f"turn it on before opening it")}
+        if not server.command and not server.url:
+            # Our own file can hold such an entry too: hand-edited, or written by an
+            # older build, or copied from a client whose schema this build could not
+            # read. Starting it would raise `ValueError` from an empty argv, so the
+            # refusal is named here — the same answer the survey gives a foreign one.
+            reason = (f"the entry for {name} in {document.path} has neither a command nor "
+                      f"a url, so there is nothing to start")
+            self.failures[name] = reason
+            return {"opened": False, "name": name, "reason": reason}
         with self._lock:
             if name in self.sessions:
                 return {"opened": True, "name": name,

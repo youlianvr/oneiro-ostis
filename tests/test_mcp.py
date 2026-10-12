@@ -440,6 +440,121 @@ def test_a_config_that_cannot_be_parsed_is_a_named_error(tmp_path: Path):
     assert report[0].error.startswith("unreadable (")
 
 
+def test_a_foreign_entry_with_neither_command_nor_url_is_refused_and_not_adoptable(
+        tmp_path: Path):
+    """A real defect, measured on this machine: `[mcp_servers.half] args = [...]`.
+
+    Codex's own file can hold an entry with arguments and no program. It used to be
+    adopted into our list as a server with an empty kind and no problem row, and
+    starting it then raised a bare `ValueError` out of the route — an unhandled
+    exception caused by a typo in someone else's file. It is refused by name now,
+    and nothing about it is guessed: the name, the reason and the fact that it
+    never reaches our list are all asserted here.
+    """
+    codex = tmp_path / "config.toml"
+    source = '[mcp_servers.half]\nargs = ["-y", "nothing"]\n'
+    codex.write_text(source, encoding="utf-8")
+    ours = tmp_path / "mcp.json"
+
+    report = mcp.survey([mcp.Client("Codex CLI", "mcp_servers", kind="toml", user=(codex,))])
+
+    assert report[0].found is True and report[0].servers == ()
+    assert [row["name"] for row in report[0].problems] == ["half"]
+    assert "neither" in report[0].problems[0]["reason"]
+
+    plan = mcp.preview(mcp.load(ours), report)
+    assert plan["add"] == {}
+    assert [row["name"] for row in plan["refused"]] == ["half"]
+
+    assert mcp.apply_import(mcp.load(ours), report)["written"] == []
+    assert not ours.exists(), "a refused entry must never reach our list"
+    assert codex.read_text(encoding="utf-8") == source
+
+
+def test_a_config_that_parses_but_is_not_an_object_is_a_named_error(tmp_path: Path):
+    """A bare string or number used to read as a file that declares nothing.
+
+    `.cursor/mcp.json` holding `"mine"` and `.gemini/settings.json` holding `7` both
+    reported `found=True, error=''` and zero servers — indistinguishable from a file
+    that really declares none, so a wrong-shaped file looked like an empty one. The
+    shape is named now, and an empty file is still reported as an empty file.
+    """
+    stringy = tmp_path / "cursor-mcp.json"
+    stringy.write_text('"mine"', encoding="utf-8")
+    numeric = tmp_path / "gemini-settings.json"
+    numeric.write_text("7", encoding="utf-8")
+    empty = tmp_path / "cline.json"
+    empty.write_text(json.dumps({"mcpServers": {}}), encoding="utf-8")
+
+    report = mcp.survey([mcp.Client("Cursor", "mcpServers", user=(stringy,)),
+                         mcp.Client("Gemini CLI", "mcpServers", user=(numeric,)),
+                         mcp.Client("Cline", "mcpServers", user=(empty,))])
+
+    assert report[0].found is True and report[0].servers == ()
+    assert report[0].error.endswith("holds a str, not an object)")
+    assert report[1].found is True and report[1].servers == ()
+    assert report[1].error.endswith("holds a int, not an object)")
+    assert report[2].found is True and report[2].error == "" and report[2].servers == ()
+
+
+def test_a_command_less_entry_in_our_own_list_is_refused_and_never_a_500(tmp_path, monkeypatch):
+    """Our own file can hold one too — hand-edited, or written by an older build.
+
+    The tool route used to answer `HTTP 500` with `ValueError: not enough values to
+    unpack` for such an entry. Every route answers a refusal that names it now, and
+    the overview shows the problem instead of a server that looks fine.
+    """
+    path = tmp_path / "mcp.json"
+    path.write_text(json.dumps({"mcp": {"half": {"args": ["-y", "nothing"]}}}),
+                    encoding="utf-8")
+    monkeypatch.setenv("ONEIRO_MCP_FILE", str(path))
+
+    with TestClient(make_app(tmp_path, MemoryLinks())) as client:
+        csrf = csrf_of(client)
+        listing = client.get("/api/mcp")
+        assert listing.status_code == 200
+        assert listing.json()["servers"] == []
+        assert [row["name"] for row in listing.json()["problems"]] == ["half"]
+
+        tools = client.get("/api/mcp/half/tools")
+        assert tools.status_code == 404, tools.text
+        assert post(client, "/api/mcp/half/open", {}, csrf).status_code == 404
+
+        called = post(client, "/api/mcp/half/call", {"tool": "echo", "arguments": {}}, csrf)
+        assert called.status_code == 403, called.text
+        assert called.json()["decision"] == "deny" and "half" in called.json()["reason"]
+
+
+def test_a_server_with_neither_a_command_nor_a_url_is_never_started(tmp_path: Path):
+    """The last line of defence, for an entry that reached a list without the parser.
+
+    Our own file is read through `_entry_to_server`, so a command-less entry never
+    becomes a `Server` there. A `Server` can still be built in code — by a migration,
+    by an older build, by a caller — and the hub is the one funnel every surface
+    starts a server through. Starting one would raise `ValueError` from an empty
+    argv, so the refusal lives there too, worded like the survey's.
+    """
+
+    class Handwritten(mcp.Hub):
+        """A list holding a server no parser would have let through."""
+
+        def document(self) -> mcp.Document:
+            return mcp.Document(path=tmp_path / "mcp.json",
+                                servers={"half": mcp.Server(name="half")})
+
+    hub = Handwritten()
+
+    report = asyncio.run(hub.open("half"))
+
+    assert report["opened"] is False
+    assert "neither a command nor" in report["reason"]
+    assert hub.failures["half"] == report["reason"]
+    assert hub.sessions == {} and hub.catalogs == {}
+    assert hub.registry() == {}, "nothing of a server that cannot start is offered"
+    assert {row["name"]: row["state"] for row in hub.states()} == {"half": "failed"}
+    assert asyncio.run(hub.open("half"))["reason"] == report["reason"]
+
+
 def test_adopting_a_server_writes_ours_and_leaves_theirs_byte_identical(tmp_path: Path):
     """Read theirs, write ours, and prove the difference by fingerprint.
 
