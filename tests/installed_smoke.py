@@ -67,7 +67,7 @@ class InstalledSmoke(unittest.TestCase):
             else:
                 self.fail("Server did not become reachable")
             self.assertFalse(json.loads(health[1])["assistant_ready"])
-            for path in ("/", "/settings", "/setup", "/oneiro/", "/app.js", "/style.css"):
+            for path in ("/", "/drafts", "/settings", "/setup", "/oneiro/", "/app.js", "/style.css"):
                 headers, body = self.request(path)
                 self.assertTrue(body)
                 self.assertIsNone(headers.get("Access-Control-Allow-Origin"))

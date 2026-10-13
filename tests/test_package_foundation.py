@@ -139,11 +139,48 @@ def test_two_runtime_owners_cannot_start():
     asyncio.run(check())
 
 
+def test_the_runtime_writes_the_stream_the_setting_names(monkeypatch):
+    """The subject of experience is a setting, so a demonstration can be separate.
+
+    The worker the runtime builds is replaced by a recorder: the assertion is about the
+    argument the product's own start path passes, not about a constant repeated here. The
+    default is the owner's own work, and one declared value moves it.
+    """
+    captured: dict[str, object] = {}
+
+    class Recorder:
+        def __init__(self, url: str, stream: str, lock: Path) -> None:
+            captured.update({"url": url, "stream": stream, "lock": lock})
+
+        async def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(sys.modules["oneiro.runtime"], "GraphWorker", Recorder)
+
+    def run(stream: str | None) -> object:
+        if stream is None:
+            monkeypatch.delenv("ONEIRO_STREAM", raising=False)
+        else:
+            monkeypatch.setenv("ONEIRO_STREAM", stream)
+        monkeypatch.setattr(config, "_cache", None)      # the value is read through the layers
+
+        async def check() -> object:
+            runtime = Runtime()
+            await runtime.start()
+            await runtime.close()
+            return captured["stream"]
+
+        return asyncio.run(check())
+
+    assert run(None) == "product", "the owner's own work is what Oneiro writes by default"
+    assert run("demo") == "demo"
+
+
 def test_lifespan_same_origin_and_honest_health():
     runtime = Runtime()
     with TestClient(create_app(runtime)) as client:
         assert runtime.started_at is not None
-        for route in ("/", "/settings", "/setup", "/oneiro/", "/app.js", "/style.css"):
+        for route in ("/", "/drafts", "/settings", "/setup", "/oneiro/", "/app.js", "/style.css"):
             response = client.get(route)
             assert response.status_code == 200
             assert "access-control-allow-origin" not in response.headers

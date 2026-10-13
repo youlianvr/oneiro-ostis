@@ -146,6 +146,47 @@ def test_removing_an_unknown_fact_is_not_found(tmp_path):
         assert _edit(client, "not-a-fact", "x", 1, "fact-edit-0014").status_code == 404
 
 
+def test_a_listed_fact_carries_its_source_and_both_dates(tmp_path):
+    """A fact on screen is not bare text: what it came from and when are shown with it."""
+    with TestClient(make_app(tmp_path, MemoryLinks())) as client:
+        _add(client, "The owner works in Russian.", "fact-client-0701")
+        listing = _facts(client)
+    fact = listing["facts"][0]
+    assert fact["provenance"] == "owner_instruction", "a curated fact is the owner's statement"
+    assert fact["created_at"] and fact["updated_at"]
+    assert fact["superseded"] == [], "nothing was replaced yet"
+    assert listing["history_complete"] is True
+
+
+def test_an_edited_fact_keeps_the_earlier_value_with_its_own_date_and_source(tmp_path):
+    """Editing replaces the value in force; the value it replaced stays readable.
+
+    The screen promise is that a change keeps its history, so the earlier text, its
+    revision and its own source must come back with the fact rather than disappear.
+    """
+    with TestClient(make_app(tmp_path, MemoryLinks())) as client:
+        fact_id = _add(client, "Prefers long answers.", "fact-client-0702").json()["fact"]["id"]
+        assert _edit(client, fact_id, "Prefers short, direct answers.", 1,
+                     "fact-edit-0702").status_code == 200
+        listing = _facts(client)
+    fact = listing["facts"][0]
+    assert fact["text"] == "Prefers short, direct answers."
+    assert fact["revision"] == 2
+    assert [(older["revision"], older["text"]) for older in fact["superseded"]] == [
+        (1, "Prefers long answers.")]
+    older = fact["superseded"][0]
+    assert older["provenance"] == "owner_instruction" and older["updated_at"]
+
+
+def test_an_edit_that_repeats_the_text_leaves_no_earlier_value_to_show(tmp_path):
+    """A revision that changed nothing is not presented as a replaced value."""
+    with TestClient(make_app(tmp_path, MemoryLinks())) as client:
+        fact_id = _add(client, "One value.", "fact-client-0703").json()["fact"]["id"]
+        assert _edit(client, fact_id, "One value.", 1, "fact-edit-0703").status_code == 200
+        listing = _facts(client)
+    assert listing["facts"][0]["superseded"] == []
+
+
 def test_facts_are_not_conversation_messages(tmp_path, monkeypatch):
     Model(monkeypatch)
     with TestClient(make_app(tmp_path, MemoryLinks())) as client:

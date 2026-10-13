@@ -72,6 +72,53 @@ def test_admission_is_bounded_and_cancelled_call_reaps_owned_process(tmp_path):
     asyncio.run(scenario())
 
 
+class FakeSave(GraphWorker):
+    """A worker whose graph answers one native-Save report and nothing else.
+
+    Used to assert what `save()` promises: the report is passed through and its own words say
+    what was *not* established, without a live server and without a snapshot supervisor.
+    """
+
+    async def _call(self, operation, arguments, binding=None):
+        assert operation == "checkpoint" and arguments == {}
+        assert binding is None
+        return {"saved": True, "seconds": 0.02, "crash_atomic": False,
+                "action_address": 17, "sequence": 3, "stream": self.stream}
+
+
+def test_a_save_reports_what_it_proved_and_never_claims_durability(tmp_path):
+    async def scenario():
+        worker = FakeSave("unused", "test", tmp_path / "writer.lock")
+        before = worker.durability.status()
+        report = await worker.save()
+        assert report["saved"] is True
+        assert report["durable"] is False
+        assert "not claimed" in report["note"]
+        # The effect gate is untouched: a save is not a checkpoint, and nothing here may
+        # read as permission for an external effect later.
+        assert worker.durability.status() == before
+        await worker.close()
+    asyncio.run(scenario())
+
+
+def test_a_save_without_a_graph_is_an_error_not_a_claim(tmp_path):
+    import socket
+
+    async def scenario():
+        with socket.socket() as blocker:
+            blocker.bind(("127.0.0.1", 0))
+            port = blocker.getsockname()[1]
+            worker = GraphWorker(f"ws://127.0.0.1:{port}/ws_json", "test",
+                                 tmp_path / "writer.lock", timeout=2)
+            with pytest.raises(GraphQueryError) as error:
+                await worker.save()
+            assert error.value.code in ("graph_worker_failed", "graph_timeout",
+                                        "server_unreachable")
+            assert worker.pid is None
+            await worker.close()
+    asyncio.run(scenario())
+
+
 def test_oversized_dispatch_never_starts_a_worker(tmp_path):
     async def scenario():
         worker = GraphWorker("unused", "test", tmp_path / "writer.lock")
@@ -145,11 +192,19 @@ def test_request_consumer_uses_bounded_page_seam_and_reports_errors(tmp_path, mo
 
 #: How long the first answer of a page read is held back. It has to outlast both the
 #: spawn of the child and the page budget below: a spawned child imports this module and
-#: its dependencies, which costs a couple of seconds here.
-SLOW_FIRST_DELAY = 6.0
+#: its dependencies, which costs a couple of seconds on an idle machine.
+#:
+#: Measured 2026-10-13, and the reason these two numbers are what they are: with the
+#: budget at 3.0 s the first full-suite run of the day failed here — under load the spawn
+#: of the child outlasted the page budget, the read expired before anything was dispatched,
+#: and `_fail_lane` took its `never_answered` path and stopped a worker that had only not
+#: finished starting. The same test passed three times out of three on its own (9.6–10.8 s).
+#: The behaviour under test is unchanged (a page deadline that expires after dispatch keeps
+#: the worker and owes its answer); only the margin for a loaded machine is wider.
+SLOW_FIRST_DELAY = 16.0
 
 #: The page budget the first read runs out of: longer than a spawn, shorter than the answer.
-SHORT_PAGE_BUDGET = 3.0
+SHORT_PAGE_BUDGET = 10.0
 
 
 def slow_first_child(connection):

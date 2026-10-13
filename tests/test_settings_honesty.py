@@ -20,7 +20,10 @@ declared setting, in force or not, because that is what the catalog page is):
 * the setting's declared **environment name**, read directly with
   `os.environ.get(...)` — the one documented exception is `runtime.data_dir`, which
   has to answer before the settings file (inside that directory) can be read, so
-  `config.data_root()` reads `ONEIRO_DATA_DIR` itself;
+  `config.data_root()` reads `ONEIRO_DATA_DIR` itself. Only a **read** counts: a
+  module that *sets* `os.environ["ONEIRO_DATA_DIR"]` for a child process is not a
+  module that acts on the setting, and counting the write would have made a
+  measurement harness a reader of a key it only passes on;
 * membership in `tools.EFFECT_SETTINGS`, which hands an effect's decision to a
   permission setting (that is how `permissions.*` reaches behaviour).
 
@@ -36,6 +39,7 @@ from __future__ import annotations
 
 import dataclasses
 import re
+import sys
 from pathlib import Path
 
 from oneiro import config, tools
@@ -49,7 +53,15 @@ NOT_BEHAVIOUR = {"settings_registry.py", "pages.py"}
 
 
 def _sources() -> dict[str, str]:
-    return {path.name: path.read_text(encoding="utf-8")
+    """Every behaviour module, named by its **path** under the package.
+
+    Named by path, not by file name: `python/oneiro/` is a package with sub-packages
+    (`oneiro/dream/`), and keying this by `path.name` once let `dream/cli.py` stand in
+    for `cli.py`, which silently dropped every setting the product's own command line
+    reads and reported them as unread. A name a person reading the failure can act on
+    is part of the check working.
+    """
+    return {path.relative_to(PRODUCT).as_posix(): path.read_text(encoding="utf-8")
             for path in PRODUCT.rglob("*.py") if path.name not in NOT_BEHAVIOUR}
 
 
@@ -61,8 +73,10 @@ def _read_through_the_api(key: str, text: str, env: str = "") -> bool:
         rf'config\.resolve\(\s*["\']{re.escape(key)}["\']',
         rf"config\.attr\.{re.escape(attr)}\b"]
     if env:
-        patterns.append(rf'os\.environ(?:\[["\']{re.escape(env)}["\']\]|\.get\(\s*["\']'
-                        rf'{re.escape(env)}["\'])')
+        # A read, never a write: `os.environ["X"] = ...` hands a value to a child, and a
+        # module that only passes a name on does not act on the setting that owns it.
+        patterns.append(rf'os\.environ(?:\[["\']{re.escape(env)}["\']\](?!\s*[=])'
+                        rf'|\.get\(\s*["\']{re.escape(env)}["\'])')
     return any(re.search(pattern, text) for pattern in patterns)
 
 
@@ -147,3 +161,38 @@ def test_a_setting_added_tomorrow_without_a_reader_fails_the_rule(monkeypatch):
     monkeypatch.setattr(config, "SETTINGS",
                         [*declared, dataclasses.replace(ghost, pending=True)])
     assert _silent() == [] and _acting_pending() == []
+
+
+def test_two_modules_with_one_file_name_do_not_hide_each_other(monkeypatch, tmp_path: Path):
+    """The scan names files by path, so a sub-package cannot stand in for its parent.
+
+    Falsified, not assumed: a real tree where `pkg/a.py` reads a key and `pkg/sub/a.py`
+    does not. Keyed by file name — which is how this check was written first — the second
+    file silently replaced the first, and a setting in force was reported as unread. The
+    failure was found on `python/oneiro/cli.py` against `python/oneiro/dream/cli.py`.
+    """
+    package = tmp_path / "pkg"
+    (package / "sub").mkdir(parents=True)
+    (package / "a.py").write_text('x = config.value("demo.one")\n', encoding="utf-8")
+    (package / "sub" / "a.py").write_text("x = 1\n", encoding="utf-8")
+    monkeypatch.setattr(sys.modules[__name__], "PRODUCT", package)
+
+    sources = _sources()
+    assert sorted(sources) == ["a.py", "sub/a.py"], "both modules are read, under two names"
+    assert "a.py" in readers("demo.one")
+
+
+def test_only_reading_an_environment_name_counts(monkeypatch, tmp_path: Path):
+    """A module that sets the variable for a child has not acted on the setting.
+
+    `os.environ["ONEIRO_DATA_DIR"] = ...` is how a harness hands a root to a process it
+    starts; counting it as a reader would report the setting as wired to a module that
+    only passes the name on. Falsified on real file text, both ways round.
+    """
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "sets.py").write_text('os.environ["ONEIRO_DEMO"] = "x"\n', encoding="utf-8")
+    (package / "reads.py").write_text('os.environ.get("ONEIRO_DEMO")\n', encoding="utf-8")
+    monkeypatch.setattr(sys.modules[__name__], "PRODUCT", package)
+
+    assert readers("demo.two", "ONEIRO_DEMO") == ["reads.py"]

@@ -285,10 +285,18 @@ def _validate_json(key: str, data: Any) -> Any:
                     or not str(item.get("base_url", "")).strip():
                 raise ValueError(f"{key}: every provider needs a name and a base_url")
             if any(field not in ("name", "base_url", "key_env", "discover_models", "models",
-                                 "enabled")
+                                 "enabled", "user_agent", "requests_per_minute", "timeout_seconds")
                    for field in item):
                 raise ValueError(f"{key}: a provider has fields name, base_url, key_env, "
-                                 f"discover_models, models, enabled")
+                                 f"discover_models, models, enabled, user_agent, "
+                                 f"requests_per_minute, timeout_seconds")
+            agent = item.get("user_agent", "")
+            if not isinstance(agent, str) or any(ord(ch) < 32 or ord(ch) > 126 for ch in agent):
+                raise ValueError(f"{key}: user_agent must be printable ASCII text")
+            for field, maximum in (("requests_per_minute", 1000000), ("timeout_seconds", 3600)):
+                limit = item.get(field, 0)
+                if isinstance(limit, bool) or not isinstance(limit, int) or not 0 <= limit <= maximum:
+                    raise ValueError(f"{key}: {field} must be an integer from 0 to {maximum}")
         return data
     return data
 

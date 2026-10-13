@@ -13,12 +13,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import re
 import socket
 import threading
 from pathlib import Path
 from typing import Any, Callable, Coroutine
 
-from oneiro import (config, hooks, mcp as mcp_module, mcp_surface, office_env,
+from oneiro import (config, drafts, hooks, mcp as mcp_module, mcp_surface, office_env,
                     research as research_module, schedule as schedule_module,
                     skills as skills_module, tasks, window)
 from oneiro.ownership import OwnershipError
@@ -291,6 +292,207 @@ def schedules_command(argv: list[str]) -> int:
     return 0
 
 
+def _arguments_of(tool: Any, pairs: list[str]) -> dict[str, Any]:
+    """The exact call's arguments, typed by the tool's own declared schema.
+
+    The schema is the authority for the type, so `--argument n=5` reaches a tool that
+    declares an integer as an integer, and a string that only looks like a number stays
+    a string. A name the tool does not declare is left as given: the module refuses it
+    with the field named, which is a better sentence than a guess made here.
+    """
+    values: dict[str, Any] = {}
+    for item in pairs:
+        if "=" not in item:
+            raise ValueError(f"an argument is name=value, got {item!r}")
+        name, raw = item.split("=", 1)
+        name = name.strip()
+        kind = (tool.properties.get(name) or {}).get("type")
+        if kind == "integer" and re.fullmatch(r"-?\d+", raw.strip()):
+            values[name] = int(raw)
+        elif kind == "boolean" and raw.strip().lower() in ("true", "false"):
+            values[name] = raw.strip().lower() == "true"
+        else:
+            values[name] = raw
+    return values
+
+
+def _one_line(arguments: dict[str, Any], limit: int = 400) -> str:
+    """The exact call as one readable line, bounded, with the rest counted."""
+    text = ", ".join(f"{name}={value!r}" for name, value in sorted(arguments.items()))
+    return text if len(text) <= limit else text[:limit] + f" …(+{len(text) - limit})"
+
+
+def drafts_command(argv: list[str]) -> int:
+    """`oneiro drafts` — the replies Oneiro has written and not sent.
+
+    `send` is the owner's press and the only thing here that sends: it decides the
+    approval and then releases exactly that call. `send --dry-run` asks the same question
+    and sends nothing, and `send` without a press is refused by the module with the reason
+    that nothing goes out until the owner presses.
+    """
+    parser = argparse.ArgumentParser(
+        prog="oneiro drafts",
+        description="Drafts: list, show, read, new, revise, discard, send, notice")
+    parser.add_argument("action", nargs="?", default="list",
+                        choices=("list", "show", "read", "new", "revise", "discard",
+                                 "send", "notice"))
+    parser.add_argument("draft_id", nargs="?", help="the draft to show, edit, send or call off")
+    parser.add_argument("--tool", default="",
+                        help="the MCP tool key the draft would call, e.g. mailbox.send_message")
+    parser.add_argument("--argument", action="append", default=[], metavar="NAME=VALUE",
+                        help="one exact argument of the call; repeatable")
+    parser.add_argument("--updates-tool", default="",
+                        help="the bot tool that reports your own chat, for `notice`")
+    parser.add_argument("--source-id", default="", help="the record this draft answers")
+    parser.add_argument("--reason", default="", help="why a draft was called off")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="say whether the press would send, and send nothing")
+    parser.add_argument("--json", action="store_true", help="machine-readable output")
+    args = parser.parse_args(argv)
+
+    def need_tool(value: str) -> Any:
+        if "." not in value:
+            raise ValueError("error: --tool must be the key of a declared MCP tool")
+        return value
+
+    if args.action in ("read", "new"):
+        need_tool(args.tool)
+    if args.action in ("show", "revise", "discard", "send", "notice") and not args.draft_id:
+        print(f"error: a draft id is required to {args.action} a draft")
+        return 2
+    if args.action == "notice" and ("." not in args.tool or "." not in args.updates_tool):
+        print("error: --tool and --updates-tool must both name declared MCP tools")
+        return 2
+
+    if args.action == "list":
+        payload = _one_shot(lambda owner: drafts.listing(owner))
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+            return 0
+        if not payload["drafts"]:
+            print("no drafts are waiting.")
+        for item in payload["drafts"]:
+            print(f"{item['id']}  {item['state']}  {item['why']}  ->  "
+                  f"{item['target'] or item['tool']}")
+            print(f"    {item['tool']}: {_one_line(item['arguments'])}")
+        for item in payload["settled"]:
+            print(f"{item['id']}  {item['state']}  {item['why']} "
+                  f"({item['effect']['outcome']})")
+        print(f"waiting for your press: {payload['waiting']}")
+        return 0
+
+    if args.action == "show":
+        item = _one_shot(lambda owner: drafts.get(owner, args.draft_id))
+        if args.json:
+            print(json.dumps(item, ensure_ascii=False, indent=2, default=str))
+            return 0
+        print(f"{item['id']}  {item['state']}  {item['why']}")
+        print(f"    tool: {item['tool']}")
+        for name, value in sorted(item["arguments"].items()):
+            print(f"    {name}: {str(value)[:2000]}")
+        print(f"    effect: {item['effect']['kind']} -> {item['effect']['target'] or '—'} "
+              f"({item['effect']['outcome']})")
+        if item["result"]:
+            print(f"    result: {str(item['result'])[:400]}")
+        return 0
+
+    async def with_tool(work: Any) -> Any:
+        tool = await drafts.offered(args.tool)
+        return await work(tool)
+
+    if args.action in ("read", "new", "notice"):
+        # `offered` is read for the schema: what a call may carry is the server's own
+        # declaration, and a name it does not declare is refused with the field named.
+        if args.action == "read":
+            payload = _one_shot(lambda owner: with_tool(
+                lambda tool: drafts.read_incoming(owner, tool=args.tool,
+                                                  arguments=_arguments_of(tool, args.argument))))
+            if args.json:
+                print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+                return 0
+            if not payload["ok"]:
+                print(f"error: the read did not finish: {payload['reason']}")
+                return 2
+            print(f"read {payload['read']} message(s) through {payload['tool']}")
+            for note in payload["notes"]:
+                print(f"  {note['id']}  {note['topic']}")
+                print(f"    {str(note['body'])[:400]}")
+            return 0
+
+        if args.action == "new":
+            created = _one_shot(lambda owner: with_tool(
+                lambda tool: drafts.create(owner, tool=args.tool,
+                                           arguments=_arguments_of(tool, args.argument),
+                                           source_id=args.source_id)))
+            if args.json:
+                print(json.dumps(created, ensure_ascii=False, indent=2, default=str))
+                return 0
+            print(f"{created['id']}  {created['state']}  {created['why']}")
+            print(f"    {created['tool']}: {_one_line(created['arguments'])}")
+            print(f"nothing is sent yet. press with: oneiro drafts send {created['id']}")
+            return 0
+
+        found = _one_shot(lambda owner: drafts.get(owner, args.draft_id))
+        sent = _one_shot(lambda owner: drafts.notify(owner, drafts.notice_for(owner, found),
+                                                     tool=args.tool,
+                                                     updates_tool=args.updates_tool))
+        if args.json:
+            print(json.dumps({**sent, "draft_id": found["id"]}, ensure_ascii=False,
+                             indent=2, default=str))
+            return 0
+        print(f"notice to chat {sent['chat_id']}: "
+              + ("delivered" if sent["ok"] else f"not delivered ({sent['reason']})"))
+        return 0 if sent["ok"] else 2
+
+    if args.action == "revise":
+        # The tool comes from the **draft**, not from the command line: a draft is about one
+        # exact call, and `--tool` here could only disagree with it. (Measured 2026-10-12: a
+        # revise without `--tool` answered `unknown_tool: ''`, because the schema was read
+        # from an empty flag instead of from the draft being edited.)
+        async def edit(owner: Any) -> Any:
+            found = await drafts.get(owner, args.draft_id)
+            tool = await drafts.offered(str(found["tool"]))
+            return await drafts.revise(owner, args.draft_id,
+                                       arguments=_arguments_of(tool, args.argument))
+
+        renamed = _one_shot(edit)
+        if args.json:
+            print(json.dumps(renamed, ensure_ascii=False, indent=2, default=str))
+            return 0
+        print(f"{renamed['id']}  {renamed['state']}  {renamed['why']}")
+        print(f"    {renamed['tool']}: {_one_line(renamed['arguments'])}")
+        print("the edited call has not been pressed: press it again if it is right now.")
+        return 0
+
+    if args.action == "discard":
+        called_off = _one_shot(lambda owner: drafts.discard(owner, args.draft_id,
+                                                           reason=args.reason))
+        if args.json:
+            print(json.dumps(called_off, ensure_ascii=False, indent=2, default=str))
+            return 0
+        print(f"{called_off['id']}  {called_off['state']}  {called_off['why']}")
+        return 0
+
+    if args.dry_run:
+        asked = _one_shot(lambda owner: drafts.send(owner, args.draft_id, actor="owner",
+                                                    dry_run=True))
+        if args.json:
+            print(json.dumps(asked, ensure_ascii=False, indent=2, default=str))
+            return 0
+        print(f"{asked['draft']['id']}  would send: {asked['why']}")
+        return 0
+
+    result = _one_shot(lambda owner: drafts.press(owner, args.draft_id))
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+        return 0
+    print(f"{result['draft']['id']}  {result['draft']['state']}  {result['draft']['why']}"
+          + (f"  ->  {result['text'][:200]}" if result["text"] else ""))
+    if result["state"] == "uncertain":
+        print("the send may or may not have happened; nothing will be retried by itself.")
+    return 0 if result["ok"] else 2
+
+
 def hooks_command(argv: list[str]) -> int:
     """`oneiro hooks` — the webhook secret, and the signature of one body.
 
@@ -393,7 +595,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Oneiro standalone rewrite")
     parser.add_argument("command", nargs="?", default="serve",
                         choices=("doctor", "serve", "verify-model", "settings", "tasks",
-                                 "schedules", "mcp", "skills", "research", "office", "hooks"))
+                                 "schedules", "mcp", "skills", "research", "office", "hooks",
+                                 "drafts"))
     parser.add_argument("--no-window", action="store_true", help="run server without window")
     # `settings`, `tasks` and `schedules` have options of their own, and a
     # positional with nargs="*" cannot absorb a token that starts with a dash, so
@@ -443,6 +646,28 @@ def main(argv: list[str] | None = None) -> int:
         return office_command(rest)
     if args.command == "hooks":
         return hooks_command(rest)
+    if args.command == "drafts":
+        # A draft is read and written through the memory, and the tools it names are MCP
+        # servers of the owner's: the hub is closed on the way out either way, so a
+        # command that started a server does not leave the child behind.
+        try:
+            return drafts_command(rest)
+        except drafts.DraftError as exc:
+            print(f"error: {exc.reason}: {exc}")
+            return 2
+        except ValueError as exc:
+            print(f"error: {exc}")
+            return 2
+        except GraphQueryError as exc:
+            print(f"error: the memory could not be read ({exc.code}: {exc.reason}). "
+                  f"Nothing was changed.")
+            return 2
+        except OwnershipError:
+            print("error: another Oneiro process holds the runtime. Stop it, or point "
+                  "ONEIRO_DATA_DIR somewhere else for this command.")
+            return 2
+        finally:
+            mcp_module.hub().close()
     if rest:
         parser.error(f"unrecognized arguments: {' '.join(rest)}")
     listener: socket.socket | None = None

@@ -372,7 +372,204 @@ function setupTabs() {
 }
 
 // -------------------------------------------------------------
-// 4. Settings Form Submission
+// 4. Drafts: the owner's press is the only way anything leaves
+// -------------------------------------------------------------
+const draftList = document.querySelector("#draft-list");
+const draftSettled = document.querySelector("#draft-settled");
+const draftMeter = document.querySelector("#draft-meter");
+
+// Which argument a revision field edits. The arguments belong to the tool, so this is
+// only the order the names a text field usually takes; a call with none of them keeps
+// its own shape and says so instead of offering a field that would rewrite the wrong key.
+const TEXT_KEYS = ["body", "text", "message", "content"];
+
+function textKeyOf(arguments_) {
+  const shape = arguments_ || {};
+  return TEXT_KEYS.find(key => typeof shape[key] === "string") || "";
+}
+
+function stateText(state) {
+  const key = "draft.state." + String(state || "");
+  return T[key] || String(state || "");
+}
+
+function effectText(effect) {
+  const outcome = String((effect || {}).outcome || "none");
+  const key = "draft.effect." + outcome;
+  return T[key] || outcome;
+}
+
+// A named refusal arrives as a code, so its sentence is the catalog's. With no code at
+// all the read itself did not finish — the 503 routes answer that way, with an English
+// sentence this translated page must not print — so the catalog's own sentence for an
+// unanswered graph is shown. A code the catalog does not know is printed inside that
+// sentence rather than bare: visible, and never silently English.
+function refusalText(answer) {
+  const code = String((answer && answer.reason) || "");
+  if (!code) return T["draft.refused.unreachable"];
+  return T["draft.refused." + code]
+    || T["draft.action_failed"].replace("{reason}", code);
+}
+
+// The exact call, one field at a time. The text is shown as text: the owner is deciding
+// whether *those bytes* may leave, so a summary would be a different decision.
+function argumentRows(arguments_) {
+  const shape = arguments_ || {};
+  const textKey = textKeyOf(shape);
+  return Object.keys(shape).map(key => {
+    const value = escapeHtml(String(shape[key]));
+    return key === textKey
+      ? `<div class="draft-argument"><small>${escapeHtml(key)}</small><pre>${value}</pre></div>`
+      : `<div class="draft-argument"><small>${escapeHtml(key)}</small><span>${value}</span></div>`;
+  }).join("");
+}
+
+async function draftAction(id, path, body) {
+  const token = await getToken();
+  const response = await fetch("/api/drafts/" + encodeURIComponent(id) + path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Oneiro-CSRF": token },
+    body: JSON.stringify(body),
+  });
+  const answer = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(refusalText(answer));
+  return answer;
+}
+
+function draftSendNote(answer) {
+  if (!answer || typeof answer !== "object") return "draft.send_unknown";
+  if (answer.state === "uncertain" || answer.effect === "uncertain") return "draft.send_uncertain";
+  if (answer.recorded === false) return "draft.send_unrecorded";
+  if (answer.ok === false) return "draft.send_failed";
+  return answer.ok === true && answer.state === "completed"
+    && answer.effect === "succeeded" && answer.recorded === true
+    ? "draft.sent" : "draft.send_unknown";
+}
+
+function draftCard(item) {
+  const id = String(item.id || "");
+  const shape = item.arguments || {};
+  const textKey = textKeyOf(shape);
+  const recipient = String(item.target || shape.to || "");
+  const card = document.createElement("div");
+  card.className = "card-item draft-card";
+  card.dataset.draft = id;
+  card.innerHTML = [
+    `<div class="draft-head"><strong>${escapeHtml(String(item.tool || ""))}</strong>`,
+    `<span class="pill">${escapeHtml(stateText(item.state))}</span></div>`,
+    recipient
+      ? `<p class="muted">${escapeHtml(T["draft.target"])}: ${escapeHtml(recipient)}</p>`
+      : "",
+    `<div class="draft-call"><small>${escapeHtml(T["draft.call_title"])}</small>`,
+    argumentRows(shape),
+    "</div>",
+    `<div class="draft-actions">`,
+    `<button type="button" class="btn-primary draft-send">${escapeHtml(T["btn.send_draft"])}</button>`,
+    `<button type="button" class="btn-subtle draft-discard">${escapeHtml(T["btn.discard_draft"])}</button>`,
+    "</div>",
+    textKey
+      ? `<form class="draft-revise">`
+        + `<label for="revise-${escapeHtml(id)}">${escapeHtml(T["draft.revision_label"])}</label>`
+        + `<textarea id="revise-${escapeHtml(id)}" name="revision" rows="4">`
+        + `${escapeHtml(String(shape[textKey]))}</textarea>`
+        + `<button type="submit" class="btn-subtle">${escapeHtml(T["btn.save_revision"])}</button></form>`
+      : `<p class="muted">${escapeHtml(T["draft.text_missing"])}</p>`,
+    `<p class="bad draft-error" hidden></p>`,
+  ].join("");
+
+  const error = card.querySelector(".draft-error");
+  // A refusal is shown on the card that caused it and nothing is reloaded: the owner
+  // must be able to read why, with the call still in front of them.
+  function refused(why) {
+    error.hidden = false;
+    error.className = "bad draft-error";
+    error.textContent = why;
+  }
+  // A decision that landed is read back from the store: the list is fetched again, and
+  // the sentence about what happened goes to the meter, which is the page's own status.
+  async function run(path, body, noteKey) {
+    try {
+      const answer = await draftAction(id, path, body);
+      const resultKey = path === "/send" ? draftSendNote(answer) : noteKey;
+      const refreshed = await loadDrafts();
+      // A failed refresh must remain visible. A warning about the send itself is
+      // retained as well; neither a 200 nor a stale list proves a saved success.
+      if (draftMeter) {
+        draftMeter.textContent = refreshed ? T[resultKey]
+          : [T["draft.load_failed"], resultKey === "draft.sent" ? "" : T[resultKey]]
+            .filter(Boolean).join("\n");
+      }
+    } catch (refusal) {
+      refused(refusal.message);
+    }
+  }
+
+  card.querySelector(".draft-send").addEventListener("click", () => {
+    run("/send", {}, "draft.sent");
+  });
+  card.querySelector(".draft-discard").addEventListener("click", () => {
+    run("/discard", { reason: "" }, "draft.discarded");
+  });
+  const revision = card.querySelector(".draft-revise");
+  if (revision) {
+    revision.addEventListener("submit", event => {
+      event.preventDefault();
+      // The revision replaces the whole call: same arguments, the edited text.
+      run("/revise", { arguments: Object.assign({}, shape, { [textKey]: revision.elements.revision.value }) },
+          "draft.revised");
+    });
+  }
+  return card;
+}
+
+// A draft that is already decided is shown, not offered: its call, its state, and what is
+// known about the effect. Nothing here writes.
+function settledCard(item) {
+  const recipient = String(item.target || "");
+  const card = document.createElement("div");
+  card.className = "card-item draft-card settled";
+  card.dataset.draft = String(item.id || "");
+  card.innerHTML = [
+    `<div class="draft-head"><strong>${escapeHtml(String(item.tool || ""))}</strong>`,
+    `<span class="pill">${escapeHtml(stateText(item.state))}</span></div>`,
+    recipient
+      ? `<p class="muted">${escapeHtml(T["draft.target"])}: ${escapeHtml(recipient)}</p>`
+      : "",
+    `<small class="muted">${escapeHtml(effectText(item.effect))}</small>`,
+  ].join("");
+  return card;
+}
+
+async function loadDrafts() {
+  if (!draftList && !draftSettled) return;
+  try {
+    const response = await fetch("/api/drafts");
+    if (!response.ok) throw new Error("drafts-unavailable");
+    const listing = await response.json();
+    const waiting = listing.drafts || [];
+    const settled = listing.settled || [];
+    if (draftMeter) {
+      draftMeter.textContent = T["draft.meter"].replace("{n}", String(listing.waiting || 0));
+    }
+    if (draftList) {
+      draftList.innerHTML = waiting.length
+        ? "" : `<p class='muted'>${escapeHtml(T["draft.none_waiting"])}</p>`;
+      waiting.forEach(item => draftList.appendChild(draftCard(item)));
+    }
+    if (draftSettled) {
+      draftSettled.innerHTML = settled.length
+        ? "" : `<p class='muted'>${escapeHtml(T["draft.none_settled"])}</p>`;
+      settled.forEach(item => draftSettled.appendChild(settledCard(item)));
+    }
+    return true;
+  } catch (_) {
+    if (draftMeter) draftMeter.textContent = T["draft.load_failed"];
+    return false;
+  }
+}
+
+// -------------------------------------------------------------
+// 5. Settings Form Submission
 // -------------------------------------------------------------
 if (form) {
   const asEntered = new Map();
@@ -423,5 +620,122 @@ if (form) {
   });
 }
 
+// -------------------------------------------------------------
+// 4. Curated Memory Screen
+// -------------------------------------------------------------
+const factsList = document.querySelector("#facts-list");
+const factsMeter = document.querySelector("#facts-meter");
+const factsError = document.querySelector("#facts-error");
+const factForm = document.querySelector("#fact-add");
+const factField = document.querySelector("#fact-text");
+
+// A stored stamp is ISO with an offset. It is shown cut to the minute rather than
+// reformatted by the browser's own locale: the page already has a language, and a
+// stamp read through the browser's would differ from the one in the record.
+function stampText(stamp) {
+  return String(stamp || "").slice(0, 16).replace("T", " ");
+}
+
+function sourceText(provenance) {
+  const value = String(provenance || "");
+  return T["facts.source." + value] || value;
+}
+
+// A fact with what it replaced. The earlier value is not decoration: it is what the
+// current one contradicts, so it is shown with its own date and source instead of
+// disappearing when the fact is edited.
+function factCard(fact) {
+  const earlier = Array.isArray(fact.superseded) ? fact.superseded : [];
+  const card = document.createElement("li");
+  card.className = "card-item fact-card";
+  card.dataset.fact = String(fact.id || "");
+  card.innerHTML = [
+    `<div class="fact-text">${escapeHtml(String(fact.text || ""))}</div>`,
+    `<small class="muted fact-meta">${escapeHtml(T["facts.source"])}: `
+      + `${escapeHtml(sourceText(fact.provenance))}`
+      + ` · ${escapeHtml(T["facts.recorded"])}: ${escapeHtml(stampText(fact.created_at))}`
+      + ` · ${escapeHtml(T["facts.updated"])}: ${escapeHtml(stampText(fact.updated_at))}</small>`,
+    earlier.length
+      ? `<div class="fact-earlier"><small class="muted">${escapeHtml(T["facts.earlier"])}`
+        + ` — ${escapeHtml(T["facts.earlier_note"])}</small>`
+        + earlier.map(older => `<div class="fact-older">`
+          + `<span class="fact-older-text">${escapeHtml(String(older.text || ""))}</span>`
+          + `<small class="muted">${escapeHtml(T["facts.source"])}: `
+          + `${escapeHtml(sourceText(older.provenance))}`
+          + ` · ${escapeHtml(T["facts.updated"])}: `
+          + `${escapeHtml(stampText(older.updated_at))}</small></div>`).join("")
+        + `</div>`
+      : "",
+  ].join("");
+  return card;
+}
+
+async function loadFacts() {
+  if (!factsList) return false;
+  try {
+    const response = await fetch("/api/memory/facts");
+    if (!response.ok) throw new Error("facts-unavailable");
+    const listing = await response.json();
+    const facts = listing.facts || [];
+    if (factsMeter) {
+      factsMeter.textContent = T["facts.meter"]
+        .replace("{n}", String(listing.used_chars || 0))
+        .replace("{limit}", String(listing.limit_chars || 0))
+        + (listing.history_complete === false ? " — " + T["facts.history_partial"] : "");
+    }
+    factsList.innerHTML = facts.length ? "" : `<li class='muted'>${escapeHtml(T["facts.empty"])}</li>`;
+    facts.forEach(fact => factsList.appendChild(factCard(fact)));
+    return true;
+  } catch (_) {
+    if (factsMeter) factsMeter.textContent = T["facts.load_failed"];
+    return false;
+  }
+}
+
+if (factForm) {
+  factForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    if (factsError) {
+      factsError.hidden = true;
+      factsError.textContent = "";
+    }
+    const text = factField ? factField.value.trim() : "";
+    if (!text) return;
+    try {
+      const token = await getToken();
+      const response = await fetch("/api/memory/facts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Oneiro-CSRF": token },
+        body: JSON.stringify({
+          text: text,
+          client_id: "web-" + Math.random().toString(36).substring(2, 10),
+        }),
+      });
+      const answer = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        // The refusal is the store's own sentence — the budget, the text, the read that
+        // did not finish — shown as it came rather than replaced by a friendlier one.
+        const why = String(answer.error || "");
+        if (factsError) {
+          factsError.hidden = false;
+          factsError.textContent = T["facts.add_failed"].replace("{reason}", why);
+        }
+        return;
+      }
+      if (factField) factField.value = "";
+      const refreshed = await loadFacts();
+      if (factsMeter && refreshed) {
+        factsMeter.textContent = answer.duplicate ? T["facts.duplicate"] : T["facts.added"];
+      }
+    } catch (_) {
+      if (factsError) {
+        factsError.hidden = false;
+        factsError.textContent = T["facts.add_failed"].replace("{reason}", T["facts.unreachable"]);
+      }
+    }
+  });
+}
+
 // Initializations
-getToken().then(prerequisites).then(loadTasksAndSchedules).then(setupTabs);
+getToken().then(prerequisites).then(loadTasksAndSchedules).then(loadDrafts)
+  .then(loadFacts).then(setupTabs);

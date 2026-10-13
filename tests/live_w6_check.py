@@ -182,7 +182,7 @@ def graph_states(work: Path, configured_port: int) -> int:
                                   _strings, _visible_lines)
 
     say("\n== 3. The memory substrate in three states (row 14/15) ==")
-    screens = ("/", "/tasks", "/tools", "/settings", "/memory", "/setup", "/oneiro/")
+    screens = ("/", "/drafts", "/tasks", "/tools", "/settings", "/memory", "/setup", "/oneiro/")
     limit = memory.PROBE_BUDGET + 3.0
     problems: list[str] = []
     with SilentPort() as silent_port:

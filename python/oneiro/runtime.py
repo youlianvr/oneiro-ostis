@@ -43,7 +43,12 @@ class Runtime:
         try:
             if self._graph is None:
                 host, port = str(config.value("graph.host")), int(config.value("graph.port"))
-                self._graph = GraphWorker(f"ws://{host}:{port}/ws_json", "product",
+                # The subject of experience is a setting, not a constant: the owner's own
+                # work and a demonstration must be able to live in one graph without
+                # mixing, and before this the only way to write the demo's stream was a
+                # test launcher that built its own worker around the product's runtime.
+                stream = str(config.value("runtime.stream") or "product")
+                self._graph = GraphWorker(f"ws://{host}:{port}/ws_json", stream,
                                           config.data_root() / "graph-writer.lock")
         except BaseException:
             lease.release()

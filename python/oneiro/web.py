@@ -26,7 +26,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from oneiro import agent, config, hooks, mcp, memory, pages, recall, schedule, skills, tasks
+from oneiro import (agent, config, drafts, hooks, mcp, memory, pages, recall, schedule, skills,
+                    tasks)
 from oneiro import mcp_surface
 from oneiro.agent import TurnConflict
 from oneiro.chat import ChatError
@@ -247,6 +248,11 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
     @app.get("/", response_class=HTMLResponse)
     async def chat(request: Request) -> HTMLResponse:
         return await serve("chat", request)
+
+    @app.get("/drafts", response_class=HTMLResponse)
+    async def drafts_page(request: Request) -> HTMLResponse:
+        """The screen the owner presses from. Every write it makes is a route below."""
+        return await serve("drafts", request)
 
     @app.get("/tasks", response_class=HTMLResponse)
     async def tasks_page(request: Request) -> HTMLResponse:
@@ -583,14 +589,20 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
         if not _CONVERSATION.fullmatch(conversation_id):
             return refused(400, "conversation_id must be 1..64 letters, digits or hyphens")
         try:
-            found = await page_read(lambda: recall.history(owner, conversation_id,
-                                                          limit=_check_limit(limit)))
+            async def read_messages() -> tuple[recall.Scan, dict[str, list[dict[str, Any]]]]:
+                found = await recall.history(owner, conversation_id, limit=_check_limit(limit))
+                steps = await agent.turn_steps_for(owner, {
+                    row["id"] for row in found.rows if row["id"].startswith("reply-")})
+                return found, steps
+
+            found, steps = await page_read(read_messages)
         except GraphQueryError as exc:
             if exc.code == "bad_limit":
                 return refused(400, exc.reason)
             return unavailable(exc)
         return JSONResponse({"conversation_id": conversation_id,
-                             "messages": [_message_out(row) for row in found.rows],
+                             "messages": [{**_message_out(row), "steps": steps.get(row["id"], [])}
+                                          for row in found.rows],
                              "complete": found.complete, "scanned": found.scanned,
                              "skipped": found.skipped})
 
@@ -745,6 +757,181 @@ def create_app(runtime: Runtime | None = None, *, scheduler: bool = False) -> Fa
         return JSONResponse({"hook": result["hook"], "client_id": result["client_id"],
                              "title": result["title"], "task_id": result["task_id"],
                              "duplicate": result["duplicate"]}, status_code=202)
+
+    # ---- drafts: a reply that goes out only when the owner presses send ----
+    #
+    # A draft is written here, read here and released here, and the release is this
+    # process's own act on the owner's behalf. The refusal statuses are the module's
+    # reasons: `not_pressed` and `already_settled` are conflicts (the request is fine,
+    # the state is not), `permission_denied` is a boundary, a missing tool or draft is a
+    # 404, and a bot that has never been written to is a 503 with its own words.
+    DRAFT_STATUS = {"unknown_draft": 404, "unknown_tool": 404, "bad_arguments": 400,
+                    "not_pressed": 409, "already_settled": 409, "permission_denied": 403,
+                    "not_the_owner": 403, "no_chat": 503}
+
+    def draft_refused(exc: drafts.DraftError) -> JSONResponse:
+        return refused(DRAFT_STATUS.get(exc.reason, 400), str(exc), reason=exc.reason)
+
+    def draft_input(body: dict[str, Any]) -> tuple[str, dict[str, Any]] | JSONResponse:
+        """The tool key and the exact arguments, checked before anything is written."""
+        tool, arguments = body.get("tool"), body.get("arguments")
+        if not isinstance(tool, str) or "." not in tool:
+            return refused(400, "tool must be the key of a declared MCP tool, "
+                                "such as server.tool")
+        if not isinstance(arguments, dict):
+            return refused(400, "arguments must be an object: the exact call the draft makes")
+        return tool, arguments
+
+    @app.get("/api/drafts")
+    async def draft_list() -> JSONResponse:
+        """The drafts waiting for the owner, and what became of the last few that are not."""
+        try:
+            listed = await page_read(lambda: drafts.listing(owner))
+        except GraphQueryError as exc:
+            return unavailable(exc)
+        return JSONResponse(listed)
+
+    @app.get("/api/drafts/{draft_id}")
+    async def draft_show(draft_id: str) -> JSONResponse:
+        if not _RECORD_ID.fullmatch(draft_id):
+            return refused(404, "no such draft")
+        try:
+            found = await page_read(lambda: drafts.get(owner, draft_id))
+        except drafts.DraftError as exc:
+            return draft_refused(exc)
+        except GraphQueryError as exc:
+            return unavailable(exc)
+        return JSONResponse(found)
+
+    @app.post("/api/mail/read")
+    async def mail_read(request: Request) -> JSONResponse:
+        """Ask a declared mailbox tool for the newest incoming mail and keep it."""
+        body = await _json_object(request, CHAT_BODY_LIMIT)
+        if isinstance(body, JSONResponse):
+            return body
+        asked = draft_input({**body, "arguments": body.get("arguments") or {}})
+        if isinstance(asked, JSONResponse):
+            return asked
+        limit = body.get("limit", 10)
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 50:
+            return refused(400, "limit must be a whole number between 1 and 50")
+        try:
+            read = await drafts.read_incoming(owner, tool=asked[0], arguments=asked[1],
+                                              limit=limit)
+        except drafts.DraftError as exc:
+            return draft_refused(exc)
+        except GraphQueryError as exc:
+            return unavailable(exc)
+        return JSONResponse(read)
+
+    @app.post("/api/drafts")
+    async def draft_create(request: Request) -> JSONResponse:
+        body = await _json_object(request, CHAT_BODY_LIMIT)
+        if isinstance(body, JSONResponse):
+            return body
+        asked = draft_input(body)
+        if isinstance(asked, JSONResponse):
+            return asked
+        labels = body.get("labels") or []
+        if not isinstance(labels, list) or any(not isinstance(item, str) for item in labels):
+            return refused(400, "labels must be a list of words")
+        try:
+            created = await drafts.create(owner, tool=asked[0], arguments=asked[1],
+                                          labels=tuple(labels),
+                                          source_id=str(body.get("source_id") or ""))
+        except drafts.DraftError as exc:
+            return draft_refused(exc)
+        except GraphQueryError as exc:
+            return unavailable(exc)
+        return JSONResponse(created, status_code=201)
+
+    @app.post("/api/drafts/{draft_id}/revise")
+    async def draft_revise(draft_id: str, request: Request) -> JSONResponse:
+        """Edit a pending draft. The edited call has not been pressed, so it waits again."""
+        if not _RECORD_ID.fullmatch(draft_id):
+            return refused(404, "no such draft")
+        body = await _json_object(request, CHAT_BODY_LIMIT)
+        if isinstance(body, JSONResponse):
+            return body
+        arguments = body.get("arguments")
+        if not isinstance(arguments, dict):
+            return refused(400, "arguments must be the object to replace the draft with")
+        try:
+            revised = await drafts.revise(owner, draft_id, arguments=arguments)
+        except drafts.DraftError as exc:
+            return draft_refused(exc)
+        except GraphQueryError as exc:
+            return unavailable(exc)
+        return JSONResponse(revised)
+
+    @app.post("/api/drafts/{draft_id}/discard")
+    async def draft_discard(draft_id: str, request: Request) -> JSONResponse:
+        if not _RECORD_ID.fullmatch(draft_id):
+            return refused(404, "no such draft")
+        body = await _json_object(request, CHAT_BODY_LIMIT)
+        if isinstance(body, JSONResponse):
+            return body
+        try:
+            discarded = await drafts.discard(owner, draft_id, reason=str(body.get("reason") or ""))
+        except drafts.DraftError as exc:
+            return draft_refused(exc)
+        except GraphQueryError as exc:
+            return unavailable(exc)
+        return JSONResponse(discarded)
+
+    @app.post("/api/drafts/{draft_id}/send")
+    async def draft_send(draft_id: str, request: Request) -> JSONResponse:
+        """The owner's press: the decision and the send, in that order.
+
+        `dry_run` asks the same question the press answers and sends nothing — a screen
+        needs to know whether the button is live without pressing it.
+        """
+        if not _RECORD_ID.fullmatch(draft_id):
+            return refused(404, "no such draft")
+        body = await _json_object(request, CHAT_BODY_LIMIT)
+        if isinstance(body, JSONResponse):
+            return body
+        dry_run = body.get("dry_run", False)
+        if not isinstance(dry_run, bool):
+            return refused(400, "dry_run must be true or false")
+        try:
+            if dry_run:
+                return JSONResponse(await drafts.send(owner, draft_id, actor="owner",
+                                                      dry_run=True))
+            result = await drafts.press(owner, draft_id)
+        except drafts.DraftError as exc:
+            return draft_refused(exc)
+        except GraphQueryError as exc:
+            return unavailable(exc)
+        return JSONResponse(result)
+
+    @app.post("/api/telegram/notice")
+    async def telegram_notice(request: Request) -> JSONResponse:
+        """Tell the owner, in their own chat, that a draft is waiting.
+
+        The text is composed here from the draft itself and the address is discovered
+        from the bot's own inbox, so neither is a parameter: this route cannot be used
+        to send anything to anybody else, whatever is posted to it.
+        """
+        body = await _json_object(request, CHAT_BODY_LIMIT)
+        if isinstance(body, JSONResponse):
+            return body
+        draft_id, tool = body.get("draft_id"), body.get("tool")
+        updates_tool = body.get("updates_tool")
+        if not isinstance(draft_id, str) or not _RECORD_ID.fullmatch(draft_id):
+            return refused(400, "draft_id must name a draft")
+        for name, value in (("tool", tool), ("updates_tool", updates_tool)):
+            if not isinstance(value, str) or "." not in value:
+                return refused(400, f"{name} must be the key of a declared MCP tool")
+        try:
+            found = await drafts.get(owner, draft_id)
+            sent = await drafts.notify(owner, drafts.notice_for(owner, found),
+                                       tool=str(tool), updates_tool=str(updates_tool))
+        except drafts.DraftError as exc:
+            return draft_refused(exc)
+        except GraphQueryError as exc:
+            return unavailable(exc)
+        return JSONResponse({**sent, "draft_id": draft_id})
 
     @app.get("/api/schedules")
     async def schedule_list() -> JSONResponse:

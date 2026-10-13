@@ -69,7 +69,7 @@ class OfficeError(RuntimeError):
 # ---------------------------------------------------------------- the sources
 
 
-def _flat_document(mimetype: str, body: str) -> str:
+def _flat_document(mimetype: str, body: str, styles: str = "") -> str:
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<office:document '
@@ -79,8 +79,9 @@ def _flat_document(mimetype: str, body: str) -> str:
         'xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0" '
         'xmlns:presentation="urn:oasis:names:tc:opendocument:xmlns:presentation:1.0" '
         'xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" '
+        'xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" '
         'office:version="1.3" office:mimetype="' + mimetype + '">'
-        "<office:body>" + body + "</office:body></office:document>\n"
+        + styles + "<office:body>" + body + "</office:body></office:document>\n"
     )
 
 
@@ -116,10 +117,21 @@ def spreadsheet_source(topic: str) -> str:
         )
     body = (
         "<office:spreadsheet>"
-        f'<table:table table:name="{_escape(topic)[:24]}">' + "".join(cells) + "</table:table>"
+        f'<table:table table:name="{_escape(topic)[:24]}">'
+        '<table:table-column table:style-name="LabelColumn"/>'
+        '<table:table-column table:style-name="ValueColumn"/>'
+        + "".join(cells) + "</table:table>"
         "</office:spreadsheet>"
     )
-    return _flat_document("application/vnd.oasis.opendocument.spreadsheet", body)
+    styles = (
+        '<office:automatic-styles>'
+        '<style:style style:name="LabelColumn" style:family="table-column">'
+        '<style:table-column-properties style:column-width="5cm"/></style:style>'
+        '<style:style style:name="ValueColumn" style:family="table-column">'
+        '<style:table-column-properties style:column-width="3cm"/></style:style>'
+        '</office:automatic-styles>'
+    )
+    return _flat_document("application/vnd.oasis.opendocument.spreadsheet", body, styles)
 
 
 def presentation_source(topic: str) -> str:

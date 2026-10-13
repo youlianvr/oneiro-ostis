@@ -591,8 +591,23 @@ def _finished_notice(task: dict[str, Any], state: State, notes: str) -> str:
     return f"{title} did not finish: {notes}".strip()[:NOTES_CHARS]
 
 
+def notice_id(conversation_id: str, text: str, moment: datetime, key: str = "") -> str:
+    """The id a notice carries: from its words and its minute, or from its key.
+
+    The words-and-minute id is what makes a notice a function of what was said and
+    when it was said, so a retried attempt cannot tell the owner the same thing
+    twice. A key is for the one answer to one thing — the digest of one quiet
+    window, one reminder about one item — which is said once whatever the minute,
+    so a second ask finds the first and reads it back instead of saying it again.
+    """
+    material = (f"{conversation_id}\n{key}" if key
+                else f"{conversation_id}\n{text}\n{moment:%Y%m%d%H%M}")
+    return "notice-" + hashlib.sha256(material.encode("utf-8")).hexdigest()[:24]
+
+
 async def notify(owner: Any, conversation_id: str, text: str, *,
-                 at: datetime | None = None) -> dict[str, Any]:
+                 at: datetime | None = None, key: str = "",
+                 labels: tuple[str, ...] = ()) -> dict[str, Any]:
     """Say one thing in a conversation, and hold it when quiet hours are on.
 
     Held is not hidden: the message is stored either way, because the memory is
@@ -604,16 +619,23 @@ async def notify(owner: Any, conversation_id: str, text: str, *,
     the same thing twice, and it is also what keeps the write idempotent: an
     identical operation ID with a different timestamp would be refused by the
     store rather than stored twice.
+
+    `key` names a notice that is one answer to one thing rather than a thing said
+    at a moment (see `notice_id`). It changes only the operation ID, which is why
+    the caller must ask whether that notice exists before it is built from what
+    the records say now — the store refuses a repeated operation ID whose content
+    differs, and it is right to: a second, different answer is not the first one.
     """
     moment = (at or utcnow()).astimezone().replace(second=0, microsecond=0)
     held = quiet_at(moment)
-    labels = (NOTICE, HELD) if held else (NOTICE,)
-    digest = hashlib.sha256(
-        f"{conversation_id}\n{text}\n{moment:%Y%m%d%H%M}".encode("utf-8")).hexdigest()[:24]
-    stamp = moment.isoformat(timespec="seconds")
-    record = ConversationMessage(id="notice-" + digest, conversation_id=conversation_id,
-                                 role="system", text=text, labels=labels,
-                                 created_at=stamp, updated_at=stamp,
+    # `labels` names what kind of notice this is, on top of `notice` and `held`, so a
+    # reader can tell a digest from a reminder without guessing at an id.
+    marks = (NOTICE, HELD, *labels) if held else (NOTICE, *labels)
+    record = ConversationMessage(id=notice_id(conversation_id, text, moment, key),
+                                 conversation_id=conversation_id,
+                                 role="system", text=text, labels=marks,
+                                 created_at=moment.isoformat(timespec="seconds"),
+                                 updated_at=moment.isoformat(timespec="seconds"),
                                  provenance=Provenance.SYSTEM, state=State.COMPLETED)
     published = await owner.publish(record.to_dict(), record.id)
     return {"record": published["record"], "held": held, "duplicate": published["duplicate"]}

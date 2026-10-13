@@ -17,6 +17,10 @@ One rule is the owner's own words: `initiative.level`. With `off` or `on_command
 a due schedule is named and left alone; `scheduled` adds the tasks put on a
 schedule, and `proactive` adds what Oneiro notices by itself. Nothing here decides
 that for itself.
+
+The same tick is where the proactive moments are said (`oneiro.proactive`): the digest
+when the quiet hours end, and one reminder for an unfinished item nobody answered. One
+clock, one process, one answer to when Oneiro speaks up.
 """
 from __future__ import annotations
 
@@ -26,7 +30,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, Callable
 
-from oneiro import recall, tasks
+from oneiro import proactive, recall, tasks
 from oneiro.records import Schedule, State
 
 SCHEDULE = Schedule.KIND
@@ -298,7 +302,13 @@ async def fire(owner: Any, row: dict[str, Any], *, at: datetime) -> dict[str, An
 
 async def tick(owner: Any, *, at: datetime | None = None,
                call: Callable[..., Any] | None = None) -> dict[str, Any]:
-    """One look at the clock: fire what is due, then let tasks work.
+    """One look at the clock: what Oneiro says first, then what it starts.
+
+    The proactive moments are decided **here** rather than on a timer of their own,
+    because this is the one clock: a second timer would be a second answer to "when
+    does Oneiro speak", and the two would eventually disagree. They are looked at on
+    every tick, before anything is fired, since a digest is about quiet hours that have
+    already ended rather than about a schedule that is due.
 
     Nothing here happens quietly. Every outcome says either what it did or why it
     did nothing, and with `off` or `on_command` the due schedules are named and
@@ -306,11 +316,12 @@ async def tick(owner: Any, *, at: datetime | None = None,
     """
     moment = (at or tasks.utcnow()).astimezone()
     level = tasks.level()
+    report: dict[str, Any] = {"at": moment.isoformat(timespec="minutes"), "level": level,
+                              "proactive": await proactive.tick(owner, at=moment),
+                              "fired": [], "due": [], "worked": None, "why": "nothing is due"}
     rows = await current(owner)
     due = sorted((row for row in rows.values() if is_enabled(row) and is_due(row, at=moment)),
                  key=lambda row: row["created_at"])
-    report: dict[str, Any] = {"at": moment.isoformat(timespec="minutes"), "level": level,
-                              "fired": [], "due": [], "worked": None, "why": "nothing is due"}
     if not due:
         return report
     if not tasks.picks_up_work(level):

@@ -19,6 +19,10 @@ installer/payload/
 *.egg-info/
 .mypy_cache/
 
+# Project-local credentials (never shipped or committed)
+.env
+.env.*
+
 # Python
 __pycache__/
 *.pyc

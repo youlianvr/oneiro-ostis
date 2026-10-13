@@ -13,7 +13,7 @@ from oneiro import config, i18n
 
 STATIC = Path(__file__).resolve().parents[1] / "python" / "oneiro" / "static"
 #: The five canonical screens (§ 3) plus the legacy setup route.
-SCREENS = ("/", "/tasks", "/tools", "/settings", "/memory", "/setup")
+SCREENS = ("/", "/drafts", "/tasks", "/tools", "/settings", "/memory", "/setup")
 
 
 @pytest.fixture(autouse=True)

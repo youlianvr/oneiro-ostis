@@ -74,7 +74,8 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802 - http.server's naming
         answers: Answers = self.server.answers                       # type: ignore[attr-defined]
         answers.calls.append({"kind": "models", "path": self.path,
-                              "auth": self.headers.get("Authorization", "")})
+                              "auth": self.headers.get("Authorization", ""),
+                              "user_agent": self.headers.get("User-Agent", "")})
         answers.auth.append(self.headers.get("Authorization", ""))
         if answers.models_status != 200:
             self._send(answers.models_status, {"error": {"message": "no"}})
@@ -88,7 +89,8 @@ class _Handler(BaseHTTPRequestHandler):
         model = str(body.get("model") or "")
         answers.calls.append({"kind": "chat", "model": model, "tools": body.get("tools"),
                               "messages": body.get("messages") or [],
-                              "auth": self.headers.get("Authorization", "")})
+                              "auth": self.headers.get("Authorization", ""),
+                              "user_agent": self.headers.get("User-Agent", "")})
         answers.auth.append(self.headers.get("Authorization", ""))
         if answers.on_chat is not None:
             answers.on_chat()
@@ -558,6 +560,109 @@ def test_a_fallback_reference_that_cannot_be_resolved_is_named_in_the_failure(pr
     with pytest.raises(models.ModelError) as caught:
         a_registry().call("manager", [{"role": "user", "content": "hello"}])
     assert "models.fallback cannot use" in str(caught.value)
+
+
+def test_provider_user_agent_reaches_discovery_and_chat(provider):
+    config.save({"models.providers": [{"name": "primary", "base_url": provider.base,
+                                       "user_agent": "Mozilla/5.0 (compatible; Oneiro/0.2)"}]})
+    registry = a_registry()
+    registry.discover(registry.providers()[0])
+    registry.call("manager", [{"role": "user", "content": "hello"}])
+    assert [call["user_agent"] for call in provider.calls] == [
+        "Mozilla/5.0 (compatible; Oneiro/0.2)"] * 2
+
+
+@pytest.mark.parametrize("field,value", [("requests_per_minute", -1),
+                                         ("requests_per_minute", True),
+                                         ("requests_per_minute", "36"),
+                                         ("timeout_seconds", 0.5),
+                                         ("timeout_seconds", 3601),
+                                         ("user_agent", "bad\nheader")])
+def test_provider_limits_are_validated_without_echoing_values(field, value):
+    with pytest.raises(ValueError, match=field):
+        config.save({"models.providers": [{"name": "primary", "base_url": "https://example.invalid/v1",
+                                           field: value}]})
+
+
+def test_pacing_bounds_every_rolling_minute_and_discovery_shares_it(provider, monkeypatch):
+    config.save({"models.providers": [{"name": "primary", "base_url": provider.base,
+                                       "requests_per_minute": 36}]})
+    registry = a_registry()
+    primary = registry.providers()[0]
+    registry.discover(primary)   # discovery consumes the same provider allowance
+    with pytest.raises(models.ChatError, match="rate limit"):
+        registry._ask(primary, "text", registry.key_for(primary), [], None, 0.01, None)
+    assert len(provider.calls) == 1
+
+    now = [100.0]
+    with monkeypatch.context() as patch:
+        patch.setattr(models.time, "monotonic", lambda: now[0])
+        patch.setattr(models.time, "sleep", lambda seconds: now.__setitem__(0, now[0] + seconds))
+        registry = a_registry()
+        timestamps = []
+        for _ in range(80):
+            registry._paced_timeout(primary, 5, None)
+            timestamps.append(now[0])
+        assert all(sum(start <= t < start + 60 - 1e-8 for t in timestamps) <= 36
+                   for start in timestamps)
+        assert timestamps[-1] - timestamps[0] == pytest.approx(79 * 60 / 36)
+
+
+def test_cancel_during_pacing_starts_no_second_request(provider):
+    config.save({"models.providers": [{"name": "primary", "base_url": provider.base,
+                                       "requests_per_minute": 36}]})
+    registry = a_registry()
+    primary = registry.providers()[0]
+    registry._paced_timeout(primary, 1, None)
+    stop = threading.Event()
+    timer = threading.Timer(0.02, stop.set)
+    timer.start()
+    try:
+        with pytest.raises(models.Canceled):
+            registry._ask(primary, "text", registry.key_for(primary), [], None, 5, None, stop)
+    finally:
+        timer.join()
+    assert not provider.calls
+
+
+@pytest.mark.parametrize("status", [401, 403, 429, 503])
+def test_failed_primary_uses_its_own_key_then_fallback_key(provider, monkeypatch, status):
+    monkeypatch.setenv("PRIMARY_KEY", "primary-only")
+    monkeypatch.setenv("SPARE_KEY", "gateway-only")
+    provider.answers.default = (status, None)
+    with Stub() as spare:
+        config.save({"models.providers": [
+            {"name": "primary", "base_url": provider.base, "key_env": "PRIMARY_KEY"},
+            {"name": "gateway", "base_url": spare.base, "key_env": "SPARE_KEY"}],
+            "models.default": "primary/model", "models.fallback": ["gateway/text"]})
+        registry = a_registry()
+        assert registry.call("manager", [{"role": "user", "content": "hello"}]).content == "ok"
+        assert set(provider.auth) == {"Bearer primary-only"}
+        assert set(spare.auth) == {"Bearer gateway-only"}
+        assert registry.report()["entries"][-1]["provider"] == "gateway"
+
+
+def test_primary_timeout_leaves_budget_for_real_fallback(provider, monkeypatch):
+    monkeypatch.setenv("SPARE_KEY", "gateway-only")
+    config.save({"models.providers": [
+        {"name": "primary", "base_url": "https://example.invalid/v1", "timeout_seconds": 1},
+        {"name": "gateway", "base_url": provider.base, "key_env": "SPARE_KEY"}],
+        "models.default": "primary/model", "models.fallback": ["gateway/text"]})
+    timeouts = []
+
+    def transport(messages, **kwargs):
+        if kwargs["base_url"].startswith("https://example.invalid"):
+            timeouts.append(kwargs["timeout"])
+            time.sleep(kwargs["timeout"] + 0.01)
+            raise models.ChatError("simulated socket timeout", retryable=True)
+        return models.chat_call(messages, **kwargs)
+
+    registry = models.Registry(transport=transport)
+    started = time.monotonic()
+    reply = registry.call("manager", [{"role": "user", "content": "hello"}], timeout=4)
+    assert reply.content == "ok" and len(provider.chats) == 1
+    assert len(timeouts) == 1 and timeouts[0] <= 1
+    assert time.monotonic() - started < 3
 
 
 # ----------------------------------------------------------------------- cancellation

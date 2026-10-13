@@ -16,7 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from chat_fakes import SECRET, MemoryLinks, Model, csrf_of, isolate, make_app, post, stored_page
-from oneiro.chat import MAX_REPLY_BYTES, ChatError, chat_reply
+from oneiro.chat import MAX_REPLY_BYTES, ChatError, chat_call, chat_reply
 
 
 @pytest.fixture(autouse=True)
@@ -129,7 +129,13 @@ def test_a_foreign_origin_is_refused(tmp_path, monkeypatch):
 
 class _Provider(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802 - http.server naming
-        self.rfile.read(int(self.headers.get("Content-Length", "0")))
+        raw = self.rfile.read(int(self.headers.get("Content-Length", "0")))
+        # The request as the provider received it, so a test can read what was actually
+        # sent instead of trusting that a parameter was passed along.
+        try:
+            self.server.seen = json.loads(raw)  # type: ignore[attr-defined]
+        except ValueError:
+            self.server.seen = {}  # type: ignore[attr-defined]
         mode = self.server.mode  # type: ignore[attr-defined]
         if mode == "ok":
             status, body = 200, json.dumps({"choices": [{"message": {"content": "  hi there  "}}]})
@@ -151,6 +157,7 @@ class _Provider(BaseHTTPRequestHandler):
 @pytest.fixture
 def provider():
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Provider)
+    server.seen = {}  # type: ignore[attr-defined]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     yield server
@@ -189,3 +196,28 @@ def test_an_unreachable_provider_is_a_chat_error_not_a_crash():
     with pytest.raises(ChatError, match="unreachable"):
         chat_reply([{"role": "user", "content": "hi"}], base_url="http://127.0.0.1:9/v1",
                    api_key=SECRET, model="auto/coding", timeout=3)
+
+
+def test_the_completion_budget_and_temperature_are_sent_only_when_named(provider):
+    """A caller with no opinion leaves the provider's default in force; one that names them
+    gets exactly what it asked for - which is what a benchmark's protocol depends on."""
+    provider.mode = "ok"
+    chat_call([{"role": "user", "content": "hi"}], base_url=_base(provider), api_key=SECRET,
+              model="main", max_tokens=500, temperature=0.0)
+    assert provider.seen["max_tokens"] == 500
+    assert provider.seen["temperature"] == 0.0
+    chat_call([{"role": "user", "content": "hi"}], base_url=_base(provider), api_key=SECRET,
+              model="main")
+    assert "max_tokens" not in provider.seen
+    assert "temperature" not in provider.seen
+
+
+def test_a_nonsense_completion_budget_is_refused_before_any_request(provider):
+    provider.mode = "ok"
+    for budget in (0, -5, "lots"):
+        with pytest.raises(ChatError, match="max_tokens"):
+            chat_call([{"role": "user", "content": "hi"}], base_url=_base(provider),
+                      api_key=SECRET, model="main", max_tokens=budget)
+    with pytest.raises(ChatError, match="temperature"):
+        chat_call([{"role": "user", "content": "hi"}], base_url=_base(provider),
+                  api_key=SECRET, model="main", temperature="hot")

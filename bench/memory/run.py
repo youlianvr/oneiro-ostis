@@ -9,9 +9,18 @@ benchmark's own setting, so the number sits next to published ones) and no
 memory (the floor). Stage ``s`` puts the evidence back among hundreds of
 distractor sessions and runs the two policies under test: the typed graph
 store (time window first, similarity second) and the flat journal (word search
-over one text file). Model calls go through the local OmniRoute proxy; every
-cell writes a record to OSTIS, and the run writes a JSON log plus a markdown
-summary under ``~/.openclaw/bench-memory``.
+over one text file).
+
+Every call goes through the code the product actually runs: model calls through
+`oneiro.chat.chat_call` (see `model_chain.py`), sessions and cells through a graph
+lane of the benchmark's own (`oneiro.graph_worker` -> `oneiro.sc_graph`). Each
+corpus is written into a stream of its own, so a read walks only that corpus; every
+cell is published as a record as well, so a report can be walked back to the graph.
+At the end of the run the graph is asked for its native Save once, and the report
+says in words what that did and did not establish.
+
+The run writes a JSON log (rewritten after every question) and a markdown summary
+under ``~/.openclaw/bench-memory``.
 """
 
 from __future__ import annotations
@@ -31,22 +40,12 @@ for extra in (PROJECT / "python", PROJECT / "bench" / "memory"):
         sys.path.insert(0, str(extra))
 
 from config import settings  # noqa: E402
-try:
-    from llm import ChatClient, ProviderError  # noqa: E402
-except ImportError:
-    class ProviderError(Exception):  # type: ignore[no-redef]
-        pass
-
-    class ChatClient:  # type: ignore[no-redef]
-        def __init__(self, *args, **kwargs):
-            pass
-        def chat(self, *args, **kwargs):
-            raise ProviderError("llm module retired")
+from model_chain import ModelChain, ProviderError  # noqa: E402
 
 import arms as arms_module  # noqa: E402
 import dataset as dataset_module  # noqa: E402
 import judge as judge_module  # noqa: E402
-from stores import FlatJournal, GraphStore, search_flat  # noqa: E402
+from stores import FlatJournal, GraphStore, cell_record, lane_for, search_flat  # noqa: E402
 
 DEFAULT_BASE_URL = settings.llm_base_url
 # Two live OmniRoute routing names, deliberately in opposite order: the answer
@@ -76,6 +75,11 @@ def load_key(name: str) -> str:
     raise SystemExit(f"no {name} in the environment or in a .env above {PROJECT}")
 
 
+def graph_url(port: int) -> str:
+    """The lane's address, from the same settings the product reads."""
+    return f"ws://{settings.graph_host}:{port}/ws_json"
+
+
 def scaled_sample(total: int) -> dict:
     """DEFAULT_SAMPLE scaled to `total` questions, at least one per type."""
     if total >= 50:
@@ -85,47 +89,26 @@ def scaled_sample(total: int) -> dict:
     return {kind: max(1, int(round(count * scale))) for kind, count in base.items()}
 
 
-class ModelChain:
-    """One logical model backed by an ordered chain of provider model ids.
+def run_question(question, args, flat: FlatJournal, run_tag: str) -> tuple[list[dict], int]:
+    """All arms for one question; returns this question's records and sessions held.
 
-    The benchmark's rule is that a row of results belongs to one model; this
-    chain keeps that promise by recording which model actually served the
-    call, and by never silently mixing a different model into the same cell.
+    The corpus name is the graph stream's name, so the graph arm's read walks only the
+    hundred sessions of this question and never the whole run. The lane is opened here and
+    closed before the next question, so one corpus's writer lease is released before the
+    next one is taken.
     """
-
-    def __init__(self, models, base_url: str, key: str, temperature: float = 0.0) -> None:
-        self.models = list(models)
-        self.base_url = base_url
-        self.key = key
-        self.temperature = temperature
-        self.model = self.models[0]
-        self.failures: list[str] = []
-
-    def chat(self, messages: list[dict], tools: list[dict] | None = None,
-             max_tokens: int | None = None):
-        problems = []
-        for model in self.models:
-            client = ChatClient(model=model, api_key=self.key, base_url=self.base_url,
-                                temperature=self.temperature)
-            try:
-                message, usage = client.chat(messages, tools=tools, max_tokens=max_tokens)
-            except ProviderError as exc:
-                problems.append(f"{model}: {exc}")
-                self.failures.append(f"{model}: {exc}"[:300])
-                continue
-            self.model = model
-            return message, usage
-        raise ProviderError("model chain exhausted: " + "; ".join(problems))
-
-
-def run_question(question, args, graph: GraphStore | None, flat: FlatJournal,
-                 run_tag: str) -> list[dict]:
-    """All arms for one question; returns this question's records."""
-    corpus = f"lme_{run_tag}_{question.question_id}"
+    corpus = f"lme-{run_tag}-{question.question_id}"
     retrieved: dict[str, list[dict]] = {}
-    if "graph" in args.arms and graph is not None:
-        graph.write(corpus, question.haystack)
-        retrieved["graph"] = graph.search(corpus, question.question, args.k, question.question_epoch)
+    published = 0
+    if "graph" in args.arms:
+        lane = lane_for(corpus, url=args.graph_url, data_root=args.lane_root)
+        try:
+            store = GraphStore(lane)
+            published = store.write(corpus, question.haystack)
+            retrieved["graph"] = store.search(corpus, question.question, args.k,
+                                              question.question_epoch)
+        finally:
+            lane.close()
     if "flat" in args.arms:
         flat.write(corpus, question.haystack)
         retrieved["flat"] = search_flat(flat, corpus, question.question, args.k)
@@ -135,7 +118,8 @@ def run_question(question, args, graph: GraphStore | None, flat: FlatJournal,
         for run_index in range(1, args.repeat + 1):
             prompt = arms_module.build_prompt(arm, question, retrieved.get(arm))
             answer = {"text": "", "model": "", "prompt_tokens": 0, "completion_tokens": 0}
-            verdict = {"passed": False, "raw": "", "model": "", "prompt_tokens": 0, "completion_tokens": 0}
+            verdict = {"passed": False, "raw": "", "model": "", "prompt_tokens": 0,
+                       "completion_tokens": 0}
             status = "ok"
             try:
                 answer = arms_module.answer(args.answer_chain, prompt, max_tokens=args.max_tokens)
@@ -166,6 +150,7 @@ def run_question(question, args, graph: GraphStore | None, flat: FlatJournal,
                 "status": status,
                 "prompt_chars": len(prompt),
                 "haystack_size": len(question.haystack),
+                "sessions_held": published if arm == "graph" else None,
                 "retrieved_ids": hit_ids,
                 "evidence_ids": list(question.answer_session_ids),
                 "evidence_hits": evidence_hits,
@@ -183,12 +168,9 @@ def run_question(question, args, graph: GraphStore | None, flat: FlatJournal,
                 "ts": int(time.time()),
             }
             records.append(record)
-            if args.bridge is not None:
-                args.bridge.save_memory_bench_result(
-                    f"memory_bench_result_{run_tag}_{question.question_id}_{arm}_r{run_index}",
-                    record,
-                )
-    return records
+            if args.cells is not None:
+                args.cells.publish(cell_record(run_tag, record))
+    return records, published
 
 
 def summarize(records: list[dict]) -> dict:
@@ -229,6 +211,37 @@ def render_report(payload: dict) -> str:
                  f"k: {payload['k']} | cap: {payload['cap']} | seed: {payload['seed']}")
     lines.append(f"answer models: {', '.join(payload['answer_models'])}")
     lines.append(f"judge models: {', '.join(payload['judge_models'])}")
+    lines.append("")
+    lines.append("## Storage")
+    lines.append("")
+    graph = payload.get("graph")
+    if graph:
+        lines.append(f"sessions: {graph['sessions_published']} typed records in OSTIS, one stream "
+                     f"per corpus (`{graph['stream']}-<question>`), written and read through "
+                     f"`oneiro.graph_worker`")
+        lines.append(f"cells: {graph['cells_published']} records in `{graph['cells_stream']}`")
+        save = graph.get("save") or {}
+        lines.append(f"native Save: {json.dumps(save, ensure_ascii=False)}")
+    else:
+        lines.append("graph arm not run in this run (`--no-ostis`)")
+    lines.append(f"flat arms: one journal file per corpus under `{payload['journals']}`")
+    served = payload.get("records")
+    if served:
+        # A cell's verdict belongs to the model that produced it, and routing names are not
+        # models: the chain recorded here is what actually served each cell, so a reader can
+        # see which models a row of numbers belongs to instead of having to trust a date.
+        lines.append("")
+        lines.append("## Models that served the cells")
+        lines.append("")
+        by_arm: dict[str, dict[str, int]] = {}
+        for record in served:
+            row = by_arm.setdefault(record["arm"], {})
+            for role, key in (("answer", "answer_model"), ("judge", "judge_model")):
+                name = record.get(key) or "none"
+                row[f"{role} {name}"] = row.get(f"{role} {name}", 0) + 1
+        for arm, row in sorted(by_arm.items()):
+            lines.append(f"- {arm}: " + ", ".join(f"{name} ×{count}"
+                                                   for name, count in sorted(row.items())))
     lines.append("")
     lines.append("## Per arm")
     lines.append("")
@@ -274,7 +287,8 @@ def build_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--run-tag", default="")
     parser.add_argument("--out-dir", default="")
     parser.add_argument("--ostis-port", type=int, default=settings.graph_port)
-    parser.add_argument("--no-ostis", action="store_true")
+    parser.add_argument("--no-ostis", action="store_true",
+                        help="skip the graph entirely; refused together with the graph arm")
     parser.add_argument("--limit", type=int, default=0, help="smoke runs: keep only N questions")
     parser.add_argument("--dry", action="store_true", help="print the sample and exit")
     return parser.parse_args(argv)
@@ -287,6 +301,14 @@ def main(argv=None) -> int:
     else:
         args.arms = [arm.strip() for arm in args.arms.split(",") if arm.strip()]
     run_tag = args.run_tag or f"{args.stage}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    # A graph arm without a graph is not a measurement: the old runner gave it an empty
+    # context and wrote that empty answer down as a graph cell (measured 2026-10-13 on
+    # `trap-check-s-1`: retrieved=0, recall@5=0.0, a 267-character prompt). Refusing by
+    # name is the honest answer.
+    if "graph" in args.arms and args.no_ostis:
+        print("refused: the graph arm needs the graph. `--arms graph` with `--no-ostis` "
+              "would record an empty context as a graph result", flush=True)
+        return 2
 
     questions = dataset_module.load_questions(
         args.stage,
@@ -311,29 +333,35 @@ def main(argv=None) -> int:
     key = load_key(args.key_env)
     args.answer_chain = ModelChain(args.answer_models.split(","), args.base_url, key)
     args.judge_chain = ModelChain(args.judge_models.split(","), args.base_url, key)
-    args.bridge = None
-    if not args.no_ostis:
-        from bridge import OneiroBridge  # imported late so --dry works without the stack
-        args.bridge = OneiroBridge("localhost", args.ostis_port)
-        args.bridge.connect()
-        print(f"OSTIS connected on :{args.ostis_port}", flush=True)
 
     out_root = Path(args.out_dir or DEFAULT_BENCH_DIR)
     runs_dir = out_root / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
     json_path = runs_dir / f"{run_tag}.json"
     flat = FlatJournal(out_root / "journals")
-    graph = GraphStore(args.bridge) if args.bridge is not None else None
+
+    # The benchmark's own lanes: leases under its own root, never the owner's data root,
+    # so a run cannot hold or wait on the lease the running product uses.
+    args.graph_url = graph_url(args.ostis_port)
+    args.lane_root = out_root / "lanes"
+    args.lane_root.mkdir(parents=True, exist_ok=True)
+    args.cells = None
+    cells_stream = f"lme-cells-{run_tag}"
+    if not args.no_ostis:
+        args.cells = lane_for(cells_stream, url=args.graph_url, data_root=args.lane_root)
+        print(f"graph: {args.graph_url}, lanes under {args.lane_root}", flush=True)
 
     records: list[dict] = []
+    sessions_published = 0
     started = time.time()
     for index, question in enumerate(questions, 1):
         try:
-            cell_records = run_question(question, args, graph, flat, run_tag)
-        except (ProviderError, RuntimeError, OSError, TimeoutError) as exc:
+            cell_records, held = run_question(question, args, flat, run_tag)
+        except (ProviderError, RuntimeError, OSError, TimeoutError, ValueError) as exc:
             print(f"  ! question {question.question_id} aborted: {str(exc)[:200]}", flush=True)
             traceback.print_exc()
             continue
+        sessions_published += held
         records.extend(cell_records)
         summary_line = " ".join(
             f"{record['arm']}={'P' if record['judge_passed'] else 'F'}"
@@ -354,6 +382,20 @@ def main(argv=None) -> int:
 
     payload = json.loads(json_path.read_text(encoding="utf-8"))
     payload["seconds"] = round(time.time() - started, 1)
+    payload["journals"] = str(out_root / "journals")
+    if args.cells is not None:
+        save_report = args.cells.save()
+        payload["graph"] = {
+            "url": args.graph_url,
+            "stream": f"lme-{run_tag}",
+            "streams_per_corpus": len(questions) if "graph" in args.arms else 0,
+            "sessions_published": sessions_published,
+            "cells_stream": cells_stream,
+            "cells_published": args.cells.published,
+            "save": save_report,
+        }
+        args.cells.close()
+        print(f"graph Save: {json.dumps(save_report, ensure_ascii=False)}", flush=True)
     json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
     report_path = runs_dir / f"{run_tag}-report.md"
     report_path.write_text(render_report(payload), encoding="utf-8")
@@ -365,8 +407,6 @@ def main(argv=None) -> int:
               f"recall@k={row['mean_recall_at_k']} tokens={row['tokens']}", flush=True)
     print(f"json: {json_path}", flush=True)
     print(f"report: {report_path}", flush=True)
-    if args.bridge is not None:
-        args.bridge.close()
     return 0
 
 

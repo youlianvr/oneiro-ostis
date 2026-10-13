@@ -79,6 +79,10 @@ SETTINGS: tuple[Setting, ...] = (
             "Where Oneiro keeps its own files. Read-only here: changing it moves "
             "the settings file, so it is set with ONEIRO_DATA_DIR before first start.",
             "Work", kind="path", readonly=True),
+    Setting("runtime.stream", "ONEIRO_STREAM", "product", "Subject of experience",
+            "The graph stream Oneiro records in: your own work, or a separate subject "
+            "for a demonstration, whose records never mix with yours.",
+            "Work", kind="str"),
     Setting("llm.manager_model", "ONEIRO_MANAGER_MODEL", "main", "Legacy manager model",
             "The retired alias for the manager's model. The per-role models are declared as "
             "models.roles.manager; nothing acts on this key, so it is declared only and goes "
@@ -255,6 +259,30 @@ SETTINGS: tuple[Setting, ...] = (
         "A window in which Oneiro does not interrupt you with notifications. Empty means never quiet.",
         "Initiative",
     ),
+    Setting(
+        "initiative.digest", "ONEIRO_INITIATIVE_DIGEST", True,
+        "Morning digest",
+        "Whether Oneiro says once, when your quiet hours end, what it finished during them, "
+        "what it did not, and what is still open. Nothing is said below the proactive level, "
+        "because this is Oneiro speaking first.",
+        "Initiative", kind="bool",
+    ),
+    Setting(
+        "initiative.reminders", "ONEIRO_INITIATIVE_REMINDERS", True,
+        "Repeat reminder",
+        "Whether an item that is still unfinished and that you have not answered may be "
+        "raised once more. One reminder per item, never a second one, and none after it "
+        "is finished.",
+        "Initiative", kind="bool",
+    ),
+    Setting(
+        "initiative.reminder_after", "ONEIRO_INITIATIVE_REMINDER_AFTER", 180,
+        "Remind again after",
+        "How many minutes an item may stay unfinished and unanswered before that one "
+        "reminder. At least one minute: a reminder with no wait at all is not about an "
+        "item that waited.",
+        "Initiative", kind="int",
+    ),
     # ---------- permissions ----------
     Setting(
         "permissions.mode", "ONEIRO_PERMISSIONS_MODE", "workspace",
@@ -337,7 +365,10 @@ SETTINGS: tuple[Setting, ...] = (
         "models.providers", "ONEIRO_MODELS_PROVIDERS", DEFAULT_PROVIDERS,
         "Providers",
         "The providers Oneiro may call, in the shape OpenCode and Hermes use: name, base_url, "
-        "key_env, discover_models, models, enabled. A key is named by the environment variable "
+        "key_env, discover_models, models, enabled; optional user_agent, requests_per_minute "
+        "and timeout_seconds (zero means no provider-specific limit). Pacing covers discovery, "
+        "probes and calls in this process; timeout_seconds bounds a provider's retries together. "
+        "A key is named by the environment variable "
         "that holds it and is never stored here; a provider with enabled false is skipped. "
         "They are used in the order given, and the first is the default one.",
         "Providers", kind="json",

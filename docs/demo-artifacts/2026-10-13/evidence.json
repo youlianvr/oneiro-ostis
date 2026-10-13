@@ -1,0 +1,290 @@
+{
+  "office": {
+    "job": {
+      "id": "e20e0c03d217",
+      "topic": "Oneiro: локальный форум",
+      "image": "oneiro-office:local",
+      "container": "oneiro-office-e20e0c03d217",
+      "workdir": "docs/demo-artifacts/2026-10-13",
+      "sources": {
+        "note.fodt": "predefined demo source",
+        "table.fods": "predefined demo source",
+        "slides.fodp": "predefined demo source"
+      },
+      "artifacts": [
+        {
+          "name": "note.odt",
+          "path": "docs/demo-artifacts/2026-10-13/note.odt",
+          "bytes": 12267,
+          "sha256": "864872cc13e57507c38c01c87d42d14583cbd05a707c22e64787e66fa5cff3f3",
+          "pages": null,
+          "pages_reason": ""
+        },
+        {
+          "name": "note.pdf",
+          "path": "docs/demo-artifacts/2026-10-13/note.pdf",
+          "bytes": 22575,
+          "sha256": "cebece9b82b17d90e7ac75e4924a39ff2fc1c135f93efe4c280cb8b5df56ec41",
+          "pages": 1,
+          "pages_reason": ""
+        },
+        {
+          "name": "slides.pdf",
+          "path": "docs/demo-artifacts/2026-10-13/slides.pdf",
+          "bytes": 19147,
+          "sha256": "7f3e497a39d4475b9a487a3ab1cb0ea5c277d84fd1b59a35f842a461e959118e",
+          "pages": 2,
+          "pages_reason": ""
+        },
+        {
+          "name": "slides.pptx",
+          "path": "docs/demo-artifacts/2026-10-13/slides.pptx",
+          "bytes": 25423,
+          "sha256": "5124658858ccde920c4da8ac3a8fdd73c4ca950b376e5386bbab3aede851b38d",
+          "pages": null,
+          "pages_reason": ""
+        },
+        {
+          "name": "table.pdf",
+          "path": "docs/demo-artifacts/2026-10-13/table.pdf",
+          "bytes": 12797,
+          "sha256": "5921e429a33f7ed93514884773623b956625e825631020f7135a4e44b960e8a7",
+          "pages": 1,
+          "pages_reason": ""
+        },
+        {
+          "name": "table.xlsx",
+          "path": "docs/demo-artifacts/2026-10-13/table.xlsx",
+          "bytes": 4953,
+          "sha256": "662474bc585c845e33325470a3e5a3c26b819f7abc59a337ab19be17e3e10fc0",
+          "pages": null,
+          "pages_reason": ""
+        }
+      ],
+      "steps": [
+        {
+          "name": "note.fodt->odt",
+          "command": [
+            "docker",
+            "exec",
+            "oneiro-office-e20e0c03d217",
+            "soffice",
+            "--headless",
+            "--norestore",
+            "--nolockcheck",
+            "--convert-to",
+            "odt",
+            "--outdir",
+            "/work/out",
+            "/work/in/note.fodt"
+          ],
+          "exit_code": 0,
+          "output": "Warning: failed to launch javaldx - java may not function correctly",
+          "record_id": "b2f2322c3ca045609a9ff7c24ac227df"
+        },
+        {
+          "name": "note.fodt->pdf",
+          "command": [
+            "docker",
+            "exec",
+            "oneiro-office-e20e0c03d217",
+            "soffice",
+            "--headless",
+            "--norestore",
+            "--nolockcheck",
+            "--convert-to",
+            "pdf",
+            "--outdir",
+            "/work/out",
+            "/work/in/note.fodt"
+          ],
+          "exit_code": 0,
+          "output": "Warning: failed to launch javaldx - java may not function correctly",
+          "record_id": "9434fe8b33224d1a94f2beef210c526b"
+        },
+        {
+          "name": "table.fods->xlsx",
+          "command": [
+            "docker",
+            "exec",
+            "oneiro-office-e20e0c03d217",
+            "soffice",
+            "--headless",
+            "--norestore",
+            "--nolockcheck",
+            "--convert-to",
+            "xlsx",
+            "--outdir",
+            "/work/out",
+            "/work/in/table.fods"
+          ],
+          "exit_code": 0,
+          "output": "Warning: failed to launch javaldx - java may not function correctly",
+          "record_id": "8e4707111cb849188f12a6665a2b5117"
+        },
+        {
+          "name": "table.fods->pdf",
+          "command": [
+            "docker",
+            "exec",
+            "oneiro-office-e20e0c03d217",
+            "soffice",
+            "--headless",
+            "--norestore",
+            "--nolockcheck",
+            "--convert-to",
+            "pdf",
+            "--outdir",
+            "/work/out",
+            "/work/in/table.fods"
+          ],
+          "exit_code": 0,
+          "output": "Warning: failed to launch javaldx - java may not function correctly",
+          "record_id": "459a1373e66d4c9d975db16e7a75548a"
+        },
+        {
+          "name": "slides.fodp->pptx",
+          "command": [
+            "docker",
+            "exec",
+            "oneiro-office-e20e0c03d217",
+            "soffice",
+            "--headless",
+            "--norestore",
+            "--nolockcheck",
+            "--convert-to",
+            "pptx",
+            "--outdir",
+            "/work/out",
+            "/work/in/slides.fodp"
+          ],
+          "exit_code": 0,
+          "output": "Warning: failed to launch javaldx - java may not function correctly",
+          "record_id": "3c0e574c326046848b1660f0ceb8e7e1"
+        },
+        {
+          "name": "slides.fodp->pdf",
+          "command": [
+            "docker",
+            "exec",
+            "oneiro-office-e20e0c03d217",
+            "soffice",
+            "--headless",
+            "--norestore",
+            "--nolockcheck",
+            "--convert-to",
+            "pdf",
+            "--outdir",
+            "/work/out",
+            "/work/in/slides.fodp"
+          ],
+          "exit_code": 0,
+          "output": "Warning: failed to launch javaldx - java may not function correctly",
+          "record_id": "9b77772647a04e00bf6346080d9ccada"
+        },
+        {
+          "name": "evidence",
+          "command": [
+            "docker",
+            "exec",
+            "oneiro-office-e20e0c03d217",
+            "ls"
+          ],
+          "exit_code": 0,
+          "output": "note.odt\nnote.pdf\nslides.pdf\nslides.pptx\ntable.pdf\ntable.xlsx",
+          "record_id": "9913f608e88d4ff6879c05f7d84236fb"
+        }
+      ],
+      "listing": "note.odt\nnote.pdf\nslides.pdf\nslides.pptx\ntable.pdf\ntable.xlsx",
+      "listing_files": [
+        "note.odt",
+        "note.pdf",
+        "slides.pdf",
+        "slides.pptx",
+        "table.pdf",
+        "table.xlsx"
+      ],
+      "stopped": true,
+      "records": [
+        "b2f2322c3ca045609a9ff7c24ac227df",
+        "9434fe8b33224d1a94f2beef210c526b",
+        "8e4707111cb849188f12a6665a2b5117",
+        "459a1373e66d4c9d975db16e7a75548a",
+        "3c0e574c326046848b1660f0ceb8e7e1",
+        "9b77772647a04e00bf6346080d9ccada",
+        "9913f608e88d4ff6879c05f7d84236fb",
+        "fe17a5aed3c74af3969e4ede1603d309"
+      ]
+    },
+    "environment": {
+      "image": "oneiro-office:local",
+      "container": "oneiro-office-e20e0c03d217",
+      "stopped": true,
+      "listing": "note.odt\nnote.pdf\nslides.pdf\nslides.pptx\ntable.pdf\ntable.xlsx"
+    },
+    "records": [
+      "b2f2322c3ca045609a9ff7c24ac227df",
+      "9434fe8b33224d1a94f2beef210c526b",
+      "8e4707111cb849188f12a6665a2b5117",
+      "459a1373e66d4c9d975db16e7a75548a",
+      "3c0e574c326046848b1660f0ceb8e7e1",
+      "9b77772647a04e00bf6346080d9ccada",
+      "9913f608e88d4ff6879c05f7d84236fb",
+      "fe17a5aed3c74af3969e4ede1603d309"
+    ],
+    "note": "files were produced inside the container and copied out; the listing above was read inside it"
+  },
+  "rehearsal": {
+    "w3_root": "_tmp\\oneiro-w3-live-syeyqxea",
+    "graph": "oneiro-w3-syeyqxea",
+    "graph_port": 2606,
+    "wall_seconds": 80.15,
+    "scope": "synthetic mailbox/bot, signed webhook, predefined office sources",
+    "human_speech_timed": false,
+    "receipts": [
+      {
+        "label": "w3",
+        "exit": 0,
+        "seconds": 38.19,
+        "log": "_tmp\\forum-rehearsal-20261013-014632\\w3.log"
+      },
+      {
+        "label": "graph-start",
+        "exit": 0,
+        "seconds": 0.27,
+        "log": "_tmp\\forum-rehearsal-20261013-014632\\graph-start.log"
+      },
+      {
+        "label": "graph-readiness",
+        "exit": 0,
+        "seconds": 0.74,
+        "log": "_tmp\\forum-rehearsal-20261013-014632\\graph-readiness.log"
+      },
+      {
+        "label": "webhook",
+        "exit": 0,
+        "seconds": 9.22,
+        "log": "_tmp\\forum-rehearsal-20261013-014632\\webhook.log"
+      },
+      {
+        "label": "office",
+        "exit": 0,
+        "seconds": 30.34,
+        "log": "_tmp\\forum-rehearsal-20261013-014632\\office.log"
+      },
+      {
+        "label": "office-readback",
+        "exit": 0,
+        "seconds": 0.82,
+        "log": "_tmp\\forum-rehearsal-20261013-014632\\office-readback.log"
+      },
+      {
+        "label": "graph-stop",
+        "exit": 0,
+        "seconds": 0.39,
+        "log": "_tmp\\forum-rehearsal-20261013-014632\\graph-stop.log"
+      }
+    ]
+  },
+  "primary": "omniroute/api-mistral-ai/codestral-2508"
+}

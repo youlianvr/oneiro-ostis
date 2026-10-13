@@ -17,7 +17,7 @@ graph = ["py-sc-client==0.4.0"]
 oneiro = "oneiro.cli:main"
 
 [dependency-groups]
-dev = ["pytest==8.4.2", "httpx==0.28.1", "mypy==1.19.1"]
+dev = ["pytest==8.4.2", "httpx==0.28.1", "mypy==1.19.1", "playwright==1.60.0"]
 
 [tool.setuptools]
 package-dir = {"" = "python"}

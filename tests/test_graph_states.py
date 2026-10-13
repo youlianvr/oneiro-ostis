@@ -33,7 +33,7 @@ from chat_fakes import MemoryLinks, isolate, make_app
 from oneiro import config, i18n, memory
 
 #: The screens a person can open, and the bound each must answer within.
-SCREENS = ("/", "/tasks", "/tools", "/settings", "/memory", "/setup", "/oneiro/")
+SCREENS = ("/", "/drafts", "/tasks", "/tools", "/settings", "/memory", "/setup", "/oneiro/")
 ANSWER_BUDGET = 5.0
 
 #: What a probe can come back with, one entry per state.

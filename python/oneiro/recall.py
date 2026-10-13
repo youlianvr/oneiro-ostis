@@ -84,35 +84,61 @@ class FactSet:
     #: `memory.facts_budget`; the constant is only the default for callers that
     #: have no settings to read.
     limit_chars: int = CURATED_CHARS
+    #: Whether every earlier revision of these facts was read. The walk stops at a
+    #: bound, so a caller that shows earlier values must be able to say whether it
+    #: saw all of them; `complete` covers the facts themselves, this covers history.
+    history_complete: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         return {"facts": self.facts, "used_chars": self.used_chars,
                 "limit_chars": self.limit_chars, "complete": self.complete,
-                "skipped": self.skipped}
+                "skipped": self.skipped, "history_complete": self.history_complete}
 
 
 def _is_fact(row: dict[str, Any]) -> bool:
     return row.get("kind") == FACT_KIND
 
 
+def _revision_view(row: dict[str, Any]) -> dict[str, Any]:
+    """One stored revision as a screen reads it: the text, when it changed, and its source.
+
+    The source is the record's own `provenance` — a curated fact is an owner
+    instruction, and the field is kept rather than assumed, so a record written by
+    another writer would be shown with the source it actually carries.
+    """
+    return {"revision": row["__revision__"], "text": row["text"],
+            "created_at": row["created_at"], "updated_at": row["updated_at"],
+            "provenance": str(row.get("provenance") or "")}
+
+
 async def current_facts(source: PageSource, *, limit_chars: int = CURATED_CHARS) -> FactSet:
-    """Facts in force: the newest revision of each id, removed ones excluded."""
+    """Facts in force: the newest revision of each id, removed ones excluded.
+
+    An updated fact does not lose what it said before. Every earlier revision that was
+    read comes back under `superseded`, each with its own date and source, so a screen
+    can show the value that is no longer in force instead of letting it disappear. Only
+    revisions the walk actually read are listed, and `history_complete` says whether the
+    walk reached the end of the stream.
+    """
     found = await scan(source, _is_fact)
-    seen: set[str] = set()
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in found.rows:            # newest first, so each id's newest revision is first
+        grouped.setdefault(row["id"], []).append(row)
     facts: list[dict[str, Any]] = []
-    for row in found.rows:            # newest first: the first sighting is current
-        fact_id = row["id"]
-        if fact_id in seen:
-            continue
-        seen.add(fact_id)
-        if row["state"] == State.COMPLETED.value:
-            facts.append({"id": fact_id, "text": row["text"],
-                          "revision": row["__revision__"],
-                          "created_at": row["created_at"],
-                          "updated_at": row["updated_at"]})
+    for fact_id, revisions in grouped.items():
+        newest = revisions[0]
+        if newest["state"] != State.COMPLETED.value:
+            continue                  # removed, so it is not in force
+        view = _revision_view(newest)
+        view["id"] = fact_id
+        view["superseded"] = [
+            _revision_view(row) for row in revisions[1:]
+            if row["state"] == State.COMPLETED.value and row["text"] != newest["text"]]
+        facts.append(view)
     facts.reverse()                   # oldest first, so the list reads as it was written
     used = sum(len(fact["text"]) for fact in facts)
-    return FactSet(facts, used, found.complete, found.skipped, limit_chars)
+    return FactSet(facts, used, found.complete, found.skipped, limit_chars,
+                   history_complete=found.complete)
 
 
 async def latest(source: PageSource, kind: str, record_id: str) -> dict[str, Any] | None:

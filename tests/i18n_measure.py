@@ -41,7 +41,7 @@ from chat_fakes import MemoryLinks, make_app  # noqa: E402
 from test_i18n_themes import (  # noqa: E402
     _CYRILLIC, _english_sentences, _shared_english_sentences, _visible_lines)
 
-SCREENS = ("/", "/tasks", "/tools", "/settings", "/memory", "/setup")
+SCREENS = ("/", "/drafts", "/tasks", "/tools", "/settings", "/memory", "/setup")
 LANGUAGES = ("ru", "en")
 
 

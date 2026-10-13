@@ -135,11 +135,20 @@ class Provider:
     discover_models: bool = True
     models: tuple[str, ...] = ()
     enabled: bool = True
+    user_agent: str = ""
+    requests_per_minute: int = 0
+    timeout_seconds: int = 0
 
     def to_dict(self) -> dict[str, Any]:
-        return {"name": self.name, "base_url": self.base_url, "key_env": self.key_env,
-                "discover_models": self.discover_models, "models": list(self.models),
-                "enabled": self.enabled}
+        result: dict[str, Any] = {
+            "name": self.name, "base_url": self.base_url, "key_env": self.key_env,
+            "discover_models": self.discover_models, "models": list(self.models),
+            "enabled": self.enabled}
+        for name in ("user_agent", "requests_per_minute", "timeout_seconds"):
+            value = getattr(self, name)
+            if value:
+                result[name] = value
+        return result
 
 
 @dataclass(frozen=True)
@@ -293,6 +302,7 @@ class Registry:
         #: served as though it were about the new one.
         self._discovered: dict[tuple[str, str], Discovered] = {}
         self._capabilities: dict[tuple[str, str, str], Capability] = {}
+        self._next_request: dict[tuple[str, str], float] = {}
         self.records: list[Call] = []
         self.dropped = 0
 
@@ -341,12 +351,21 @@ class Registry:
             declared = list(declared)
         if not isinstance(declared, list):
             raise NoProvider(f"{name}: models must be a list of model names")
+        user_agent = record.get("user_agent", "")
+        if not isinstance(user_agent, str) or any(ord(ch) < 32 or ord(ch) > 126 for ch in user_agent):
+            raise NoProvider(f"{name}: user_agent must be printable ASCII text")
+        for field_name, maximum in (("requests_per_minute", 1000000), ("timeout_seconds", 3600)):
+            limit = record.get(field_name, 0)
+            if isinstance(limit, bool) or not isinstance(limit, int) or not 0 <= limit <= maximum:
+                raise NoProvider(f"{name}: {field_name} must be an integer from 0 to {maximum}")
         return Provider(
             name=name, base_url=address.rstrip("/"),
             key_env=str(record.get("key_env", "") or "").strip(),
             discover_models=bool(record.get("discover_models", True)),
             models=tuple(str(item).strip() for item in declared if str(item).strip()),
-            enabled=bool(record.get("enabled", True)))
+            enabled=bool(record.get("enabled", True)),
+            user_agent=user_agent, requests_per_minute=record.get("requests_per_minute", 0),
+            timeout_seconds=record.get("timeout_seconds", 0))
 
     def key_for(self, provider: Provider) -> str:
         """The key of one provider: the variable it names, else the pre-registry secret.
@@ -499,7 +518,14 @@ class Registry:
         return found
 
     def _list_models(self, provider: Provider, key: str, timeout: float) -> list[Any]:
-        request = urllib.request.Request(f"{provider.base_url}/models", headers=_headers(key))
+        try:
+            timeout = self._paced_timeout(provider, timeout, None)
+        except ChatError as exc:
+            raise NoModel(str(exc)) from None
+        headers = _headers(key)
+        if provider.user_agent:
+            headers["User-Agent"] = provider.user_agent
+        request = urllib.request.Request(f"{provider.base_url}/models", headers=headers)
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 raw = response.read(MAX_DISCOVERY_BYTES + 1)
@@ -567,7 +593,7 @@ class Registry:
             started = time.monotonic()
             try:
                 reply = self._ask(provider, model, self.key_for(provider), messages, tools,
-                                  timeout, self.transport)
+                                  timeout, self.transport, cancel)
             except Canceled:
                 raise
             except ChatError as exc:
@@ -653,12 +679,16 @@ class Registry:
                 if refused:
                     problems.append(f"{provider.name}/{model}: {refused}")
                     continue
+            # A provider's own cap includes all its retries, leaving the remaining
+            # call budget for the next provider after a slow/failed primary.
+            provider_deadline = min(deadline, time.monotonic() + provider.timeout_seconds) \
+                if provider.timeout_seconds else deadline
             key = self.key_for(provider)
             said = ""
             tries = 0
             while True:
-                remaining = deadline - time.monotonic()
-                if tries and remaining < MIN_ATTEMPT:
+                remaining = provider_deadline - time.monotonic()
+                if remaining <= 0 or (tries and remaining < MIN_ATTEMPT):
                     said += "; no time left in this call for another try"
                     break
                 if cancel is not None and cancel.is_set():
@@ -668,13 +698,17 @@ class Registry:
                 started = time.monotonic()
                 try:
                     reply = self._ask(provider, model, key, messages, tools,
-                                      max(0.1, min(limit, remaining)), transport)
+                                      max(0.1, min(limit, remaining)), transport, cancel)
+                except Canceled:
+                    self._close(entry, ok=False, outcome="refused",
+                                error="the owner canceled before this request was sent")
+                    raise
                 except ChatError as exc:
                     self._close(entry, ok=False, outcome=_outcome(exc), error=str(exc),
                                 ms=int((time.monotonic() - started) * 1000))
                     said = str(exc)
                     if exc.retryable and tries < MAX_ATTEMPTS:
-                        self._wait(tries, exc.retry_after, cancel, deadline)
+                        self._wait(tries, exc.retry_after, cancel, provider_deadline)
                         continue
                     break
                 self._close(entry, ok=True, outcome="completed",
@@ -710,14 +744,50 @@ class Registry:
 
     def _ask(self, provider: Provider, model: str, key: str, messages: list[dict[str, Any]],
              tools: list[dict[str, Any]] | None, timeout: float,
-             transport: Callable[..., ModelReply] | None) -> ModelReply:
+             transport: Callable[..., ModelReply] | None,
+             cancel: threading.Event | None = None) -> ModelReply:
         """One request, through the seam this module owns."""
         ask = transport or self.transport or TRANSPORT
         if not key:
             named = f"`{provider.key_env}`" if provider.key_env else "key_env"
             raise ChatError(f"no key was found for {named} and no provider key is saved")
+        timeout = self._paced_timeout(provider, timeout, cancel)
+        options: dict[str, Any] = {}
+        if provider.user_agent:
+            options["user_agent"] = provider.user_agent
         return ask(messages, base_url=provider.base_url, api_key=key, model=model,
-                   tools=tools, timeout=timeout)
+                   tools=tools, timeout=timeout, **options)
+
+    def _paced_timeout(self, provider: Provider, timeout: float,
+                       cancel: threading.Event | None) -> float:
+        """Space requests to a limited provider, including discovery/probes/retries.
+
+        The wait uses this request's budget, not extra time. Shared by all roles in
+        this registry/process; other applications using the key are not counted here.
+        """
+        if provider.timeout_seconds:
+            timeout = min(timeout, float(provider.timeout_seconds))
+        deadline = time.monotonic() + timeout
+        if not provider.requests_per_minute:
+            return timeout
+        place = self._place(provider)
+        interval = 60.0 / provider.requests_per_minute
+        while True:
+            if cancel is not None and cancel.is_set():
+                raise Canceled(self._stopped(provider, "request"))
+            with self._lock:
+                now = time.monotonic()
+                delay = max(0.0, self._next_request.get(place, now) - now)
+                remaining = deadline - now
+                if remaining <= delay:
+                    raise ChatError("the provider request rate limit leaves no time in this budget")
+                if delay <= 0:
+                    self._next_request[place] = now + interval
+                    return remaining
+            if cancel is None:
+                time.sleep(delay)
+            else:
+                cancel.wait(delay)
 
     @staticmethod
     def _wait(attempt: int, retry_after: float, cancel: threading.Event | None,

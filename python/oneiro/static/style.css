@@ -278,3 +278,53 @@ legend { padding: 0 var(--oi-space-1); font-weight: var(--oi-weight-strong); }
   background: var(--oi-surface-alt);
   border: var(--oi-border-width) solid var(--oi-border);
 }
+
+/* Drafts: the screen where the owner's press decides. A card carries the exact call, so
+ * the text that would leave is readable as text rather than summarised into something
+ * else, and the controls sit under it in the order they are meant to be used. */
+.draft-card.settled { opacity: .85; }
+
+.draft-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--oi-space-2);
+}
+
+.draft-call { margin: var(--oi-space-2) 0; }
+.draft-argument { margin: var(--oi-space-1) 0; }
+.draft-argument small { display: block; color: var(--oi-muted); font-size: var(--oi-text-xs); }
+.draft-argument pre {
+  margin: 0;
+  padding: var(--oi-space-2);
+  background: var(--oi-surface-2);
+  border: var(--oi-border-width) solid var(--oi-border);
+  border-radius: var(--oi-radius-sm);
+}
+
+.draft-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--oi-space-2);
+  margin: var(--oi-space-2) 0;
+}
+
+/* Curated memory: each fact with its source and dates, and the value it replaced. The
+ * earlier value is set apart on purpose — it is no longer in force, and it is still
+ * readable, so a contradiction on record is visible instead of implied. */
+.fact-card { margin-bottom: var(--oi-space-2); }
+.fact-meta { display: block; margin-top: var(--oi-space-1); }
+
+.fact-earlier {
+  margin-top: var(--oi-space-2);
+  padding-left: var(--oi-space-3);
+  border-left: 2px solid var(--oi-border);
+}
+
+.fact-earlier > small { display: block; margin-bottom: var(--oi-space-1); }
+.fact-older { margin: var(--oi-space-1) 0; opacity: .85; }
+.fact-older-text { display: block; }
+.fact-older small { display: block; }
+
+.draft-revise { margin-top: var(--oi-space-2); }
+.draft-revise button { margin-top: var(--oi-space-2); }

@@ -36,6 +36,9 @@ TEMPLATE = Path(__file__).parent / "static" / "page.html"
 # route page id -> href. The words a person reads are `nav.<id>` in the catalog.
 NAV = (
     ("/", "chat"),
+    # The owner's own inbox of pending actions sits next to the conversation: it is the
+    # one screen where a press of theirs is what makes something leave the machine.
+    ("/drafts", "drafts"),
     ("/tasks", "tasks"),
     ("/tools", "tools"),
     ("/settings", "settings"),
@@ -316,6 +319,30 @@ def _tools_screen(lang: str) -> str:
     )
 
 
+def _drafts_screen(lang: str) -> str:
+    """What waits for the owner's press, and what became of the last decisions.
+
+    The skeleton only. The drafts themselves are read from `/api/drafts`, because that
+    read walks the graph: a page must render whatever the substrate is doing, which
+    `test_graph_states.py` pins for every screen, and a store that is silent must not
+    turn this page into a refusal. Each card — the exact call, its state, the press, the
+    revision field — is built by `static/app.js` from this page's own i18n block, so no
+    sentence a person reads is written in the script.
+    """
+    t = lambda key: html.escape(i18n.t(key, lang))  # noqa: E731 - a screen reads many keys
+    return (
+        '<div class="screen-container">'
+        '  <section class="panel">'
+        f'    <h2>{t("heading.waiting_drafts")}</h2>'
+        f'    <p class="muted" id="draft-meter" role="status">{t("draft.loading")}</p>'
+        '    <div id="draft-list" class="cards-list"></div>'
+        f'    <h3>{t("heading.settled_drafts")}</h3>'
+        '    <div id="draft-settled" class="cards-list"></div>'
+        '  </section>'
+        '</div>'
+    )
+
+
 def _facts_body(lang: str) -> str:
     t = lambda key: html.escape(i18n.t(key, lang))  # noqa: E731
     return (
@@ -386,6 +413,8 @@ def render(page: str, description: dict, error: str = "", facts: Any = None,
     )
     if page == "chat":
         body = _conversation_screen(lang)
+    elif page == "drafts":
+        body = _drafts_screen(lang)
     elif page == "tasks":
         body = _tasks_screen(lang)
     elif page == "tools":

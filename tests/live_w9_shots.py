@@ -6,6 +6,11 @@ Playwright and writes the pictures into `docs/shots/oneiro-v1/`.
 
 Pictures taken (22):
 * 5 screens x 2 languages  — Conversation, Tasks, Tools, Settings, Memory
+
+  The drafts screen (`/drafts`) is not in this set: its acceptance picture is the press
+  itself, taken by `tests/live_drafts_check.py` in a browser with a waiting draft on the
+  page (before and after the click), and the count of frames this script writes is quoted
+  in `docs/ACCEPTANCE-REPORT.md` § 2 — a sixth screen here would change that number.
 * 5 themes x 2 languages   — the Conversation screen under each `ui.theme`
 * the console served from an **installed copy outside this checkout**, both languages,
   so § 6 row 1 has a picture of the product and not only a log line

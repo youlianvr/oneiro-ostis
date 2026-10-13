@@ -2038,6 +2038,110 @@ the console now exits 0.
 
 Not done in this pass: W3 (mail, drafts, Telegram — the interface, last by the plan's
 ordering), W4 (self-improvement, parallel agent), W5 (speech), W6 (final checks).
+
+## 2026-10-12 — W3 locally verified: test mail, a draft, and the press that releases it
+
+Plan of record: `docs/READY-2026-10-12.md` (owner-approved), § 6 W3 with § 5 rows O6 and
+O7. The gate and the tab are both in this pass.
+
+**The gate.** New `python/oneiro/drafts.py`: a draft is an `Action` in `WAITING` carrying
+the exact call, plus a pending `Approval` for a digest of *those* arguments. `send`
+releases it only with the owner's own unspent grant for exactly that call, and the grant
+is spent in the same act that performs the send — so a crash in the middle cannot leave a
+reusable grant behind or leave a send with no record. Nothing else in the product can put
+that call on the wire: writing a draft writes a record and nothing else.
+
+**The tab.** New route `/drafts` (a sixth screen, next to the conversation in the nav,
+not one of the five canonical screens of § 3). It shows what waits for a press — the exact
+call, field by field, with the text that would leave readable as text — and, below it,
+what became of the last decisions. Each waiting draft carries «Отправить», «Отменить
+черновик» and a «Правка текста» field with «Сохранить правку»; all three go to the routes
+the command line already uses (`POST /api/drafts/<id>/send|revise|discard`). The screen
+serves a skeleton and the page's own script fills it from `/api/drafts`, because that read
+walks the graph and every screen must answer whatever the substrate is doing; every
+sentence, including the client's, is catalog text in both languages, and a refusal is
+rendered from its code (`draft.refused.<code>`) rather than from any backend prose. An
+edit re-raises the approval under the new arguments, so the older approval record keeps
+saying `waiting` while the draft's own record carries the decision — both are in the
+store, and the live check reads both back by id.
+
+**The new evidence tools.** `tests/test_drafts.py` (unit, over a real stdio MCP child
+process whose call log is the measurement) and `tests/live_drafts_check.py` (live: its own
+console process, its own data root and its own graph container, a fake mailbox and bot
+behind the product's own MCP transport, real HTTP and the real command line in their own
+processes, and — last — the page itself in a real browser).
+
+Evidence, this checkout, 2026-10-12:
+
+- `python tests/live_drafts_check.py --marker w3-tab-2304` — exit 0, **67/67 checks**:
+  reading a letter sends nothing; a draft is written, read, edited, refused and discarded
+  while the mailbox log stands still at zero; the command line's press is what moves it, by
+  exactly one; the second draft is written by the CLI and pressed through HTTP; the notice
+  to the owner goes to the chat `get_updates` reported and no other; a second console whose
+  `permissions.send_publish` is `deny` refuses the press by name (`403 permission_denied`)
+  and never even starts a server; the owner's data root and the owner's own `product`
+  stream are byte-identical before and after; the run's own records are read back **by id**
+  from the `demo` stream (the letter, the draft, the approval it was first raised with, the
+  grant the press left, the second draft, the discarded one) with the states the store keeps;
+  and the last section opens `/drafts` in Chromium on the live console, reads the letters
+  on the page, clicks that card's own «Отправить» button and finds exactly that one call in
+  the mailbox log — with two pictures kept (`docs/shots/w3-drafts/`, 120 KB and 90 KB).
+- `python -m pytest -q tests/test_drafts.py tests/test_console_screens.py
+  tests/test_i18n_themes.py tests/test_graph_states.py` — exit 0. The new screen has its own
+  test: the two lists, the status line, the press and revision words, and no raw JSON on it.
+- `python tests/i18n_measure.py` — exit 0: `/drafts` carries **no English prose** on the
+  Russian page and shares **no sentence** with the English one (19 visible lines in each).
+- `python -m mypy python/oneiro --exclude 'dream'` — exit 0, 36 files.
+- `node --check python/oneiro/static/app.js` — exit 0, so the client script parses before a
+  browser is asked to run it.
+
+Two defects were found while proving it, and each was fixed at its cause. The check's own
+last assertion read a page of the stream through `scripts/office-graph-read.py` and asked
+whether the run's draft id was in the answer; that reader prints the first 1200 characters
+of a page, so the draft was stored and still outside the tail it printed (`exit 0`, and the
+live console had just answered `state=completed` for the same id). Records are now asked
+for by their own ids through a worker of the check's own. The second: the tab's refusal
+line was about to print the 503 routes' English sentence on a Russian page; the refusal is
+now rendered from the code the API reports, and a code the catalog does not know is printed
+inside a catalog sentence rather than bare.
+
+Not done in W3: the real Google mailbox and the real Telegram bot are not declared on this
+machine (`~/.oneiro/mcp.json` does not exist), so reading *your* box and writing to *your*
+chat are unproven — the MCP path itself is proven end to end. The five canonical screens'
+acceptance frames (`docs/shots/oneiro-v1/`, 22 files, quoted in `docs/ACCEPTANCE-REPORT.md`)
+still cover those five only; the drafts tab's acceptance picture is the press itself, in
+`docs/shots/w3-drafts/`.
+
+## 2026-10-13 — local forum closeout on Mistral
+
+The owner accepted Mistral when BashAPI generation remained unavailable. All roles
+now explicitly use `omniroute/api-mistral-ai/codestral-2508`; actual text and tool
+responses verified. Provider records/fallback list preserved, no gateway changes.
+
+- Frozen full pytest: **767 passed, exit 0**, 182.46 s; full mypy: **45 files, exit 0**.
+- W3 final tree: **67/67, outer exit 0**, console exits 0; CLI dry-run expected 2,
+  other CLI exits 0. Exactly three test-mail sends + one test-bot notice across
+  the whole test, one exact call per press; owner data/product stream unchanged.
+- `python scripts/forum-demo.py`: **outer exit 0**, all seven receipts 0, **80.15 s**
+  scripted wall time. W2 **22/22**; six office files readable, PDF pages 1/1/2,
+  seven action records + one experience independently read back. Task-owned graph
+  containers stopped/retained. No permanent deletion or owner-service restart.
+- Fixed a clipped spreadsheet label by defining column widths; regression 11/11
+  and the real PDF now contains complete `Презентация`. Owner explicitly authorized
+  refreshing the shipped skill catalog after its drift test failed (765 passed,
+  one failed initially); only `sessions` content changed, skill tests 32/32.
+- Current Russian speech `docs/TALK-RU-2026-10-13.md`: 1,487 words, estimated
+  10.79–11.76 min including 90 s transitions. No measured oral rehearsal claim.
+  Historical `docs/TALK.md` preserved. Instructions/evidence/artifacts in
+  `docs/FORUM-DEMO-2026-10-13.md`, `docs/demo-artifacts/2026-10-13/`.
+- Real Gmail/Telegram remain unconfigured. First private chat is **not identity
+  proof**; this is a future integration blocker, not safely solved by `get_updates`.
+- W4's current saved candidate is rejected, improvement not demonstrated; no new
+  experiment. Full-product Windows acceptance remains separate from forum readiness.
+
+Owned checkpoint excludes ambiguous pre-existing W3/UI files and parallel `dream/`;
+all useful working-tree changes remain on disk, no push/PR/merge.
+
 ## 2026-10-13 — P3 and P4: what Oneiro says first, and the memory that keeps its provenance
 
 Two packages of `docs/forumit-2026/PLAN-DOKLAD-2026-10-14.md` (§ 4), each closed with a
@@ -2266,3 +2370,81 @@ the demo's **whole spoken chain**, not only its browser part, in a real Chromium
   and these screens. What remains for P7: `python -m pytest -q`, `python -m mypy python`,
   `python scripts/forum-demo.py`, `python _scripts/validate_doc_routes.py`, and a local
   checkpoint of this package's own files.
+
+## 2026-10-13 (evening) — the fresh memory measurement, its numbers in the talk, the deck rebuilt
+
+**P4-fresh is closed, and the number it was missing now exists.** `bench/memory` was re-hosted on
+the code the product runs (model calls through `oneiro.chat.chat_call`, sessions and cells through a
+graph lane of the benchmark's own), and the fifty-question measurement was made: **`s-50-8`, exit 0**
+(`_tmp/s-50-8.exit`, 2026-10-13T16:41:38) — 50 questions, 150 cells, 2396 session records and 150
+cell records in the graph, native Save observed. 149 cells carry a verdict; the one that does not is
+named rather than dropped (a `502` from the provider on the `none` arm of question `gpt4_59149c78`,
+in `_tmp/s-50-8.log` and in the report's served-model line). Numbers: **with memory 0.74 (graph) and
+0.76 (flat journal), without memory 0.0816**; recall@5 0.8627 and 0.88. The report says which model
+served what: answers `kimi-k2.5` ×149, verdicts `deepseek-v4-pro` ×146 with the fallback `glm-5.3` ×3.
+That gap is forty-fold, and the two ways of remembering land one answer apart — which is what the
+talk now says.
+
+**The graph, not the report, is what confirms the report.** Every one of the 50 corpora was read back
+by a process of its own, one corpus and then all fifty (`_tmp/readback-corpus-s-50-8.log`,
+`_tmp/readback-cells-s-50-8.log`): 2396 records where the run claims 2396, 150 cells where it claims
+150, no corpus disagreeing.
+
+**Four attempts came before it, and each is kept as what it actually was.** `s-50-4` — 25 of 50,
+stopped by the provider answering 503/401, exit 1. `s-50-5` — killed with its supervisor when the
+agent's turn was interrupted; 1 of 50 and no exit code, and its first corpus is already in the graph,
+so that tag could not be reused without reading one corpus twice. `smoke-s-5` — every cell refused
+with **HTTP 403 `error code: 1010`**: the gateway's edge rejects `urllib`'s own library string before
+any model is reached, which is why `bench/memory/model_chain.py` now sends `USER_AGENT` (the product's
+`chat_call` already accepts one). `s-50-6` — finished, exit 0, and still not a number: **57 of 150
+cells refused** (107 × 503, 5 × 401, 1 × 402) and a dozen different models behind two OmniRoute
+routing names (MiniMax-M3, Top-Tools-Ai, gemini-3.1-pro, ministral, voxtral, …), so one row of
+numbers no longer belonged to one model. The owner chose the restored gateway, and the measurement
+was repeated with one pinned model per role.
+
+**The talk now speaks the fresh numbers, and a sentence they contradicted is gone.** Section 3 of
+`docs/TALK-RU-2026-10-13.md` carries 0.74 / 0.76 / 0.08 and recall 0.86 / 0.88. The previous
+"weakness is questions about time" does not follow from this run (time is 0.76–0.80, below the
+overall but not the weakest) and was replaced by what does: preference questions, recall 0.50 on
+four of them. The `PENDING-P4` markers are removed. `python _tmp/talk-words.py` — **1431 words,
+10.94–11.87 min, exit 0** (sections 4, 5 and 6 were trimmed by the 37 words section 3 grew, which is
+the plan's own instruction for a talk over 12 minutes). `python _tmp/talk-claims-check.py` — **exit
+0**: every spoken number found in the run's report or payload, including the per-type recall
+recomputed from the cells rather than trusted from a note.
+
+**The deck was rebuilt under those numbers.** `python scripts/forumit-slides.py` — exit 0, 13 pages.
+Slide 5 shows **three tiles** (0.74 graph, 0.76 journal, 0.08 no memory) instead of two: showing only
+the graph would invite the room to read a difference between the two stores that the run does not
+show. The index was verified with the same script that verifies the demo's index
+(`_tmp/forum-artifact-verify.py`, exit 0, no broken images, no console errors, no failed requests),
+and page 5 was measured on the PDF itself: three tiles on one line, no overlap, every text block
+inside the page.
+
+**One test was flaky under load, and the cause was measured rather than papered over.** The first
+full-suite run failed `test_a_page_read_that_runs_out_of_budget_keeps_the_worker`. With the page
+budget at 3.0 s, the spawn of the child outlasted the budget on a loaded machine, the read expired
+before anything was dispatched, and `_fail_lane` took its `never_answered` path and stopped a worker
+that had merely not finished starting; the same test passed three times out of three on its own
+(9.6–10.8 s). The behaviour under test was kept exactly — a page deadline that expires *after*
+dispatch keeps the worker and owes its answer — and only the margin was widened (10.0 s budget,
+16.0 s answer delay), with the measurement written into the constants. The check still catches its
+bug: with the fix reverted (`if False:` in `graph_worker.py`, the file then restored bit-for-bit at
+sha256 `51c684675a42a79847111f083d2e747e0b70b9a70b7d93954867291010fce3a6`) the test fails.
+
+**Verified, each with its own exit code.** `python -m pytest -q` — **805 passed, exit 0** (second run,
+after that fix); `python -m mypy python` — **exit 0**, 47 files; `python _scripts/validate_doc_routes.py`
+— **exit 0**, `document routes: OK`; `python scripts/forum-demo.py` — **exit 0**, seven children 0.
+
+**Not green, and named rather than smoothed.** `python -m mypy bench/memory` returns 15 errors. mypy's
+configured scope is `files = ["python/oneiro"]` (`pyproject.toml`), and the bench directory reaches its
+imports through `sys.path` at run time, so most of those errors are `import-not-found` artefacts
+(including one in `model_chain.py`) rather than defects. The bench is covered by its own tests —
+`python -m pytest -q tests/test_memory_bench.py`, 14 tests, exit 0 — and the plan's F4 row allowed for
+exactly this case ("если мойпи покрывает этот каталог").
+
+**Still owed, and named.** `dashboard/server.py` still reads the retired bridge and does not show
+these runs (a separate debt, out of this package). The two competing speech editions in
+`docs/forumit-2026/` are the owner's call and neither was touched. The fresh numbers belong to
+`kimi-k2.5` / `deepseek-v4-pro` through the owner's gateway, so they are not directly comparable to
+the retired stand's `s-50-2`; the comparison the talk makes is the one inside the fresh run — memory
+against no memory — which is what the slide shows.

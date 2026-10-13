@@ -92,6 +92,18 @@ def test_the_sources_are_flat_odf_with_the_topic_in_them(tmp_path):
     assert "Отчёт" in slides
 
 
+def test_spreadsheet_declares_columns_wide_enough_to_keep_labels_separate():
+    from xml.etree import ElementTree as ET
+    root = ET.fromstring(office_env.spreadsheet_source("Форум"))
+    ns = {"style": "urn:oasis:names:tc:opendocument:xmlns:style:1.0",
+          "table": "urn:oasis:names:tc:opendocument:xmlns:table:1.0"}
+    columns = root.findall(".//table:table-column", ns)
+    assert [col.get("{" + ns["table"] + "}style-name") for col in columns] == [
+        "LabelColumn", "ValueColumn"]
+    widths = root.findall(".//style:table-column-properties", ns)
+    assert [col.get("{" + ns["style"] + "}column-width") for col in widths] == ["5cm", "3cm"]
+
+
 def test_one_job_converts_every_source_and_takes_the_files_out(tmp_path):
     fake = FakeDocker()
     job = _sandbox(fake).run("Проверка", out_dir=tmp_path)

@@ -172,13 +172,14 @@ def new_step(index: int, tool: Tool, call: ToolCall, decision: str, reason: str,
 
 
 def _refused_step(index: int, call: ToolCall, decision: str, reason: str, state: State, *,
-                  action_id: str, effect: str = "none") -> tuple[Step, Action]:
+                  action_id: str, run_id: str, effect: str = "none") -> tuple[Step, Action]:
     """A call that did not run, recorded in the same shape as one that did.
 
     No tool metadata is invented: a call naming a tool that does not exist is
     recorded with effect `none`, because nothing can have happened.
     """
-    action = Action(id=action_id, tool=call.name, arguments=call.arguments, decision=decision,
+    action = Action(id=action_id, run_id=run_id, tool=call.name, arguments=call.arguments,
+                    decision=decision,
                     effect=Effect(kind=effect, target=effect_target(call.name, effect,
                                                                    call.arguments)),
                     result=f"{decision}: {reason}", state=state,
@@ -235,25 +236,53 @@ async def _owner_message(owner: Any, user_id: str, text: str,
 
 
 async def turn_steps(owner: Any, reply_id: str) -> list[dict[str, Any]]:
-    """The stored steps of a turn, read back from its Action records."""
-    found = await recall.scan(owner, lambda row: row.get("kind") == ACTION
-                              and row.get("run_id") == reply_id)
-    rows = sorted(found.rows, key=lambda row: step_index(row.get("labels", ())) or 0)
-    steps = []
-    for row in rows:
+    """The stored steps of a turn, including legacy refusals without a run link."""
+    return (await turn_steps_for(owner, {reply_id}))[reply_id]
+
+
+async def turn_steps_for(owner: Any, reply_ids: set[str]) -> dict[str, list[dict[str, Any]]]:
+    """Read one bounded action scan for a conversation page, not one scan per reply."""
+    steps: dict[str, list[dict[str, Any]]] = {reply_id: [] for reply_id in reply_ids}
+    if not reply_ids:
+        return steps
+
+    def reply_of(row: dict[str, Any]) -> str:
+        if row.get("kind") != ACTION:
+            return ""
+        linked = str(row.get("run_id") or "")
+        if linked:
+            return linked if linked in reply_ids else ""
+        # Older refusals have no run_id. Recover only an exact numbered action,
+        # with a matching step label, rather than accepting a broad ID prefix.
+        identity = str(row.get("id") or "")
+        prefix, separator, index = identity.rpartition("-")
+        reply_id = prefix[4:] if prefix.startswith("act-") else ""
+        number = step_index(row.get("labels", ()))
+        return reply_id if (separator and reply_id in reply_ids and number is not None
+                            and number > 0 and index == str(number)) else ""
+
+    found = await recall.scan(owner, lambda row: bool(reply_of(row)))
+    seen: set[str] = set()
+    for row in found.rows:  # newest revision first
+        if row["id"] in seen:
+            continue
+        seen.add(row["id"])
         effect = row.get("effect") or {}
         outcome = str(effect.get("outcome", EffectOutcome.NONE.value))
         decision = str(row.get("decision") or "allow")
         state = str(row.get("state", ""))
         reason, result = _stored_parts(decision, str(row.get("result", "")))
-        steps.append({"index": step_index(row.get("labels", ())) or 0, "tool": row["tool"],
+        steps[reply_of(row)].append({"index": step_index(row.get("labels", ())) or 0,
+                      "tool": row["tool"],
                       "arguments": row.get("arguments") or {}, "decision": decision,
                       "reason": reason,
                       "ok": decision == "allow" and state == State.COMPLETED.value,
                       "result": result, "action_id": row["id"], "state": state,
                       "effect": str(effect.get("kind", "")), "outcome": outcome,
-                      "may_retry": may_retry(str(effect.get("kind", "")),
-                                              EffectOutcome(outcome), State(state))})
+                      "may_retry": decision == "allow" and may_retry(
+                          str(effect.get("kind", "")), EffectOutcome(outcome), State(state))})
+    for rows in steps.values():
+        rows.sort(key=lambda step: step["index"])
     return steps
 
 
@@ -461,10 +490,10 @@ async def _execute(owner: Any, reply_id: str, index: int, registry: dict[str, To
     if tool is None:
         step, action = _refused_step(index, call, "deny",
                                      f"there is no tool named {call.name}", State.FAILED,
-                                     action_id=action_id)
+                                     action_id=action_id, run_id=reply_id)
     elif call.malformed:
         step, action = _refused_step(index, call, "deny", call.malformed, State.FAILED,
-                                     action_id=action_id, effect=tool.effect)
+                                     action_id=action_id, run_id=reply_id, effect=tool.effect)
     else:
         # The effect of this exact call (a write inside the working folder is not the
         # same act as one outside it). The policy derives it the same way; if the
@@ -498,10 +527,10 @@ async def _execute(owner: Any, reply_id: str, index: int, registry: dict[str, To
             await approvals.request(owner, action_id=action_id, tool=tool.name,
                                     arguments=call.arguments, reason=reason)
             step, action = _refused_step(index, call, "ask", reason, State.WAITING,
-                                         action_id=action_id, effect=effect)
+                                         action_id=action_id, run_id=reply_id, effect=effect)
         else:
             step, action = _refused_step(index, call, "deny", reason, State.FAILED,
-                                         action_id=action_id, effect=effect)
+                                         action_id=action_id, run_id=reply_id, effect=effect)
     await _publish(owner, action)
     return step
 

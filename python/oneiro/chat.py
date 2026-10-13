@@ -146,18 +146,41 @@ def _usage(answer: Any, headers: dict[str, str]) -> dict[str, Any]:
 
 def chat_call(messages: list[dict[str, Any]], *, base_url: str, api_key: str, model: str,
               tools: list[dict[str, Any]] | None = None,
-              timeout: float = TIMEOUT) -> ModelReply:
-    """One chat-completions request with optional tool declarations."""
+              max_tokens: int | None = None, temperature: float | None = None,
+              timeout: float = TIMEOUT, user_agent: str = "") -> ModelReply:
+    """One chat-completions request with optional tool declarations.
+
+    `max_tokens` and `temperature` are sent only when the caller names them, so a caller
+    with no opinion leaves the provider's own default in force instead of guessing one; a
+    caller that has to reproduce a protocol's settings (a benchmark that generates at
+    temperature 0 and a bounded completion) can name them and be sure they were sent.
+    """
     if not (base_url and api_key and model):
         raise ChatError("the model is not configured")
+    if max_tokens is not None and (type(max_tokens) is not int or max_tokens < 1):
+        raise ChatError("max_tokens must be a positive integer")
+    if temperature is not None:
+        try:
+            temperature = float(temperature)
+        except (TypeError, ValueError):
+            raise ChatError("temperature must be a number") from None
+        if not 0.0 <= temperature <= 2.0:
+            raise ChatError("temperature is outside the range a provider accepts")
     body: dict[str, Any] = {"model": model, "messages": messages}
     if tools:
         body["tools"] = tools
+    if max_tokens is not None:
+        body["max_tokens"] = max_tokens
+    if temperature is not None:
+        body["temperature"] = temperature
     payload = json.dumps(body).encode("utf-8")
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
+    if user_agent:
+        headers["User-Agent"] = user_agent
     request = urllib.request.Request(
         f"{base_url.rstrip('/')}/chat/completions",
         data=payload,
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+        headers=headers,
         method="POST",
     )
     try:

@@ -359,6 +359,23 @@ class GraphWorker:
             self.durability.fail("checkpoint_interrupted")
             raise
 
+    async def save(self) -> dict[str, Any]:
+        """Ask the graph to run its native Save and wait until it is observed.
+
+        This is the weaker half of `checkpoint`, and it is named as such. The graph's own
+        `action_oneiro_save_memory` is dispatched and waited for, so records this lane
+        wrote reach the graph's own files instead of only its memory. It is **not** a
+        durability claim: no snapshot is verified and the durability gate is left exactly
+        as it was, so a caller about to cause an external effect still takes a verified
+        checkpoint. It exists for a caller that writes evidence and has to be sure the
+        graph itself holds it - a measurement closing its own lane, for instance - and the
+        report says in words what was and was not established.
+        """
+        report = await self._call("checkpoint", {})
+        return {**report, "durable": False,
+                "note": "native Save observed; no snapshot verified, so durability is "
+                        "not claimed and the effect gate is untouched"}
+
     async def close(self) -> None:
         self._closing = True
         async with self._lane:

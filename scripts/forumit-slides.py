@@ -106,12 +106,15 @@ SLIDE_PLAN: list[dict] = [
      "answers": "27, 28",
      "evidence": "python/oneiro/recall.py (history_complete), tests/live_memory_check.py — 22 шага, код 0",
      "carries": ("Прежнее значение", "источник", "датой")},
-    {"key": "05-memory-metric", "title": "Что даёт память: два числа замера",
-     "caption": "С памятью 0,73, без памяти 0,06 на пятидесяти вопросах; слабое место названо.",
+    {"key": "05-memory-metric", "title": "Что даёт память: три числа одного замера",
+     "caption": "С памятью 0,74 и 0,76, без памяти 0,08 на пятидесяти вопросах; два хранилища идут "
+                "вровень, слабое место названо.",
      "answers": "22, 24, 25, 30",
-     "evidence": "~/.openclaw/bench-memory/runs/s-50-2-report.md (сохранённый прогон: 50 вопросов, "
-                 "судья вынес вердикт 49 клеткам графа и 50 — без памяти); bench/memory/run.py",
-     "carries": ("0,73", "0,06", "ограничение")},
+     "evidence": "~/.openclaw/bench-memory/runs/s-50-8-report.md (свежий прогон на текущем коде: "
+                 "50 вопросов, cap 100, k 5, руки graph,flat,none, код возврата 0, 149 клеток "
+                 "с вердиктом из 150; ответы kimi-k2.5, вердикты deepseek-v4-pro); "
+                 "bench/memory/run.py",
+     "carries": ("0,74", "0,76", "0,08", "ограничение")},
     {"key": "06-memory-panel", "title": "Раздел памяти в панели",
      "caption": "Кадр панели: три факта владельца, источник, даты, прежнее значение.",
      "answers": "32",
@@ -534,37 +537,44 @@ def slide_memory_previous(prs, plan) -> None:
 
 def slide_memory_metric(prs, plan) -> None:
     slide = blank(prs)
-    title_block(slide, "Что даёт память: два числа сохранённого замера")
+    title_block(slide, "Что даёт память: три числа свежего замера")
+    # Three tiles rather than two: the fresh run measured both ways of remembering, and
+    # they land one answer apart (38 and 37 of 50). Showing only the graph would invite
+    # the room to read a difference between the two stores that the run does not show.
     for index, (value, label, detail) in enumerate((
-            ("0,73", "верных ответов с памятью", "память в типизированном графе"),
-            ("0,06", "верных ответов без памяти", "тот же вопрос, память отключена"))):
-        x = MARGIN + index * 6.13
-        box = plate(slide, x, 1.45, 5.9, 2.15, fill=TINT)
+            ("0,74", "верных ответов с графом", "память типизированными записями"),
+            ("0,76", "верных ответов с журналом", "тот же материал одним текстом"),
+            ("0,08", "верных ответов без памяти", "тот же вопрос, память отключена"))):
+        x = MARGIN + index * 4.13
+        box = plate(slide, x, 1.45, 3.88, 2.15, fill=TINT)
         write(box.text_frame, [
-            {"text": value, "size": 52, "bold": True, "font": HEAD_FONT, "color": TEAL,
+            {"text": value, "size": 44, "bold": True, "font": HEAD_FONT, "color": TEAL,
              "space_after": 4},
-            {"text": label, "size": 14.5, "bold": True, "color": INK, "space_after": 4},
-            {"text": detail, "size": 12, "color": MUTED},
+            {"text": label, "size": 13, "bold": True, "color": INK, "space_after": 4},
+            {"text": detail, "size": 11, "color": MUTED},
         ], pad=True)
-    text_block(slide, MARGIN, 3.75, BODY_W, 0.4,
-               [{"text": "LongMemEval, 50 вопросов, сохранённый прогон; верных ответов — "
-                         "доля клеток, которым судья вынес вердикт.", "size": 11.5,
-                 "color": MUTED, "line_spacing": 1.15}])
+    text_block(slide, MARGIN, 3.72, BODY_W, 0.5,
+               [{"text": "LongMemEval, 50 вопросов, свежий прогон на текущем коде; верных "
+                         "ответов — доля клеток, которым судья вынес вердикт. Два хранилища "
+                         "идут вровень, а разница с памятью и без неё — сорокакратная.",
+                 "size": 11.5, "color": MUTED, "line_spacing": 1.15}])
     left = plate(slide, MARGIN, 4.35, 5.9, 1.8, fill=PAPER, line=TINT_2)
     write(left.text_frame, [
-        {"text": "Слабое место — вопросы про время", "size": 13.5, "bold": True,
+        {"text": "Слабее всего — вопросы про предпочтения", "size": 13, "bold": True,
          "color": INK, "space_after": 5},
-        {"text": "Они даются хуже остальных. Это ограничение, а не победа.",
-         "size": 12, "color": MUTED, "line_spacing": 1.15},
+        {"text": "Полнота попадания 0,50 против 0,86 и 0,88 в целом; вопросы про время "
+                 "тоже ниже общего счёта. Это ограничение, а не победа.",
+         "size": 11.5, "color": MUTED, "line_spacing": 1.15},
     ], pad=True)
     right = plate(slide, MARGIN + 6.13, 4.35, 5.9, 1.8, fill=PAPER, line=TINT_2)
     write(right.text_frame, [
-        {"text": "Поиск по памяти — по словам и связям", "size": 13.5, "bold": True,
+        {"text": "Поиск по памяти — по словам и связям", "size": 13, "bold": True,
          "color": INK, "space_after": 5},
-        {"text": "Поиск «по смыслу» — цель, а не сделанное.",
-         "size": 12, "color": MUTED, "line_spacing": 1.15},
+        {"text": "Поиск «по смыслу» — цель, а не сделанное. Одна клетка из ста пятидесяти "
+                 "осталась без вердикта: провайдер отказал, и она названа.",
+         "size": 11.5, "color": MUTED, "line_spacing": 1.15},
     ], pad=True)
-    footer(slide, "~/.openclaw/bench-memory/runs/s-50-2-report.md (сохранённый прогон) · "
+    footer(slide, "~/.openclaw/bench-memory/runs/s-50-8-report.md (свежий прогон, 50 вопросов) · "
                   "bench/memory/run.py", 5)
     notes(slide, plan)
 

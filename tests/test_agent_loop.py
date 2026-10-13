@@ -528,6 +528,11 @@ def test_the_api_returns_the_steps_and_replays_them_unchanged(tmp_path, monkeypa
         body = {"text": "read the note", "client_id": "client-0015-oooo"}
         first = post(client, "/api/message", body, token).json()
         again = post(client, "/api/message", body, token).json()
+        history = client.get("/api/conversations/main/messages")
+        assert history.status_code == 200, history.text
+        stored_reply = next(row for row in history.json()["messages"]
+                            if row["id"] == first["reply"]["id"])
+        assert stored_reply["steps"] == first["steps"]
 
     assert first["reply"]["text"] == "It says hello."
     assert first["steps"][0]["tool"] == "read_file"
@@ -536,6 +541,84 @@ def test_the_api_returns_the_steps_and_replays_them_unchanged(tmp_path, monkeypa
     assert again["replayed"] is True
     assert again["steps"] == first["steps"]
     assert len(model.calls) == 2, "one model call for the tool, one for the answer"
+
+
+@pytest.mark.parametrize("case", ["unknown", "malformed", "role", "permission", "waiting"])
+@pytest.mark.parametrize("legacy", [False, True], ids=["new-record", "legacy-unlinked-record"])
+def test_refused_and_waiting_steps_survive_replay_and_http_reload(
+        tmp_path, monkeypatch, case, legacy):
+    reached = []
+    tool = Tool("call_test", "test call", {"text": {"type": "string"}}, ("text",),
+                ("manager", "executor"), "mcp_call",
+                lambda _context, arguments: reached.append(arguments))
+    decision = "ask" if case == "waiting" else "deny" if case == "permission" else "allow"
+    policy = Policy({"decisions": {"mcp_call": decision}})
+    if case == "role":
+        tool = Tool("call_test", "test call", tool.properties, tool.required,
+                    ("executor",), tool.effect, tool.handler)
+    call = ToolCall("refused-call", "missing_tool" if case == "unknown" else tool.name,
+                    {"text": "must not run"}, "invalid JSON" if case == "malformed" else "")
+    model = Model(monkeypatch, replies=[ModelReply("", (call,)), ModelReply("Not executed.")])
+    monkeypatch.setattr(agent, "default_registry", lambda _owner, _conversation: {tool.name: tool})
+    monkeypatch.setattr(agent, "default_policy", lambda: policy)
+    links = MemoryLinks()
+    body = {"text": "try the write", "client_id": "reload-refusal-0001",
+            "conversation_id": CONVERSATION}
+    with TestClient(make_app(tmp_path, links)) as client:
+        response = post(client, "/api/message", body, csrf_of(client))
+        assert response.status_code == 200, response.text
+        first = response.json()
+        assert len(first["steps"]) == 1 and first["steps"][0]["ok"] is False
+        assert first["steps"][0]["decision"] == ("ask" if case == "waiting" else "deny")
+        if not legacy:
+            assert actions_of(client.app.state.runtime)[0]["run_id"] == first["reply"]["id"]
+        if legacy:
+            # Already stored refusals predate the repair. Do not rewrite the graph to
+            # migrate them: the reader must recover the exact numbered action ID.
+            owner = client.app.state.runtime
+            row = actions_of(owner)[0]
+            old = Action.from_dict(row).with_state(State(row["state"]), run_id="")
+            asyncio.run(owner.publish(old.to_dict(), "legacy-refusal",
+                                      expected_revision=row["__revision__"]))
+
+    model_calls = len(model.calls)
+    with TestClient(make_app(tmp_path, links)) as restarted:
+        replay = post(restarted, "/api/message", body, csrf_of(restarted))
+        assert replay.status_code == 200, replay.text
+        assert replay.json()["replayed"] is True
+        assert replay.json()["steps"] == first["steps"]
+        history = restarted.get(f"/api/conversations/{CONVERSATION}/messages")
+        assert history.status_code == 200, history.text
+        reply = next(row for row in history.json()["messages"]
+                     if row["id"] == first["reply"]["id"])
+        assert reply["steps"] == first["steps"]
+        assert reply["steps"][0]["state"] == ("waiting" if case == "waiting" else "failed")
+        if case == "waiting":
+            pending = asyncio.run(approvals.pending(restarted.app.state.runtime))
+            assert len(pending) == 1 and pending[0]["action_id"] == reply["steps"][0]["action_id"]
+    assert reached == [] and len(model.calls) == model_calls, "reload must execute nothing"
+
+
+def test_legacy_step_lookup_does_not_mix_similar_reply_ids_or_duplicate_revisions(tmp_path):
+    owner = owner_for(tmp_path, MemoryLinks())
+    rows = [
+        Action(id="act-reply-short-1", tool="old-refusal", labels=("step:1",),
+               decision="deny", state=State.FAILED),
+        Action(id="act-reply-short-extra-1", tool="other-turn", labels=("step:1",),
+               decision="deny", state=State.FAILED),
+        Action(id="act-reply-short-2", tool="mismatched-label", labels=("step:3",),
+               decision="deny", state=State.FAILED),
+        Action(id="act-reply-short-4", run_id="reply-other", tool="other-link",
+               labels=("step:4",), decision="deny", state=State.FAILED),
+    ]
+    for row in rows:
+        asyncio.run(owner.publish(row.to_dict(), row.id))
+    changed = rows[0].with_state(State.FAILED, result="deny: latest reason")
+    asyncio.run(owner.publish(changed.to_dict(), "updated-refusal", expected_revision=1))
+    steps = asyncio.run(agent.turn_steps_for(owner, {"reply-short", "reply-short-extra"}))
+    assert [step["tool"] for step in steps["reply-short"]] == ["old-refusal"]
+    assert steps["reply-short"][0]["reason"] == "latest reason"
+    assert [step["tool"] for step in steps["reply-short-extra"]] == ["other-turn"]
 
 
 def test_a_provider_outage_after_a_tool_step_keeps_the_step_and_invents_no_reply(
