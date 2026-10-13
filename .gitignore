@@ -2,6 +2,15 @@
 kb.bin/
 logs/
 
+# Runtime state a command creates while it holds the runtime. `graph-writer.lock` is the
+# writer lease (`runtime.py`, `office_env.py`, `dream/measure.py`) taken in the data root;
+# `state/`, `worktrees/` and `_tmp/` are evidence and scratch from the same runs.
+# Kept out of the repository: none of it is source, and a clone would create its own.
+graph-writer.lock
+state/
+worktrees/
+_tmp/
+
 # Installed product: the console tree and its virtualenv, built by
 # scripts/install.py (CowAgent archive is in console/vendor/, the product's own
 # files in console/overlay/). Never committed - a clone installs it.
