@@ -1,0 +1,145 @@
+{
+  "generated_at": "2026-10-13T04:43:37",
+  "console_url": "http://127.0.0.1:31012",
+  "theme": "paper",
+  "lang": "ru",
+  "work": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\_tmp\\oneiro-slide-shots-4s83opdh",
+  "facts": [
+    {
+      "revision": 1,
+      "text": "Отчёты готовятся к пятнице.",
+      "created_at": "2026-10-13T01:43:20+00:00",
+      "updated_at": "2026-10-13T01:43:20+00:00",
+      "provenance": "owner_instruction",
+      "id": "fact-slide-fact-0002",
+      "superseded": []
+    },
+    {
+      "revision": 1,
+      "text": "Тихие часы — с 22:00 до 09:00; ночью уведомления удерживаются.",
+      "created_at": "2026-10-13T01:43:20+00:00",
+      "updated_at": "2026-10-13T01:43:20+00:00",
+      "provenance": "owner_instruction",
+      "id": "fact-slide-fact-0003",
+      "superseded": []
+    },
+    {
+      "revision": 2,
+      "text": "Владелец пишет по-русски и по-английски.",
+      "created_at": "2026-10-13T01:43:20+00:00",
+      "updated_at": "2026-10-13T01:43:20+00:00",
+      "provenance": "owner_instruction",
+      "id": "fact-slide-fact-0001",
+      "superseded": [
+        {
+          "revision": 1,
+          "text": "Владелец пишет по-русски.",
+          "created_at": "2026-10-13T01:43:20+00:00",
+          "updated_at": "2026-10-13T01:43:20+00:00",
+          "provenance": "owner_instruction"
+        }
+      ]
+    }
+  ],
+  "journal_records": [
+    "slide-task-0001",
+    "slide-run-0001",
+    "slide-task-0002",
+    "slide-run-0002",
+    "slide-schedule-0001"
+  ],
+  "frames": [
+    {
+      "file": "docs/forumit-2026/slides/img/ru-memory-facts.png",
+      "route": "/memory?lang=ru",
+      "element": "#facts",
+      "url": "http://127.0.0.1:31012/memory?lang=ru",
+      "theme": "paper",
+      "lang": "ru",
+      "window_px": 1440,
+      "pixels": [
+        1168,
+        661
+      ],
+      "bytes": 44904,
+      "note": "Раздел панели «Курируемая память»: три факта владельца, источник, дата создания и изменения; у первого показано прежнее значение со своим источником и своей датой.",
+      "text_head": "Курируемая память Короткие факты, которые Oneiro держит в уме для каждого ответа, написанные вами. Это ваши утверждения, а не проверенные наблюдения. Изменение сохраняет историю. 129 символов из 2000 Отчёты готовятся к п",
+      "facts": [
+        "Отчёты готовятся к пятнице.",
+        "Тихие часы — с 22:00 до 09:00; ночью уведомления удерживаются.",
+        "Владелец пишет по-русски и по-английски."
+      ],
+      "earlier": {
+        "revision": 1,
+        "text": "Владелец пишет по-русски.",
+        "created_at": "2026-10-13T01:43:20+00:00",
+        "updated_at": "2026-10-13T01:43:20+00:00",
+        "provenance": "owner_instruction"
+      }
+    },
+    {
+      "file": "docs/forumit-2026/slides/img/ru-memory-card.png",
+      "route": "/memory?lang=ru",
+      "element": "li.fact-card[data-fact=\"fact-slide-fact-0001\"]",
+      "url": "http://127.0.0.1:31012/memory?lang=ru",
+      "theme": "paper",
+      "lang": "ru",
+      "window_px": 700,
+      "pixels": [
+        594,
+        157
+      ],
+      "bytes": 12411,
+      "note": "Одна запись раздела «Курируемая память» крупно: факт владельца после правки, источник, даты и прежнее значение с его источником и датой.",
+      "text_head": "Владелец пишет по-русски и по-английски. источник: указание владельца · записан: 2026-10-13 01:43 · изменён: 2026-10-13 01:43 Прежнее значение — остаётся в записи с датой и источником. Владелец пишет по-русски. источник:"
+    },
+    {
+      "file": "docs/forumit-2026/slides/img/ru-tasks-journal.png",
+      "route": "/tasks?lang=ru",
+      "element": ".screen-container",
+      "url": "http://127.0.0.1:31012/tasks?lang=ru",
+      "theme": "paper",
+      "lang": "ru",
+      "window_px": 1440,
+      "pixels": [
+        1168,
+        383
+      ],
+      "bytes": 29861,
+      "note": "Экран задач, разделы «Активные и ожидающие задачи» и «Постоянные расписания»: две задачи и постоянное расписание.",
+      "text_head": "Активные и ожидающие задачи Подготовить отчёт для куратора completed Роль: executor Разобрать письмо от куратора queued Роль: executor Новая задача В очередь Постоянные расписания Утренний разбор памяти 0 8 * * * Статус:"
+    },
+    {
+      "file": "docs/forumit-2026/slides/img/ru-initiative.png",
+      "route": "/settings?lang=ru",
+      "element": "fieldset:has(legend:text-is('Инициатива'))",
+      "url": "http://127.0.0.1:31012/settings?lang=ru",
+      "theme": "paper",
+      "lang": "ru",
+      "window_px": 1000,
+      "pixels": [
+        968,
+        941
+      ],
+      "bytes": 59191,
+      "note": "Настройки, раздел «Инициатива» целиком: уровень, тихие часы 22:00-09:00, утренняя сводка и одно повторное напоминание.",
+      "text_head": "Инициатива Насколько Oneiro действует сам off on_command scheduled proactive Значение из этого файла настроек. off: ничего без вас. on_command: только то, о чём попросите. scheduled: ещё и задачи, поставленные по расписа"
+    },
+    {
+      "file": "docs/forumit-2026/slides/img/ru-initiative-rows.png",
+      "route": "/settings?lang=ru",
+      "element": "div.field:has([id='f-initiative.quiet_hours']) + div.field:has([id='f-initiative.digest'])",
+      "url": "http://127.0.0.1:31012/settings?lang=ru",
+      "theme": "paper",
+      "lang": "ru",
+      "window_px": 560,
+      "pixels": [
+        494,
+        303
+      ],
+      "bytes": 16116,
+      "note": "Две строки раздела «Инициатива» крупно: тихие часы со значением и объяснением и утренняя сводка.",
+      "text_head": "Тихие часы Значение из этого файла настроек. Окно, в которое Oneiro не прерывает вас уведомлениями. Пусто — значит тихих часов нет. 22:00-09:00 Утренняя сводка true false Значение из этого файла настроек. Говорит ли Onei"
+    }
+  ]
+}

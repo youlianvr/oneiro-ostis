@@ -1,0 +1,603 @@
+{
+  "generated_at": "2026-10-13T06:03:52",
+  "marker": "p6-20261013i",
+  "command": "python tests/live_demo_record.py --marker p6-20261013i",
+  "run_root": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\_tmp\\oneiro-w3-live-4p6h8k3b",
+  "private_graph": {
+    "container": "oneiro-w3-4p6h8k3b",
+    "port": 43051
+  },
+  "transport": {
+    "mailbox": "test stdio server",
+    "bot": "test stdio server",
+    "servers_seen": [
+      "mailbox"
+    ],
+    "live_sends": 1
+  },
+  "console_port": 5232,
+  "video": {
+    "webm": "docs/forumit-2026/demo-record/oneiro-demo-run.webm",
+    "mp4": "docs/forumit-2026/demo-record/oneiro-demo-run.mp4",
+    "ffprobe_webm": {
+      "duration_s": 40.96,
+      "size_bytes": 2525714,
+      "format": "matroska,webm",
+      "codec": "vp8",
+      "width": 1280,
+      "height": 720,
+      "frames": 0,
+      "r_frame_rate": "25/1"
+    },
+    "ffprobe_mp4": {
+      "duration_s": 40.96,
+      "size_bytes": 762737,
+      "format": "mov,mp4,m4a,3gp,3g2,mj2",
+      "codec": "h264",
+      "width": 1280,
+      "height": 720,
+      "frames": 1024,
+      "r_frame_rate": "25/1"
+    },
+    "browser_playback": {
+      "duration": 40.96,
+      "width": 1280,
+      "height": 720,
+      "readyState": 4,
+      "currentTime": 2,
+      "problem": ""
+    },
+    "stills": [
+      {
+        "stamp_s": 1.0,
+        "file": "docs/forumit-2026/demo-record/stills/p6-20261013i/at-001.0s.png",
+        "bytes": 303685,
+        "pixels": [
+          1280,
+          720
+        ],
+        "mean": 27.81,
+        "std": 26.91
+      },
+      {
+        "stamp_s": 12.288,
+        "file": "docs/forumit-2026/demo-record/stills/p6-20261013i/at-012.3s.png",
+        "bytes": 301317,
+        "pixels": [
+          1280,
+          720
+        ],
+        "mean": 27.65,
+        "std": 28.77
+      },
+      {
+        "stamp_s": 24.576,
+        "file": "docs/forumit-2026/demo-record/stills/p6-20261013i/at-024.6s.png",
+        "bytes": 304593,
+        "pixels": [
+          1280,
+          720
+        ],
+        "mean": 28.13,
+        "std": 27.57
+      },
+      {
+        "stamp_s": 39.96,
+        "file": "docs/forumit-2026/demo-record/stills/p6-20261013i/at-040.0s.png",
+        "bytes": 362454,
+        "pixels": [
+          1280,
+          720
+        ],
+        "mean": 35.32,
+        "std": 35.53
+      }
+    ],
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "screens": [
+    {
+      "file": "docs/forumit-2026/demo-record/key-01-console.png",
+      "url": "http://127.0.0.1:5232/?lang=ru",
+      "element": "whole page",
+      "bytes": 79954,
+      "pixels": [
+        1280,
+        1207
+      ],
+      "text_head": "Oneiro Автономный ассистент на базе OSTIS Диалог Черновики Задачи Инструменты Настройки Память Установка Граф Диалог Общение с постоянным ассистентом. Карточки действий отображают вызовы инструментов и подтверждения прямо в ленте без сырого",
+      "route": "/?lang=ru",
+      "note": "Экран чата панели: консоль этого прогона на своём порту.",
+      "must_show": [],
+      "in_video": {
+        "second": 3,
+        "difference": 2.52,
+        "sampled": 41
+      }
+    },
+    {
+      "file": "docs/forumit-2026/demo-record/key-07-tasks-webhook.png",
+      "url": "http://127.0.0.1:5232/tasks?lang=ru",
+      "element": ".screen-container",
+      "bytes": 23812,
+      "pixels": [
+        1168,
+        327
+      ],
+      "text_head": "Активные и ожидающие задачи Мониторинг: диск почти полон queued Роль: executor Новая задача В очередь Постоянные расписания Постоянных расписаний нет. Новое расписание Сохранить расписание",
+      "route": "/tasks?lang=ru",
+      "note": "Журнал: задача, которую создал подписанный вебхук, прочитана из графа этого прогона.",
+      "must_show": [
+        "Активные и ожидающие задачи",
+        "Мониторинг: диск почти полон"
+      ],
+      "in_video": {
+        "second": 17,
+        "difference": 14.12,
+        "sampled": 41
+      }
+    },
+    {
+      "file": "docs/forumit-2026/demo-record/key-02-drafts-before.png",
+      "url": "http://127.0.0.1:5232/drafts?lang=ru",
+      "element": "whole page",
+      "bytes": 94995,
+      "pixels": [
+        1280,
+        1421
+      ],
+      "text_head": "Oneiro Автономный ассистент на базе OSTIS Диалог Черновики Задачи Инструменты Настройки Память Установка Граф Черновики Письма и другие действия, которые ждут вашего нажатия. Пока вы не нажали, наружу не уходит ничего; здесь виден точный вы",
+      "route": "/drafts?lang=ru",
+      "note": "Черновик до нажатия: точные аргументы будущего вызова, транспорт тестовый.",
+      "must_show": [
+        "Ждут вашего нажатия",
+        "Отправить"
+      ],
+      "in_video": {
+        "second": 11,
+        "difference": 2.49,
+        "sampled": 41
+      }
+    },
+    {
+      "file": "docs/forumit-2026/demo-record/key-03-drafts-after.png",
+      "url": "http://127.0.0.1:5232/drafts?lang=ru",
+      "element": "whole page",
+      "bytes": 70704,
+      "pixels": [
+        1280,
+        1014
+      ],
+      "text_head": "Oneiro Автономный ассистент на базе OSTIS Диалог Черновики Задачи Инструменты Настройки Память Установка Граф Черновики Письма и другие действия, которые ждут вашего нажатия. Пока вы не нажали, наружу не уходит ничего; здесь виден точный вы",
+      "route": "/drafts",
+      "note": "Тот же экран после нажатия: отправлено, ровно один вызов в журнале тестового транспорта.",
+      "must_show": [
+        "Отправлено."
+      ],
+      "in_video": {
+        "second": 20,
+        "difference": 2.33,
+        "sampled": 41
+      }
+    },
+    {
+      "file": "docs/forumit-2026/demo-record/key-04-memory.png",
+      "url": "http://127.0.0.1:5232/memory?lang=ru",
+      "element": "#facts",
+      "bytes": 37127,
+      "pixels": [
+        1168,
+        578
+      ],
+      "text_head": "Курируемая память Короткие факты, которые Oneiro держит в уме для каждого ответа, написанные вами. Это ваши утверждения, а не проверенные наблюдения. Изменение сохраняет историю. 67 символов из 2000 Отчёты готовятся к пятнице. источник: ука",
+      "route": "/memory?lang=ru",
+      "note": "Раздел «Курируемая память»: два факта, источник и даты; у первого — прежнее значение со своим источником.",
+      "must_show": [
+        "Курируемая память",
+        "Прежнее значение",
+        "источник",
+        "по-английски"
+      ],
+      "in_video": {
+        "second": 20,
+        "difference": 11.56,
+        "sampled": 41
+      }
+    },
+    {
+      "file": "docs/forumit-2026/demo-record/key-05-graph-read.png",
+      "url": "http://127.0.0.1:5232/oneiro/?lang=ru",
+      "element": "whole page",
+      "bytes": 108770,
+      "pixels": [
+        1280,
+        1467
+      ],
+      "text_head": "Oneiro Автономный ассистент на базе OSTIS Диалог Черновики Задачи Инструменты Настройки Память Установка Граф Панель графа OSTIS является обязательной подложкой памяти. Проверка чтения и обхода графа в реальном времени. Готовность системы Н",
+      "route": "/oneiro/?lang=ru",
+      "note": "Экран «Подложка памяти»: что панель прочитала из графа этого прогона (проверка доступности и обхода).",
+      "must_show": [
+        "Подложка памяти",
+        "Читается"
+      ],
+      "in_video": {
+        "second": 28,
+        "difference": 2.65,
+        "sampled": 41
+      }
+    },
+    {
+      "file": "docs/forumit-2026/demo-record/key-08-office-document.png",
+      "url": "file:///C:/Users/pc/.openclaw/workspace/projects/ostis/oneiro-ostis/docs/forumit-2026/demo-record/office-document-p1.png",
+      "element": "whole page",
+      "bytes": 11279,
+      "pixels": [
+        1280,
+        720
+      ],
+      "text_head": "",
+      "route": "file:///C:/Users/pc/.openclaw/workspace/projects/ostis/oneiro-ostis/docs/forumit-2026/demo-record/office-document-p1.png",
+      "note": "Первая страница slides.pdf: PDF, выпущенный офисным заданием этого прогона, показан изображением, отрендеренным из самого файла — браузер записи PDF не отображает, а скачивает.",
+      "opened": "docs/forumit-2026/demo-record/office-document-p1.png",
+      "in_video": {
+        "second": 31,
+        "difference": 0.32,
+        "sampled": 41
+      }
+    },
+    {
+      "file": "docs/forumit-2026/demo-record/key-06-office-listing.png",
+      "url": "file:///C:/Users/pc/.openclaw/workspace/projects/ostis/oneiro-ostis/docs/demo-artifacts/2026-10-13/index.html",
+      "element": "whole page",
+      "bytes": 433494,
+      "pixels": [
+        1280,
+        6352
+      ],
+      "text_head": "Oneiro: локальный показ проверен Это статические доказательства, не работающий агент. Почта и бот — тестовые транспорты. Офисные файлы созданы настоящим LibreOffice в контейнере. Рабочая модель — Mistral Codestral. Самоулучшение не доказано",
+      "route": "",
+      "note": "Листинг офисных файлов: страница доказательств проверенного показа (docs/demo-artifacts/2026-10-13/) — шесть файлов настоящего LibreOffice в контейнере; это не пересъёмка, а та же страница.",
+      "must_show": [
+        "Открыть ODT",
+        "Открыть XLSX",
+        "Открыть PPTX"
+      ],
+      "in_video": {
+        "second": 36,
+        "difference": 2.72,
+        "sampled": 41
+      }
+    }
+  ],
+  "office_listing": {
+    "page": "docs/demo-artifacts/2026-10-13/index.html",
+    "what_it_is": "the durable artifacts viewer of the verified rehearsal: six files made by a real LibreOffice in a container, shown beside this run's own"
+  },
+  "webhook": {
+    "hook": "monitor",
+    "endpoint": "POST /api/hooks/monitor",
+    "title": "Мониторинг: диск почти полон",
+    "task_id": "task-hook-monitor-de8cb0dfb2417618",
+    "secret": {
+      "file": "hooks.secret",
+      "bytes": 64,
+      "fingerprint": "b4bfa43e22a2"
+    },
+    "refused": [
+      {
+        "what": "no signature",
+        "http": 401,
+        "code": "signature_absent",
+        "reason": "the x-oneiro-signature header is missing"
+      },
+      {
+        "what": "a stranger's key",
+        "http": 401,
+        "code": "signature_mismatch",
+        "reason": "the signature does not match this body"
+      },
+      {
+        "what": "this key over other bytes",
+        "http": 401,
+        "code": "signature_mismatch",
+        "reason": "the signature does not match this body"
+      }
+    ],
+    "accepted": {
+      "http": 202,
+      "duplicate": false
+    },
+    "answer": {
+      "hook": "monitor",
+      "client_id": "hook-monitor-de8cb0dfb2417618",
+      "title": "Мониторинг: диск почти полон",
+      "task_id": "task-hook-monitor-de8cb0dfb2417618",
+      "duplicate": false
+    },
+    "task_seen_in_journal": true,
+    "journal_titles": [
+      "Мониторинг: диск почти полон"
+    ],
+    "record_read_back_by_id": {
+      "id": "task-hook-monitor-de8cb0dfb2417618",
+      "kind": "task",
+      "state": "queued",
+      "provenance": "owner_instruction",
+      "title": "Мониторинг: диск почти полон"
+    },
+    "stream_holds": 9,
+    "graph": {
+      "container": "oneiro-w3-4p6h8k3b"
+    }
+  },
+  "office": {
+    "exit": 0,
+    "command": "oneiro office run --topic … --out _tmp/oneiro-w3-live-4p6h8k3b/office --stream demo --json",
+    "container": "oneiro-office-0ead62ba7a17",
+    "container_stopped": true,
+    "artifacts": [
+      {
+        "name": "note.odt",
+        "bytes": 12269,
+        "on_disk_bytes": 12269,
+        "pages": null,
+        "sha256": "faaa57e3a1cf3794130f3e39d327c6b116b3aa8cc9c362aeb80610edae8ff6c5",
+        "file": "_tmp/oneiro-w3-live-4p6h8k3b/office/0ead62ba7a17/out/note.odt"
+      },
+      {
+        "name": "note.pdf",
+        "bytes": 22575,
+        "on_disk_bytes": 22575,
+        "pages": 1,
+        "sha256": "18780cf27c6f1cf987990c6f8685e0e5dd70dd3c3ac6bc5a218d42dafc9f99f4",
+        "file": "_tmp/oneiro-w3-live-4p6h8k3b/office/0ead62ba7a17/out/note.pdf"
+      },
+      {
+        "name": "slides.pdf",
+        "bytes": 19147,
+        "on_disk_bytes": 19147,
+        "pages": 2,
+        "sha256": "ead81bd5dc73dd36b03cfe26d2f29e8c987749c10620a1f41dc497b1c3bca1fc",
+        "file": "_tmp/oneiro-w3-live-4p6h8k3b/office/0ead62ba7a17/out/slides.pdf"
+      },
+      {
+        "name": "slides.pptx",
+        "bytes": 25430,
+        "on_disk_bytes": 25430,
+        "pages": null,
+        "sha256": "23279436c88acd5c0933daa27a53749b8aa0976212015a1ca8f0b8b674d162f5",
+        "file": "_tmp/oneiro-w3-live-4p6h8k3b/office/0ead62ba7a17/out/slides.pptx"
+      },
+      {
+        "name": "table.pdf",
+        "bytes": 12797,
+        "on_disk_bytes": 12797,
+        "pages": 1,
+        "sha256": "d780191f72ea0aed9eccf2f06757cd1d6a09db331a70d43026ffa08ed271ca9f",
+        "file": "_tmp/oneiro-w3-live-4p6h8k3b/office/0ead62ba7a17/out/table.pdf"
+      },
+      {
+        "name": "table.xlsx",
+        "bytes": 4953,
+        "on_disk_bytes": 4953,
+        "pages": null,
+        "sha256": "c5862cc0525560241edc8f29d2e8ee1598d624206bea3d507ba944db3f84d632",
+        "file": "_tmp/oneiro-w3-live-4p6h8k3b/office/0ead62ba7a17/out/table.xlsx"
+      }
+    ],
+    "listing_inside_the_container": "note.odt\nnote.pdf\nslides.pdf\nslides.pptx\ntable.pdf\ntable.xlsx",
+    "records_claimed": [
+      "aec7728da7a841d99ceff6a476e3dbea",
+      "75dc6dc8e85544ba99ae2edb11418351",
+      "b1abc0f9602a4ee7bcf10b77ee7ecd6c",
+      "c94298870ba44ae8b219fde2c37631da",
+      "e6b6528d091249b29a71e7257cfb991f",
+      "a25d86caab87480bb90696cb333bc36e",
+      "d837c6a0c880441dae0f063848c3efca",
+      "7a203f90e4084bdf86812ff412ed7893"
+    ],
+    "records_read_back_by_id": [
+      "75dc6dc8e85544ba99ae2edb11418351",
+      "7a203f90e4084bdf86812ff412ed7893",
+      "a25d86caab87480bb90696cb333bc36e",
+      "aec7728da7a841d99ceff6a476e3dbea",
+      "b1abc0f9602a4ee7bcf10b77ee7ecd6c",
+      "c94298870ba44ae8b219fde2c37631da",
+      "d837c6a0c880441dae0f063848c3efca",
+      "e6b6528d091249b29a71e7257cfb991f"
+    ],
+    "records_inside_the_readers_page": [
+      "d837c6a0c880441dae0f063848c3efca",
+      "7a203f90e4084bdf86812ff412ed7893"
+    ],
+    "reader_exit": 0
+  },
+  "office_document": {
+    "chosen": {
+      "name": "slides.pdf",
+      "bytes": 19147,
+      "on_disk_bytes": 19147,
+      "pages": 2,
+      "sha256": "ead81bd5dc73dd36b03cfe26d2f29e8c987749c10620a1f41dc497b1c3bca1fc",
+      "file": "_tmp/oneiro-w3-live-4p6h8k3b/office/0ead62ba7a17/out/slides.pdf"
+    },
+    "pages": {
+      "pdf": "_tmp/oneiro-w3-live-4p6h8k3b/office/0ead62ba7a17/out/slides.pdf",
+      "pages": 2,
+      "rendered": [
+        {
+          "page": 1,
+          "file": "docs/forumit-2026/demo-record/office-document-p1.png",
+          "bytes": 9973
+        },
+        {
+          "page": 2,
+          "file": "docs/forumit-2026/demo-record/office-document-p2.png",
+          "bytes": 15770
+        }
+      ],
+      "bytes": 19147
+    }
+  },
+  "no_screen_exists_for": [
+    "the signed POST itself: an HTTP request has no screen; its result (the task in the journal) is what is shot",
+    "the refused deliveries (signature_absent, signature_mismatch, signature_mismatch): a refusal is a status code and a named reason, and the console has no screen for it; the check reads the journal to show no task came of them",
+    "the conversion inside the office container: the work happens in the container, so the files that came out and their own page render are shown instead",
+    "the reader's printed page: a JSON page is engineering evidence, and this recording does not pass a log off as the product's UI"
+  ],
+  "checks": [
+    {
+      "check": "the run's own graph answers a read",
+      "ok": true,
+      "detail": "0.7s after the container started"
+    },
+    {
+      "check": "the office job converted the sources and its files came out of the container",
+      "ok": true,
+      "detail": "office exit 0; 6 artifacts, 6 on disk with the size the job reported; pages [('note.odt', None), ('note.pdf', 1), ('slides.pdf', 2), ('slides.pptx', None), ('table.pdf', 1), ('table.xlsx', None)]"
+    },
+    {
+      "check": "the container that did the work is stopped, not removed",
+      "ok": true,
+      "detail": "container oneiro-office-0ead62ba7a17 stopped=True"
+    },
+    {
+      "check": "the graph holds the office records: asked for by id, and by the shell reader",
+      "ok": true,
+      "detail": "reader exit 0; by id 8/8 found ; stream holds 8"
+    },
+    {
+      "check": "the produced PDF was rendered from its own file",
+      "ok": true,
+      "detail": "slides.pdf: 2 pages, 2 rendered"
+    },
+    {
+      "check": "the console answered on its own port",
+      "ok": true,
+      "detail": "1.0s after start"
+    },
+    {
+      "check": "the console reads this run's own graph",
+      "ok": true,
+      "detail": "/api/graph HTTP 200: reachable=True verified=True"
+    },
+    {
+      "check": "only the demo's two test servers are declared",
+      "ok": true,
+      "detail": "C:\\Users\\pc\\.openclaw\\workspace\\projects\\ostis\\oneiro-ostis\\_tmp\\oneiro-w3-live-4p6h8k3b\\asks\\mcp.json: ['bot', 'mailbox']"
+    },
+    {
+      "check": "the console of this run generated its own hook secret",
+      "ok": true,
+      "detail": "hooks.secret: 64 bytes, fingerprint b4bfa43e22a2"
+    },
+    {
+      "check": "no signature is refused by name",
+      "ok": true,
+      "detail": "HTTP 401 signature_absent — the x-oneiro-signature header is missing"
+    },
+    {
+      "check": "a stranger's key is refused by name",
+      "ok": true,
+      "detail": "HTTP 401 signature_mismatch — the signature does not match this body"
+    },
+    {
+      "check": "this key over other bytes is refused by name",
+      "ok": true,
+      "detail": "HTTP 401 signature_mismatch — the signature does not match this body"
+    },
+    {
+      "check": "the signed delivery became a task, answered by the console",
+      "ok": true,
+      "detail": "HTTP 202 task_id='task-hook-monitor-de8cb0dfb2417618' duplicate=False title='Мониторинг: диск почти полон'"
+    },
+    {
+      "check": "the journal holds exactly the task the signed call made, and none from a refusal",
+      "ok": true,
+      "detail": "HTTP 200 titles=['Мониторинг: диск почти полон']"
+    },
+    {
+      "check": "the task is in the graph as a task record, read back by its own id",
+      "ok": true,
+      "detail": "kind=task state=queued provenance=owner_instruction title='Мониторинг: диск почти полон'; stream holds 9"
+    },
+    {
+      "check": "the letter is read from the test mailbox, which is not a send",
+      "ok": true,
+      "detail": "HTTP 200 read=1 sends=0"
+    },
+    {
+      "check": "the draft waits for a press",
+      "ok": true,
+      "detail": "HTTP 201 draft-7f13499685daa0e46f195e48"
+    },
+    {
+      "check": "the memory section holds a value an edit replaced",
+      "ok": true,
+      "detail": "earlier='Владелец пишет по-русски.' source=owner_instruction"
+    },
+    {
+      "check": "the recorder wrote a video file",
+      "ok": true,
+      "detail": "oneiro-demo-run.webm: 2525714 bytes"
+    },
+    {
+      "check": "the video is this run's, not a file left by an earlier one",
+      "ok": true,
+      "detail": "written 06:03:40, this run started 06:02:21"
+    },
+    {
+      "check": "the video is a real container with a measured duration",
+      "ok": true,
+      "detail": "matroska,webm vp8 1280x720 40.96 s"
+    },
+    {
+      "check": "the video carries pictures at the recorded frame size",
+      "ok": true,
+      "detail": "1280x720 vs viewport 1280x720"
+    },
+    {
+      "check": "every decoded still is a screen, not a colour",
+      "ok": true,
+      "detail": "4 stills; flat: []"
+    },
+    {
+      "check": "the recording moves between screens",
+      "ok": true,
+      "detail": "mean abs difference between the first and the last still: 21.32"
+    },
+    {
+      "check": "an H.264 copy also plays",
+      "ok": true,
+      "detail": "oneiro-demo-run.mp4: h264 40.96 s 762737 bytes"
+    },
+    {
+      "check": "a browser opens the file and reads its duration",
+      "ok": true,
+      "detail": "duration=40.96 1280x720 readyState=4 "
+    },
+    {
+      "check": "exactly one press went out, through the test transport only",
+      "ok": true,
+      "detail": "sends=1 servers=['mailbox'] arguments={\"body\": \"Отчёт подготовлю к пятнице. [p6-20261013i]\", \"subject\": \"Отчёт о приёме в десятый класс\", \"to\": \"curator@examp"
+    },
+    {
+      "check": "no owner data was touched by the recording",
+      "ok": true,
+      "detail": "15 files, digests compared"
+    },
+    {
+      "check": "the private graph is stopped, its container kept",
+      "ok": true,
+      "detail": "container oneiro-w3-4p6h8k3b"
+    },
+    {
+      "check": "every key screen is in the recording, found by sampling the file",
+      "ok": true,
+      "detail": "41 one-second frames of oneiro-demo-run.webm; key-01-console@3s d=2.52, key-07-tasks-webhook@17s d=14.12, key-02-drafts-before@11s d=2.49, key-03-drafts-after@20s d=2.33, key-04-memory@20s d=11.56, key-05-graph-read@28s d=2.65, key-08-office-document@31s d=0.32, key-06-office-listing@36s d=2.72"
+    }
+  ]
+}

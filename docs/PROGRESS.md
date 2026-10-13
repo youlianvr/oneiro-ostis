@@ -2038,3 +2038,231 @@ the console now exits 0.
 
 Not done in this pass: W3 (mail, drafts, Telegram — the interface, last by the plan's
 ordering), W4 (self-improvement, parallel agent), W5 (speech), W6 (final checks).
+## 2026-10-13 — P3 and P4: what Oneiro says first, and the memory that keeps its provenance
+
+Two packages of `docs/forumit-2026/PLAN-DOKLAD-2026-10-14.md` (§ 4), each closed with a
+live run through the surface that uses it.
+
+**P3 — the proactive moments exist in the prototype.** `python/oneiro/proactive.py`: the
+morning digest of what the quiet hours held, and one repeat reminder about an item that
+stayed unfinished while nobody answered it.
+
+- **One clock.** `proactive.tick` is called by `schedule.tick`, the tick the serving
+  process already runs (`create_app(scheduler=True)` → `schedule.loop`). No second timer:
+  a second one would be a second answer to "when does Oneiro speak". The digest is looked
+  at on every tick before anything is fired, because it is about quiet hours that have
+  already ended rather than about a schedule that is due.
+- **The digest belongs to a window, and one window gets one digest.** Said at the first
+  tick at or after `initiative.quiet_hours` end, naming what finished inside that window,
+  what did not, and what is still open. A process that was not running at the end says it
+  late rather than losing the morning; a window two days stale is not reported at all
+  (`proactive.digest_window`, and the reason names it).
+- **A reminder is said once per item, and never after it is finished.** Unfinished means
+  `queued`, `waiting`, `uncertain` or `failed` — the four states in which the owner's
+  word is what carries the item further. It is due after `initiative.reminder_after`
+  minutes with no owner message in that item's conversation since, which is what "while
+  the owner is silent" is measured as.
+- **Both are notices, and both respect the window.** They go through `tasks.notify` (the
+  shape a finished attempt's notice already had), carry the `notice` label plus `digest`
+  or `reminder`, and carry `held` when raised inside the quiet hours: stored either way,
+  the memory is the truth, the label is the interruption. The digest is said in the
+  owner's own conversation (`main`), a reminder in `task-<id>`.
+- **One answer per thing, by key.** `tasks.notice_id` names a notice from its words and
+  minute, or from a key: the digest's key is the window's end date, a reminder's is the
+  item. The store refuses a repeated key with different content, so both callers read the
+  key before building anything, and the refusal itself is read back as the answer it is
+  evidence of — a tick must not raise out of a duplicate.
+- **Declared, and readable in both languages.** `initiative.digest`, `initiative.reminders`
+  and `initiative.reminder_after` (1..1000000 minutes, so at least one: a reminder with no
+  wait is not about an item that waited) in the registry, with the Russian in `i18n`
+  beside the English lifted from the declarations. `SPEC` honesty: the two new switches
+  are read through `config.value("<key>")` with the literal key, which is the route
+  `test_settings_honesty.py` recognises — a helper taking the key as an argument would
+  have been invisible to it and the settings page would have claimed they were inert.
+
+Evidence: `python -m pytest tests/test_proactive.py -q` — **15 passed**; full suite
+**787 passed** (182 s) and `python -m mypy python` — **47 files, no issues**;
+`python tests/live_proactive_check.py` — **23 steps, exit 0**, log `_tmp/live-proactive.log`,
+artifacts `_tmp/oneiro-pro-live-oynljcri/{summary.json,tick.json,notices.json}`. That run
+was made 11 minutes before the last edit to `proactive.py`, so on 2026-10-13 the check was run
+again on the current bytes, with the revision's hashes written beside the log
+(`_tmp/recheck-20261013/{sources-before,sources-after}.sha256`) — **23 steps, exit 0**, its own
+graph `oneiro-pro-live-pma4pk9u`, quiet window `04:08-04:13`, digest "1 finished, 1 did not",
+and the two hash files are identical, so the proof names the bytes it ran on. It
+was on its own graph (shipped image, own container and volume, own port), its own data
+root, and the product's own clock: window `03:39-03:44`, the application served by uvicorn
+with `scheduler=True`, the stub provider the only fake. A scheduled task fired by that
+clock inside the window, its attempt finished, its notice `held=True`; an item whose
+attempt the provider refused got **one** reminder (`held=True`), a later tick added no
+second one, and after the owner's retry finished it nothing more was said; the digest at
+the window's end read `While you were quiet (03:39-03:44): 2 finished, 0 did not.` with
+the finished work named, once from the notice list and once from
+`/api/conversations/main/messages` — the conversation is the transport, no live channel is
+enabled — and the next tick reported `already: true` with the reason. The console stopped
+on request in 0.2 s and the owner's data root was unchanged (15 files hashed before and
+after).
+
+One run of that same check stalled a whole tick (the scheduled task stayed `queued` and
+the console did not stop within 40 s) while the graph was answering a task list in 0.06 s;
+the repeat passed 23/23, and the warm-up reads are now printed at the start of every run so
+a slow graph can be told from a slow product. Recorded rather than retried quietly.
+
+**P4 — the memory screen keeps what it replaced.** `recall.current_facts` already grouped
+revisions; the panel now shows each fact's source and both dates, and the value an edit
+replaced with its own date and source (`superseded`), with `history_complete` saying
+whether the walk reached the end. Search is named token-based, not semantic. The survey's answer 27 — marking contradictions
+between separate records — is not delivered and not claimed: only the earlier revision of the
+same fact is marked, and the decision to narrow the spoken words rather than fake a marker is
+recorded in `_memory/l2-policy/decisions.md`.
+
+Evidence: `python tests/live_memory_check.py` — **22 steps, exit 0** after its own
+expectations were repaired (two assertions still named the pair from before a second fact
+was added; the product was right, the check was stale — `_memory/ERROR_LOG.md`, 2026-10-13).
+Artifacts `_tmp/oneiro-mem-live-i79fpnpu/{summary.json,facts.json,console.log}`; the owner's
+data root unchanged (15 files). Run again on 2026-10-13 on the current bytes — **22 steps,
+exit 0**, log `_tmp/recheck-20261013/live-memory.log`, artifacts
+`_tmp/oneiro-mem-live-wehn0ib_/`, sources unchanged across the run. The fresh `bench/memory` measurement and the panel
+screenshots stay with P5, because they come from one run.
+
+**The fresh measurement cannot be taken on these bytes (2026-10-13, HEAD `7cf6bc443`).** The
+stand `bench/memory` still imports two modules that the v1 rewrite retired: commit `adf76694e`
+("Land the Oneiro v1 rewrite and retire every module it replaced", 2026-10-11) deleted
+`python/llm.py` (the model client, 281 lines), `python/bridge.py` (the graph transport, 1498
+lines) and `tests/test_memory_bench.py` (the offline guard of the renderer and both ranking
+paths, still cited by `bench/memory/README.md`). `import llm` and `import bridge` raise
+`ModuleNotFoundError`; `run.py` substitutes a stub, so every cell is recorded as a provider
+failure ("model chain exhausted: main: llm module retired") while `main()` still returns 0 and
+the report prints `accuracy=None` — an exit code that proves nothing. The attempt over the same
+sample (50 questions, `--cap 100 --k 5`, arms `flat,none`, `--no-ostis`) took 8 seconds and
+recorded zero judged cells; artifacts `~/.openclaw/bench-memory/runs/s-50-3-no-llm.json` and
+`s-50-3-no-llm-report.md`, `smoke-s-2.{json,-report.md}` (3 questions), log
+`_tmp/s-50-3-no-llm.log`. The `graph` arm must not be added to a run without a bridge: the run
+records an empty context as a graph cell — pinned in `trap-check-s-1.json` (same question:
+`retrieved=0`, `recall@5=0.0`, 267 prompt characters, against `flat`'s 5 sessions, `recall@5=1.0`
+and 78 877 characters). So the saved `s-50-2` run stays the only artifact behind the 0.73/0.06
+that the speech and slide 5 speak, and the number on that slide waits on re-pointing the stand at
+`oneiro.chat.chat_call` for models and at `oneiro.sc_graph`'s save path with a live sc-server for
+the graph. Recorded in `../forumit-2026/PLAN-DOKLAD-2026-10-14.md`, P4.
+
+**The talk.** The `PENDING-P3` block is spoken: the markers are removed, and the place it
+needed was freed from sections 1-9 (35 words), with the block itself going 36 to 33 words —
+the sentence about a permanent process running as an application service is gone, because
+nothing backs it (the installer prints "no OS autostart") and what was verified instead is
+said in its place: the digest and the reminder are decided by the same tick as the schedule.The 5-minute version is measured with the same 120-second transition allowance as the full talk rather than a looser one, and was trimmed to hold it. `python _tmp/talk-words.py` —
+**1 423 words, 10.89-11.81 min** and **415 words, 4.59-4.86 min**, exit 0
+(`_tmp/talk-words.log`).
+
+## 2026-10-13 — P2: the deck for 14 October, built from the plan and measured
+
+The slide set is the one the plan's P2 names, in the order Appendix A of the talk lists the
+screens: title → roles → memory (kinds and provenance, the value an edit replaced, the two
+numbers of the saved measurement, the panel) → autonomy as text and then as the journal →
+proactivity → the refusal and the rejected candidate → what is next → the code. Files live in
+`docs/forumit-2026/slides/`.
+
+- **One command builds and checks it.** `python scripts/forumit-slides.py` — **exit 0**: the
+  deck (`oneiro-doklad-2026-10-14.pptx`, 13 slides), its PDF (**13 pages, 960x540 pt each**,
+  measured page by page), 13 page renders (`pages/page-01..13.png`, 1467x825 px) and
+  `index.html`. The build reads its own file back: every page must carry the words its plan
+  entry lists, no placeholder may survive, and the speaker notes must name the evidence the
+  slide rests on. `python-pptx` writes it because this project already builds its office
+  documents with the `python-*` packages (`scripts/forumit-build.py` writes the talk's docx);
+  the PDF comes from `soffice` in the `oneiro-office:local` image this project already runs,
+  with the host's own Calibri and Cambria mounted read-only into that container — LibreOffice's
+  substitute is DejaVu Sans, which is wider, so a fit measured on it would be a measurement of
+  another font. Pages are rendered with PyMuPDF.
+- **The panel frames are the panel.** `python tests/live_slide_shots.py` — **exit 0**, five
+  frames recorded in `img/shots.json`: the curated-memory section and one record large, the
+  tasks screen, and the Initiative section whole and as two rows. The facts go in through the
+  panel's own routes, the earlier value an edit replaced is asserted in the response of
+  `/api/memory/facts` before the shutter, and the tasks and the standing schedule are read back
+  from `/api/tasks` and `/api/schedules`; the frames that have to be read from the room are
+  shot in a narrower window (560 and 700 px), because a 1200 px section shrunk into a column
+  renders its 11 pt line at 5 pt.
+- **The index was opened, not assumed.** `python _tmp/forum-artifact-verify.py
+  http://127.0.0.1:31700/index.html` — **exit 0**: 18 images decoded, no console error, no
+  failed request, no horizontal overflow (`_tmp/slides-index-verify.json`). The serving process
+  was identified by its listening port and stopped (`taskkill` on that PID); the port answers
+  nothing now.
+- **A copy defect the pictures exposed.** The panel printed «Прежнее значение — Прежнее
+  значение остаётся в записи…»: `facts.earlier_note` repeated the label it follows. Narrowed in
+  both languages to «остаётся в записи с датой и источником». Covering checks:
+  `tests/test_i18n_themes.py`, `tests/test_console_screens.py`, `tests/test_curated_memory.py` —
+  **62 passed**; `python -m mypy python` — **47 files, exit 0**.
+- **Named limits.** The metric slide carries the two numbers the speech already speaks (0.73 and
+  0.06 from the saved `s-50-2` run) and not the `PENDING-P4` ones: the fresh `bench/memory` run
+  is still owed by P4/P5 and lands on that slide when it happens. No live presentation rehearsal
+  happened here — the machine measures pages, not a room. The canonical speech out of the two
+  rival files in that folder is still the owner's call; the slides follow this plan's own order.
+
+## 2026-10-13 — P6: the recording the room can fall back on
+
+If the live run fails on 14 October there is now something real to play instead of an apology:
+`python tests/live_demo_record.py --marker p6-20261013i` — **exit 0, 30/30 checks** — recorded
+the demo's **whole spoken chain**, not only its browser part, in a real Chromium and wrote it to
+`docs/forumit-2026/demo-record/`.
+
+- **The video is a video, and it was measured as one.** `oneiro-demo-run.mp4` — **40.96 s,
+  1280x720, H.264, 762 737 bytes** — and the same session as `oneiro-demo-run.webm` (VP8,
+  2 525 714 bytes). Two independent readings agree: `ffprobe` on both files, and the browser's
+  own decoder — the file was opened in a browser over loopback and reported `duration=40.96`,
+  `readyState=4`, `1280x720`. Four frames decoded with `ffmpeg` at 1.0 s, 12.3 s, 24.6 s and
+  40.0 s are in `stills/p6-20261013i/`, none of them flat, and the first and last differ by
+  21.3 mean absolute pixel difference: the file carries moving screens, not one held frame.
+- **Every key screen is *in the file*, and that was measured too.** The recording is sampled
+  once per second (41 frames) and each of the eight key screens is looked for in the samples:
+  found at 3 s, 17 s, 11 s, 20 s, 20 s, 28 s, 31 s and 36 s, at mean absolute differences of
+  2.3–14.1 (two different screens of this panel differ by 40–98, measured). A key screen the
+  file did not carry would be **named as missing** instead of implied by the still taken while
+  it was on screen.
+- **The talked chain is in it, on this run's own root.** The **signed webhook**: this run's
+  console generated its own secret (64 bytes, fingerprint `b4bfa43e22a2` — the value is never
+  printed), the delivery signed those exact bytes and was answered **HTTP 202**, task
+  `task-hook-monitor-de8cb0dfb2417618`, shot in the panel's journal (`key-07`) and read back out
+  of the graph by its own id as `kind=task, state=queued, provenance=owner_instruction`; the
+  three refusals the talk names — no signature, a stranger's key, this key over other bytes —
+  each answered **HTTP 401** with its own code (`signature_absent`, `signature_mismatch`,
+  `signature_mismatch`), and the journal held **exactly one task**, the one the signed call made,
+  with nothing behind a refusal. The **office job**: the product's own command in the shipped
+  container, **exit 0**, six artifacts whose sizes on disk equal the sizes the job reported,
+  pages **1/1/2**, container `oneiro-office-0ead62ba7a17` stopped (not removed), and **8/8 of its
+  own records read back by id** with the product's reader at `exit 0`; page one of the produced
+  `slides.pdf`, rendered from that very file, is the `key-08` frame. The **independent graph
+  read** is that reader; its exit code is kept.
+- **The screens are the product's own.** Eight key screens, each taken only after the page said
+  what the frame claims: the console, the journal holding the webhook's task, the draft before
+  the press, the same screen after it (the press is a real click on `.draft-send`), the
+  curated-memory section with the value an edit replaced, the graph page, page one of this run's
+  own produced PDF, and the durable artifacts viewer of the verified rehearsal. `record.json`
+  carries each frame's route, window, pixel size, the head of its text, and the second of the
+  recording it was found at.
+- **It is the run's own root, its own graph and the test transport.** An isolated data root
+  (`_tmp/oneiro-w3-live-4p6h8k3b`), its own graph container from the shipped image
+  (`oneiro-w3-4p6h8k3b`, stopped and kept), and the demo's fake mailbox and bot: one press, one
+  call in the fake mailbox's log, servers seen `['mailbox']` only — no real account, no
+  Telegram, no owner record in any frame. The owner's data root is 15 files with digests
+  compared before and after.
+- **One ordering is a measurement, not a preference.** A console holds the isolated root's
+  writer lease (`graph-writer.lock`) while it runs, and the office job's own publication needs
+  that same lease: with a console up, the job's graph write answers `graph_worker_failed`. The
+  recording's first attempt reported exactly that (`not_recorded`); the file work therefore runs
+  first, and the console that is recorded starts afterwards and reads those records back.
+  A second defect the same pass exposed, in its own evidence: the delivery's status and the
+  journal read's status shared one variable, so the first artifact claimed the delivery answered
+  **200**. It is recorded under its own name now, and the artifact of this run says **202**.
+- **Named rather than smoothed.** The readiness block in the recording belongs to that isolated
+  root, which never calls the owner's provider (a check does not), so it says the model was not
+  verified where the presenting machine names the verified one. The office listing shown is the
+  durable artifacts page of the verified rehearsal, labelled as that page; what this run's own
+  office job produced is shown as page one of its own `slides.pdf` (`key-08`) with every size and
+  digest in `record.json`. **Four moments have no screen and are named, not implied**: the signed
+  POST itself, the refused deliveries, the conversion inside the office container, and the
+  reader's printed page — the first covered by its result, the second by the status each call
+  answered with and by the journal holding nothing, the third by the files on disk, the fourth by
+  its exit code; no log is passed off as the product's UI. `blocked.adapter_absent` is a standing
+  declaration of this build and appears on any root, including the presenter's.
+- **The fallback instruction is in the demo document.** `docs/FORUM-DEMO-2026-10-13.md`,
+  section "Stage cues / fallback if live networking or Docker fails", starts with this recording
+  and these screens. What remains for P7: `python -m pytest -q`, `python -m mypy python`,
+  `python scripts/forum-demo.py`, `python _scripts/validate_doc_routes.py`, and a local
+  checkpoint of this package's own files.
