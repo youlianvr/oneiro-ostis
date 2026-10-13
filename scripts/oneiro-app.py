@@ -13,6 +13,12 @@ place instead of being retyped at a prompt.
 
 Output is Russian because the person who runs this is the owner, not a
 programmer; comments and the code stay English like the rest of the project.
+
+The console is no longer installed from this repository: the CowAgent install
+route (`scripts/install.py` and `console/`) was retired on 2026-10-13. This
+launcher therefore serves a copy that already has a console — the workspace's
+vendor tree, or a machine that ran the old route while it existed — and names
+what is missing instead of pretending when it has none.
 """
 
 from __future__ import annotations
@@ -77,11 +83,11 @@ def seed_platform_cache() -> None:
     with no port ever bound. Measured: `import cheroot.server` does not return
     within 45 seconds without the seed and takes 0.19 seconds with it.
 
-    The answer itself lives in `scripts/wmi-seed/sitecustomize.py`, which is
-    also the copy every installed environment gets (see `scripts/install.py`),
-    so the console process and everything it starts agree. Loaded by path
-    rather than imported by name, because outside a virtualenv it has no
-    importable name of its own.
+    The answer itself lives in `scripts/wmi-seed/sitecustomize.py`; the copy the
+    console virtualenv used to get in its `site-packages` came from the retired
+    install route (`scripts/install.py`, deleted 2026-10-13 with `console/`), so
+    the path is the way in now. Loaded by path rather than imported by name,
+    because outside a virtualenv it has no importable name of its own.
     """
     if not WMI_SEED.exists():
         print(f"Нет обхода зависшего WMI ({WMI_SEED}) — консоль может не подняться.")
@@ -294,8 +300,9 @@ def main() -> int:
 
     if not CONSOLE_PYTHON.exists():
         print(f"Не найдено окружение консоли: {CONSOLE_PYTHON}")
-        print("Похоже, Oneiro ещё не установлен в этой копии проекта.")
-        print("Запустите один раз:  python scripts/install.py")
+        print("Консоль CowAgent больше не ставится из репозитория: маршрут установки")
+        print("(scripts/install.py и console/) снят 2026-10-13.")
+        print("Работайте с самим продуктом:  uv run --locked oneiro serve")
         return 2
     if args.check:
         return check(panel_port, console_port)

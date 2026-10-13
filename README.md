@@ -55,20 +55,33 @@ interface/          sc-web — the knowledge graph as live proof
 tests/              determinism, replay exactness, core loop, dream improvement
 ```
 
-## Install (one command, from a fresh clone)
+## Install
+
+Two routes, both local, neither needing an account.
+
+From a source clone:
 
 ```bash
-python scripts/install.py          # the whole path; safe to run again
-python scripts/install.py --check  # what is already in place, changes nothing
+uv sync --locked --group dev          # dependencies from uv.lock
+uv run --locked oneiro doctor         # runtime prerequisites, models, graph
+uv run --locked oneiro serve          # the product: 127.0.0.1:9899
 ```
 
-The console is CowAgent 2.1.9, whose archive ships in `console/vendor/`; the
-installer unpacks it into `.runtime/cowagent` inside the project, builds its
-virtualenv, applies the product's own console files from `console/overlay/`
-(the Oneiro chat page, the settings page, the sidebar entry, the Russian
-strings, the server routes they call), seeds the console config for the web
-channel, wires the graph memory into the host, brings up the graph stack with
-Docker, and puts an **Oneiro** shortcut on the desktop.
+For a packaged Windows install, `installer/` builds it: `installer/build-payload.ps1`
+assembles the payload (embeddable Python with its pinned dependencies, the Oneiro
+sources, the ontology, the graph image, the launchers, `LICENSE` and `NOTICE`), and
+Inno Setup turns that payload into `OneiroSetup-0.2.0.exe` — per-user, no
+administrator rights, no autostart, Docker Desktop required, and neither
+`%USERPROFILE%\.oneiro` nor the graph volume is an uninstall target. The payload's
+contents and the attribution it must carry are pinned by
+`tests/test_installer_payload.py`; `docs/ACCEPTANCE-REPORT.md` carries the frames
+from a real run.
+
+The CowAgent console route — `scripts/install.py` unpacking
+`console/vendor/cowagent-2.1.9.zip` and applying `console/overlay/` — was retired
+with the v1 rewrite and left the repository on 2026-10-13; the product's console is
+its own file set in `python/oneiro/static`, served on the same origin.
+`docs/HOST.md` is the dated record of that earlier host.
 
 After that there is one address: **http://127.0.0.1:9899** — the chat, the
 *Настройки Oneiro* page and the graph panel at `/oneiro/` on a single origin.
@@ -92,10 +105,6 @@ setup page come back on their own and name the piece that broke.
 The graph panel at `/oneiro/` reads its snapshot in the background: the first
 open shows a live count of the read (minutes on a graph as large as this one's)
 instead of an error, then the numbers, and later visits are instant.
-
-What the installer deliberately does not do: overwrite a console file someone
-else has since edited (it refuses and says which), touch a config that already
-exists, or download anything it already has.
 
 ## Principles
 

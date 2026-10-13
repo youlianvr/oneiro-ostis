@@ -27,8 +27,6 @@ uv run --locked oneiro doctor         # runtime prerequisites, models, graph
 uv run --locked oneiro serve          # the product: 127.0.0.1:9899 (window, or --no-window)
 python -m pytest -q                   # 805 passed, exit 0 (~4 min)
 python -m mypy python                 # 47 source files, no issues, exit 0
-python scripts/install.py --check     # what the install already has; changes nothing
-python scripts/install.py             # the whole install path; safe to run again
 ```
 
 The whole command line is one parser: `doctor`, `serve` (default), `verify-model`, `settings`,
@@ -93,7 +91,6 @@ A change that breaks one of these is a bug even if every check stays green.
 | --- | --- |
 | `python/oneiro/` | the product: agent loop, chat, tools, MCP hub, skills, memory, recall, records, schedules, tasks, proactive, drafts, hooks, office env, models, settings, web/pages/static, graph worker, checkpoints, i18n, migration |
 | `python/oneiro/dream/` | the record-and-judge machinery the memory stand uses; not part of the v1 interface |
-| `console/` | the retired CowAgent route: the upstream archive in `vendor/` and the overlay manifest. The v1 console is the product's own — `python/oneiro/static`, served on 9899 |
 | `installer/`, `scripts/build_installer_payload.py` | the v1 Windows install path: the payload builder, the Inno Setup script, the launchers |
 | `tests/` | 48 unit/integration suites plus the 16 opt-in live checks |
 | `bench/memory/` | the measured memory comparison (LongMemEval: graph vs flat journal vs no memory) — its own README, its own sc-server container |
@@ -143,10 +140,15 @@ installer payload — `tests/test_installer_payload.py` fails if it is missing.
   either waits or is pointed at its own `ONEIRO_DATA_DIR`.
 - Local commits in small logical units are the working checkpoint; a push is a separate,
   explicitly requested act.
-- `scripts/install.py` belongs to the retired CowAgent console route and no longer runs: its
-  step 3 applies `console/overlay.py`, which `adf76694e` ("Land the Oneiro v1 rewrite and
-  retire every module it replaced", 2026-10-11) deleted along with the overlay itself. The
-  install path the acceptance report actually evidenced is the payload one
-  (`scripts/build_installer_payload.py` → `installer/oneiro.iss`), and the `installed-*`
-  frames plus `tests/live_w8_check.py` are its evidence. `README.md` still describes the
-  retired command in its "Install" section — read it as history, not as instructions.
+- The CowAgent console install route is **gone**, not merely unused: `scripts/install.py`
+  and `console/` (the overlay manifest and the `cowagent-2.1.9.zip` archive it unpacked)
+  left the repository on 2026-10-13, finishing what `adf76694e` ("Land the Oneiro v1
+  rewrite and retire every module it replaced", 2026-10-11) began when it deleted
+  `console/overlay.py` and the overlay itself. Between those two steps `install.py` sat in
+  the tree calling a file that no longer existed. The install path the acceptance report
+  actually evidenced is the payload one (`scripts/build_installer_payload.py` →
+  `installer/oneiro.iss`), and the `installed-*` frames plus `tests/live_w8_check.py` are
+  its evidence. Do not resurrect the route or point any document back at it.
+- The CowAgent attribution in `NOTICE` stays even though the archive is gone: the console's
+  design still derives from that release. `tests/test_installer_payload.py` fails if the
+  name stops being there.

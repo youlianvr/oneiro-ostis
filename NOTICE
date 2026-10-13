@@ -8,14 +8,18 @@ terms, and the terms of the MIT License above do not replace them.
 --------------------------------------------------------------------------------
 CowAgent 2.1.9 — MIT License
 --------------------------------------------------------------------------------
-Source: https://github.com/zhayujie/CowAgent  (working copy kept as the archive
-        console/vendor/cowagent-2.1.9.zip, 4,394,330 bytes,
-        sha256 cc92ae3e8dbffdc52154e3b5199e44543a20eca10220edcaf0d38c5fac534f73)
+Source: https://github.com/zhayujie/CowAgent
 
 Used as the design and behaviour source for the product's console: conversation
 rendering, the composer, the handling of states and the styling techniques.
 The shell, the navigation and every panel were rewritten against Oneiro's own
 API; no CowAgent source file is shipped in the installer payload.
+
+The working copy read for that work was the upstream archive, 4,394,330 bytes,
+sha256 cc92ae3e8dbffdc52154e3b5199e44543a20eca10220edcaf0d38c5fac534f73. It left
+this repository on 2026-10-13, together with the console install route that
+unpacked it (`console/`, `scripts/install.py`), and the attribution above stays:
+the product's console still derives its design from that release.
 
 --------------------------------------------------------------------------------
 ostis-example-app scaffold — MIT License

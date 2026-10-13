@@ -43,12 +43,16 @@ def test_the_seed_answers_the_windows_questions_without_reaching_wmi():
     assert "win32_ver:" in result.stdout
 
 
-def test_the_seed_file_is_where_the_installer_and_launcher_look_for_it():
-    """Two callers, one file: the installer copies it, the launcher loads it."""
+def test_the_seed_file_is_where_the_launcher_looks_for_it():
+    """The one caller left loads it by path.
+
+    There used to be a second caller: the retired CowAgent console install route
+    (`scripts/install.py`) copied the seed into that virtualenv's `site-packages`.
+    The route and `console/` were deleted on 2026-10-13, so this test now pins the
+    caller that remains - but the seed itself stays, because the hang it answers is
+    a property of this machine, not of the route that installed the console.
+    """
     assert (SEED_DIR / "sitecustomize.py").is_file()
-    installer = (Path(__file__).resolve().parent.parent / "scripts" / "install.py").read_text(
-        encoding="utf-8")
     launcher = (Path(__file__).resolve().parent.parent / "scripts" / "oneiro-app.py").read_text(
         encoding="utf-8")
-    assert '"wmi-seed"' in installer
     assert '"wmi-seed"' in launcher

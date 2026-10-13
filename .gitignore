@@ -11,9 +11,9 @@ state/
 worktrees/
 _tmp/
 
-# Installed product: the console tree and its virtualenv, built by
-# scripts/install.py (CowAgent archive is in console/vendor/, the product's own
-# files in console/overlay/). Never committed - a clone installs it.
+# The project's own diagnostic and scratch area: graph snapshots, the
+# installed-wheel smoke data, per-command scratch. Never committed - a run
+# creates its own.
 .runtime/
 
 # Build outputs

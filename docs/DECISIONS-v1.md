@@ -62,6 +62,11 @@ Source: `projects/ostis/oneiro-ostis/console/overlay/` (MIT; the untouched origi
 `console/vendor/cowagent-2.1.9.zip`, 4,394,330 bytes, and
 `tests/test_console_overlay.py` fails if overlay and archive drift apart).
 
+> **Superseded 2026-10-13.** The overlay, the archive and the install route that applied
+them (`console/`, `scripts/install.py`) are no longer in the repository. The sizes and the
+tables below record what was read from CowAgent while it was here — as provenance, not as
+files that still exist. `NOTICE` keeps the attribution.
+
 Measured size of the files to adapt: **25,145 lines** of `.js`/`.html`/`.css`:
 
 | Lines | File |

@@ -6,10 +6,11 @@ it while importing), `platform.processor()`, `platform.win32_ver()` and the
 virtualenv bootstrap that pip runs all stop dead instead of failing. Nothing
 on screen says why - the process just stands there.
 
-This file exists twice over: it is copied into the console virtualenv's
-`site-packages` by `scripts/install.py`, where CPython imports it at startup as
-`sitecustomize`, and `scripts/oneiro-app.py` loads it by path to protect the
-console process itself. `seed()` is the whole fix.
+It has two homes by design: CPython imports it at startup as `sitecustomize`
+wherever it sits on the path - the console install route that put a copy in that
+virtualenv's `site-packages` (`scripts/install.py`) was retired on 2026-10-13 - and
+`scripts/oneiro-app.py` loads it by path to protect the console process itself.
+`seed()` is the whole fix.
 
 Two traps are worth naming, both measured here:
 
